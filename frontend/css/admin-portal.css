@@ -388,3 +388,24 @@ input:focus, select:focus, textarea:focus {
   font-weight: 600;
   color: #0f2942;
 }
+.login-hint-box.hint-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.btn-autofill {
+  margin-left: 8px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #0f2942;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background 0.15s ease;
+}
+.btn-autofill:hover {
+  background: #cbd5e1;
+}
