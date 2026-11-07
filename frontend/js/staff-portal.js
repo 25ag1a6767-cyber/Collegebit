@@ -814,6 +814,20 @@
 
   // --- Wire Events ---
   document.addEventListener("DOMContentLoaded", () => {
+    const toggleStaffPwBtn = $("btn-toggle-staff-pw");
+    if (toggleStaffPwBtn) {
+      toggleStaffPwBtn.addEventListener("click", () => {
+        const inp = $("staff-login-pw");
+        if (inp.type === "password") {
+          inp.type = "text";
+          toggleStaffPwBtn.textContent = "🔒 Hide";
+        } else {
+          inp.type = "password";
+          toggleStaffPwBtn.textContent = "👁️ Show";
+        }
+      });
+    }
+
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       showBanner("", "");

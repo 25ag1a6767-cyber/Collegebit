@@ -1269,6 +1269,20 @@
     $("btn-admin-logout").addEventListener("click", onAdminLogout);
     $("btn-admin-refresh").addEventListener("click", () => loadActiveTab());
 
+    const toggleAdminPwBtn = $("btn-toggle-admin-pw");
+    if (toggleAdminPwBtn) {
+      toggleAdminPwBtn.addEventListener("click", () => {
+        const inp = $("admin-password");
+        if (inp.type === "password") {
+          inp.type = "text";
+          toggleAdminPwBtn.textContent = "🔒 Hide";
+        } else {
+          inp.type = "password";
+          toggleAdminPwBtn.textContent = "👁️ Show";
+        }
+      });
+    }
+
     document.querySelectorAll(".nav-tab").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });

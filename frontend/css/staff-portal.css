@@ -490,3 +490,46 @@ input:focus, select:focus, textarea:focus {
   padding: 20px;
   color: #94a3b8;
 }
+
+.pw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pw-row input {
+  flex: 1;
+}
+.btn-pw-toggle {
+  background: #064e3b;
+  border: 1px solid #059669;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #ecfdf5;
+  transition: all 0.2s;
+}
+.btn-pw-toggle:hover {
+  background: #047857;
+}
+.login-hint-box {
+  margin: 10px 0 16px;
+  padding: 10px 14px;
+  background: #064e3b;
+  border-left: 3px solid #10b981;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #d1fae5;
+  line-height: 1.5;
+}
+.login-hint-box code {
+  background: #022c22;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6ee7b7;
+}

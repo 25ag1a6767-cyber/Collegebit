@@ -327,3 +327,46 @@ input:focus, select:focus, textarea:focus {
   .charts-grid { grid-template-columns: 1fr; }
   .cb-donut-layout { grid-template-columns: 1fr; justify-items: center; }
 }
+
+.pw-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pw-row input {
+  flex: 1;
+}
+.btn-pw-toggle {
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #334155;
+  transition: all 0.2s;
+}
+.btn-pw-toggle:hover {
+  background: #cbd5e1;
+}
+.login-hint-box {
+  margin: 10px 0 16px;
+  padding: 10px 14px;
+  background: #f1f5f9;
+  border-left: 3px solid #0f2942;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #334155;
+  line-height: 1.5;
+}
+.login-hint-box code {
+  background: #e2e8f0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f2942;
+}

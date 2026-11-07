@@ -41,8 +41,14 @@
           <input id="staff-login-id" type="text" required autocomplete="username" placeholder="25ag1a6767@gmail.com">
         </label>
         <label>Password
-          <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
+          <div class="pw-row">
+            <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
+            <button type="button" id="btn-toggle-staff-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
+          </div>
         </label>
+        <div class="login-hint-box">
+          <strong>Default Login:</strong> <code>25ag1a6767@gmail.com</code> &bull; Password: <code>ace@25ag1a67676staff</code> (or <code>ace12345</code>)
+        </div>
         <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
       </form>
     </section>
