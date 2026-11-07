@@ -574,37 +574,8 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.", headers={"Retry-After": str(retry_after)})
     
     email_clean = payload.email.strip().lower()
-    if email_clean in ("25ag1a6767@aceec.ac.in", "ace@6767admin", "admin", "25ag1a6767", "aceadmin"):
-        user = db.scalar(select(User).where(User.email == "25ag1a6767@aceec.ac.in"))
-    elif email_clean in ("25ag1a6767@gmail.com", "ce@6767staff", "staff", "25ag1a6767staff", "acestaff"):
-        user = db.scalar(select(User).where(User.email == "25ag1a6767@gmail.com"))
-    else:
-        user = db.scalar(select(User).where(User.email == email_clean))
-
-    valid_pw = False
-    if user is not None:
-        valid_pw = verify_password(payload.password, user.password_hash) or verify_password(payload.password.strip(), user.password_hash)
-        if not valid_pw:
-            pw_input = payload.password.strip()
-            pw_lower = pw_input.lower()
-            dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
-            if user.email == "25ag1a6767@aceec.ac.in":
-                admin_accepted = {
-                    "ace@25ag1a67676", "ace@25ag1a6767", "ace@6767admin", "admin", "admin123", "ace@25ag1a67676staff", "ace@25ag1a6767staff"
-                } | dev_fallbacks
-                if pw_input in admin_accepted or pw_lower in admin_accepted:
-                    valid_pw = True
-                    user.password_hash = hash_password(pw_input)
-                    db.flush()
-            elif user.email == "25ag1a6767@gmail.com":
-                staff_accepted = {
-                    "ace@25ag1a67676staff", "ace@25ag1a6767staff", "ace@25ag1a67676", "ace@25ag1a6767",
-                    "ce@6767staff", "staff", "staff123"
-                } | dev_fallbacks
-                if pw_input in staff_accepted or pw_lower in staff_accepted:
-                    valid_pw = True
-                    user.password_hash = hash_password(pw_input)
-                    db.flush()
+    user = db.scalar(select(User).where(func.lower(User.email) == email_clean))
+    valid_pw = user is not None and verify_password(payload.password, user.password_hash)
 
     if user is None or not valid_pw:
         _record_failed_login(rate_key)
@@ -2185,4 +2156,3 @@ async def ws_events_root(websocket: WebSocket) -> None:
 @app.websocket("/api/v1/ws")
 async def ws_events_v1(websocket: WebSocket) -> None:
     await _handle_realtime_ws(websocket)
-
