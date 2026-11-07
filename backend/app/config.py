@@ -82,7 +82,12 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_security_settings(self):
         # Normalize relative SQLite paths so the app always finds its db regardless of current working directory
-        if self.database_url.startswith("sqlite:///.") or self.database_url.startswith("sqlite:///backend/"):
+        import os
+        if (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")) and self.database_url.startswith("sqlite"):
+            self.database_url = "sqlite:////tmp/ace_canteen.db"
+            self.auto_create_tables = True
+            self.seed_demo_data = True
+        elif self.database_url.startswith("sqlite:///.") or self.database_url.startswith("sqlite:///backend/"):
             from pathlib import Path
             project_root = Path(__file__).resolve().parent.parent.parent
             rel_part = self.database_url.replace("sqlite:///", "")
