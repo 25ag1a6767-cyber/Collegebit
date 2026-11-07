@@ -42,7 +42,7 @@ test('account form exposes accessible sign-in and registration modes', async ({ 
   await page.goto('/');
   const account = page.getByRole('region', { name: 'Account sign in' });
   await expect(account.getByLabel('Email address')).toBeVisible();
-  await expect(account.getByLabel('Password')).toBeVisible();
+  await expect(account.getByLabel('Password', { exact: true })).toBeVisible();
   await account.getByRole('button', { name: 'Create account' }).click();
   await expect(account.getByLabel('Full name')).toBeVisible();
   await expect(page.locator('#auth-submit')).toHaveText(/Create student account/i);
