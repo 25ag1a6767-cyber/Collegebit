@@ -5,7 +5,7 @@ from app.main import app
 
 def test_phase19_student_pilot_public_pages_and_catalogue():
     with TestClient(app) as client:
-        home = client.get("/")
+        home = client.get("/customer/")
         assert home.status_code == 200
         assert "ACE Canteen" in home.text
         assert client.get("/api/health").json()["status"] == "ok"

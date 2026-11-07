@@ -150,11 +150,16 @@ def _mark_order_paid_direct(order_id: int) -> int:
 
 def test_three_portals_and_strict_csp_compliance():
     with TestClient(app) as client:
-        r_cust = client.get("/")
+        r_cust = client.get("/customer/")
         assert r_cust.status_code == 200
         assert "ACE Canteen" in r_cust.text
-        assert "/staff" in r_cust.text
-        assert "/admin" in r_cust.text
+        assert "/staff" not in r_cust.text
+        assert "/admin" not in r_cust.text
+
+        r_home = client.get("/")
+        assert r_home.status_code == 200
+        assert "Staff Portal" in r_home.text
+        assert "Administration Portal" in r_home.text
 
         r_staff = client.get("/staff")
         assert r_staff.status_code == 200

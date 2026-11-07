@@ -6,9 +6,30 @@ def test_homepage_serves_html():
     with TestClient(app) as client:
         response = client.get("/")
         assert response.status_code == 200
-        assert "ACE Canteen" in response.text
-        assert "catalogue-grid" in response.text
+        assert "Staff Portal" in response.text
+        assert "Administration Portal" in response.text
+        assert "catalogue-grid" not in response.text
         assert "Download ZIP" not in response.text
+
+
+def test_customer_app_is_separate_and_installable():
+    with TestClient(app) as client:
+        response = client.get("/customer/")
+        assert response.status_code == 200
+        assert "catalogue-grid" in response.text
+        assert "Staff Portal" not in response.text
+        assert "Admin Console" not in response.text
+        manifest = client.get("/manifest.webmanifest")
+        assert manifest.status_code == 200
+        assert manifest.json()["start_url"] == "/customer/"
+        assert manifest.json()["scope"] == "/customer/"
+        assert {icon["sizes"] for icon in manifest.json()["icons"]} == {"192x192", "512x512"}
+        assert client.get("/assets/icon-192.png").status_code == 200
+        assert client.get("/assets/icon-512.png").status_code == 200
+        service_worker = client.get("/sw.js")
+        assert service_worker.status_code == 200
+        assert 'url.pathname !== "/customer"' in service_worker.text
+        assert 'url.pathname !== "/customer/"' in service_worker.text
 
 
 def test_portal_pages_do_not_offer_project_downloads():
@@ -582,7 +603,7 @@ def test_phase6_payment_verification_rejects_invalid_signature():
 
 def test_phase7_dashboard_removes_development_and_promo_sections():
     with TestClient(app) as client:
-        html = client.get('/').text
+        html = client.get('/customer/').text
         for removed in ['DEVELOPMENT STATUS', 'Check application status', 'Ordering + queue enabled', 'Razorpay · Phase 6', 'BUILT AROUND YOUR DAY', 'Live token queue']:
             assert removed not in html
         assert 'catalogue-grid' in html and 'cart-checkout' in html

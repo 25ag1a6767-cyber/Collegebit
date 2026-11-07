@@ -1,7 +1,7 @@
 "use strict";
-const CACHE_NAME = "ace-canteen-shell-v5";
+const CACHE_NAME = "ace-canteen-shell-v6";
 const APP_SHELL = [
-  "/",
+  "/customer/",
   "/manifest.webmanifest",
   "/css/style.css",
   "/css/v1-platform.css",
@@ -45,18 +45,18 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || PRIVATE_OR_API_PATH(url)) return;
-  // Never cache API responses. Only cache the known app shell, not arbitrary pages, auth data, or dynamic assets.
   if (request.mode === "navigate") {
+    if (url.pathname !== "/customer" && url.pathname !== "/customer/") return;
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
         if (response.ok) {
           const cache = await caches.open(CACHE_NAME);
-          await cache.put("/", response.clone());
+          await cache.put("/customer/", response.clone());
         }
         return response;
       } catch {
-        return (await caches.match("/")) || new Response(
+        return (await caches.match("/customer/")) || new Response(
           "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>ACE Canteen offline</title><main><h1>ACE Canteen is offline</h1><p>Reconnect to load live catalogue, account, order and payment information. Ordering is unavailable offline.</p></main></html>",
           { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }, status: 503 }
         );
@@ -79,7 +79,7 @@ self.addEventListener("push", event => {
   let payload = {
     title: "ACE Canteen",
     body: "You have an order update.",
-    url: "/#my-orders-section",
+    url: "/customer/#my-orders-section",
     tag: "canteen-order-update"
   };
   if (event.data) {
@@ -96,14 +96,14 @@ self.addEventListener("push", event => {
       tag: payload.tag || "canteen-order-update",
       icon: "/assets/ace-logo.png",
       badge: "/assets/ace-logo.png",
-      data: { url: payload.url || "/" }
+      data: { url: payload.url || "/customer/" }
     })
   );
 });
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || "/";
+  const targetUrl = (event.notification.data && event.notification.data.url) || "/customer/";
   event.waitUntil((async () => {
     const allClients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of allClients) {

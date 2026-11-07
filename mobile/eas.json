@@ -16,14 +16,20 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-sai-e3e1.vercel.app"
+      },
       "android": {
         "buildType": "apk"
       },
       "ios": {
-        "simulator": true
+        "simulator": false
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://app-sai-e3e1.vercel.app"
+      },
       "android": {
         "buildType": "app-bundle"
       },

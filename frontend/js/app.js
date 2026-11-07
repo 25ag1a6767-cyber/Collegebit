@@ -2,7 +2,15 @@
 // Phase 21: installable app shell. Offline mode never submits orders or caches API/private data.
 (() => {
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(error => console.warn("ACE Canteen offline shell unavailable:", error)));
+    window.addEventListener("load", async () => {
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.filter(registration => registration.scope === `${location.origin}/`).map(registration => registration.unregister()));
+        await navigator.serviceWorker.register("/sw.js", { scope: "/customer/" });
+      } catch (error) {
+        console.warn("ACE Canteen offline shell unavailable:", error);
+      }
+    });
   }
   let installPrompt = null;
   const installButton = document.querySelector("#install-app-button");
@@ -1672,4 +1680,3 @@ window.setInterval(() => {
   document.addEventListener('ace-auth-changed', checkAdminView);
   checkAdminView();
 })();
-

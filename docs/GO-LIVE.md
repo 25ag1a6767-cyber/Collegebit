@@ -40,13 +40,17 @@ Copy `deploy/nginx-https-example.conf`, configure Let's Encrypt TLS (`certbot --
 - **Grounded Menu Concierge (`/api/v1/ai/assistant`):** Uses `GEMINI_API_KEY` (`gemini-2.5-flash` by default) with strict post-generation verification against live in-stock menu rows, budget caps, and allergen tags, falling back automatically to deterministic verified search if Gemini is unconfigured or unreachable. Never sends student PII to external AI APIs, and never adds items to carts without explicit student confirmation.
 - **Demand Forecasting (`/api/v1/ai/demand-forecasts`):** Computes weekday + slot weighted moving averages with empirical `[lowerBound, upperBound]` intervals, low-sample warnings, staff overrides, and genuine rolling backtest `MAE` / `WAPE`.
 
-## 6. Android Client (`mobile/`)
-Build and distribute the Expo React Native Android app pointing at the same HTTPS backend:
+## 6. Customer Apps for Android & iPhone (`mobile/`)
+The staff/admin website is served at `/`, `/staff`, and `/admin`. The installable customer PWA is served separately at `/customer/`.
+
+Build the Expo React Native customer app for Android and iPhone using the production HTTPS API configured in `mobile/eas.json`:
 ```bash
 cd mobile
 npm install
-EXPO_PUBLIC_API_URL="https://canteen.yourcampus.edu" npx eas build --platform android --profile production
+npx eas build --platform android --profile production
+npx eas build --platform ios --profile production
 ```
+The Android and iOS installs require the EAS build outputs and corresponding distribution setup. Until those builds are distributed, students can install the PWA from `https://app-sai-e3e1.vercel.app/customer/` (Android: browser install option; iPhone: Safari Share → Add to Home Screen).
 
 ## 7. Backups, Monitoring & Campus Pilot
 - Run `./scripts/backup_db.sh` daily to off-host encrypted storage and verify a restore drill before opening campus-wide.

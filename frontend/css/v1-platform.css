@@ -46,6 +46,21 @@
 .mt-20 {
   margin-top: 20px;
 }
+.app-install-help {
+  position: relative;
+  color: #1c5a3c;
+  font-size: 0.8rem;
+}
+.app-install-help summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.app-install-help p {
+  max-width: 280px;
+  margin: 8px 0 0;
+  color: #384b3e;
+  line-height: 1.45;
+}
 
 /* S01 Discovery Strip: Counters, Offers, AI Recommendations */
 .v1-discovery-section {

@@ -6,7 +6,7 @@ Production-ready pre-order, verified Razorpay UPI payment, single-use QR pickup,
 
 | Interface | Entrypoint / Codebase | Target Users & Key Capabilities |
 | :--- | :--- | :--- |
-| **A. Customer Application (Android + Optional PWA)** | `mobile/` (Expo React Native Android) & `GET /` (`frontend/index.html`) | Registration/login, dietary & allergen profile, menu categories/search/filters, cart, checkout, Razorpay UPI, live order tracking, single-use QR pickup, digital tax receipts (JSON + PDF), push & WebSocket alerts, promo offers, ratings/feedback, AI food recommendations & concierge. |
+| **A. Customer Application (Android + iPhone + PWA)** | `mobile/` (Expo React Native) & `GET /customer/` (`frontend/customer.html`) | Registration/login, dietary & allergen profile, menu categories/search/filters, cart, checkout, Razorpay UPI, live order tracking, single-use QR pickup, digital tax receipts (JSON + PDF), push & WebSocket alerts, promo offers, ratings/feedback, AI food recommendations & concierge. |
 | **B. Staff Operations Website** | `GET /staff` (`frontend/staff.html`, `frontend/js/staff-portal.js`) | Secure staff login, live kitchen order queue, **accept & reject** orders (with stock restoration & auto-refund), preparation status updates, ready-for-pickup alerts, camera QR scanning & manual code verification, menu availability toggles, permission-scoped inventory/wastage, completed order history, daily staff performance & throughput graphs. |
 | **C. Enterprise Admin & BI Website** | `GET /admin` (`frontend/admin.html`, `frontend/js/admin-portal.js`) | **10 KPI cards**, **16 interactive SVG charts**, **11 filters**, **4 period comparisons**, **14 automated reports (PDF / Excel `.xlsx` / CSV)**, **12 AI BI modules** (`ACTUAL` vs `PREDICTION` + Menu Engineering Matrix), student/staff/admin accounts, granular staff permissions, menu/pricing/unit costs, suppliers, purchase orders, expenses, payment reconciliation & refunds, customer feedback, operating hours, counters, DB admin tools, encrypted 7D/4W/3M GFS backups, 4-day safe temporary cleanup, security monitoring, and audit logs. |
 
@@ -24,19 +24,13 @@ $env:PYTHONPATH = "backend"
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000
 ```
 
-- **Customer Web / PWA:** http://127.0.0.1:8000/
+- **Staff & admin landing page:** http://127.0.0.1:8000/
 - **Staff Website:** http://127.0.0.1:8000/staff
 - **Admin & BI Website:** http://127.0.0.1:8000/admin
+- **Customer Web / PWA:** http://127.0.0.1:8000/customer/
 - **Live TV Token Board:** http://127.0.0.1:8000/display
 
-### Default Demo Credentials (Local Testing)
-| Portal | Role | Email / Login ID | Password |
-|---|---|---|---|
-| **Admin Portal** (`/admin`) | Administrator | `25ag1a6767@aceec.ac.in` | `ace@25ag1a67676` |
-| **Staff Portal** (`/staff`) | Kitchen Staff | `25ag1a6767@gmail.com` | `ace@25ag1a67676staff` |
-| **Customer App / PWA** (`/`) | Student | `student.dev@example.edu` | `Student#2026!` |
-
-*(Or run `START_LOCAL_DEV.bat` for local SQLite development with auto-seeded local-only demo accounts.)*
+No shared or default login credentials are documented. Use the approved account initialization flow for administrators and create staff/customer accounts through the authorized management interfaces. Do not reuse local development accounts in production.
 
 ---
 

@@ -411,6 +411,14 @@ async def unexpected_exception_handler(request: Request, exc: Exception) -> JSON
 async def home() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "index.html")
 
+@app.get("/customer", include_in_schema=False)
+@app.get("/customer/", include_in_schema=False)
+async def customer_app_page() -> FileResponse:
+    return FileResponse(
+        FRONTEND_DIR / "customer.html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache"},
+    )
+
 @app.get("/staff", include_in_schema=False)
 async def staff_portal_page() -> FileResponse:
     """Dedicated responsive Canteen Staff Website (CampusBite AI v2.0)."""

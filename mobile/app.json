@@ -22,9 +22,6 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Camera is used to scan QR tokens for order pickups."
       }
-    },
-    "extra": {
-      "apiUrl": "http://10.0.2.2:8000"
     }
   }
 }

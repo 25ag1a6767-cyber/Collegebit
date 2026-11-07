@@ -28,11 +28,15 @@ This mobile client is dedicated for students and customers, connecting to the sh
   ```
 
 ### Option C: Instant Mobile PWA Installation (Zero App Store Required)
-Students can also install the full native-like application on any mobile phone in seconds:
+Students can install the customer web app from its dedicated customer URL:
 - **On Android (Chrome / Brave / Edge):**
-  Open `http://<HOST_IP>:8000/` and tap **"Install App"** (or browser menu ➔ *Install app*).
+  Open `https://app-sai-e3e1.vercel.app/customer/` and tap **"Install app"** (or browser menu ➔ *Install app*).
 - **On iPhone (Safari):**
-  Open `http://<HOST_IP>:8000/` in Safari, tap the **Share** button (box with upward arrow), and select **"Add to Home Screen"**. It installs with the native icon, full-screen viewport, and zero browser address bar.
+  Open `https://app-sai-e3e1.vercel.app/customer/` in Safari, tap the **Share** button (box with upward arrow), and select **"Add to Home Screen"**.
+
+The staff/admin website is at the domain root, `/staff`, and `/admin`. The customer app is at `/customer/`; it can also be built as a standalone Android or iOS app with EAS. The native build profiles use the production HTTPS API. A native install link is available after an EAS build and distribution; no app-store listing is configured in this repository.
+
+For local development, set `EXPO_PUBLIC_API_URL` to the backend URL before starting Expo. The default development fallback is Android emulator localhost.
 
 ---
 
