@@ -44,6 +44,6 @@ test('account form exposes accessible sign-in and registration modes', async ({ 
   await expect(page.getByLabel('Email address')).toBeVisible();
   await expect(page.locator('#auth-password')).toBeVisible();
   await page.getByRole('button', { name: 'Create account' }).click();
-  await expect(page.getByLabel('Full name')).toBeVisible();
+  await expect(page.locator('#auth-name')).toBeVisible();
   await expect(page.locator('#auth-submit')).toHaveText(/Create student account/i);
 });
