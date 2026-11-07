@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f2942" />
+  <title>CampusBite AI v2.0 — Enterprise Administration &amp; BI Console</title>
+  <link rel="icon" href="/assets/icon-192.png" />
+  <link rel="stylesheet" href="/css/admin-portal.css" />
+</head>
+<body>
+  <header class="admin-header">
+    <div class="admin-brand">
+      <img src="/assets/icon-192.png" alt="CampusBite AI logo" />
+      <div>
+        <strong>CampusBite AI v2.0 — Administration &amp; BI</strong>
+        <small id="admin-Identity-subtitle">Centralized College Canteen Governance, Analytics &amp; Operations</small>
+      </div>
+    </div>
+    <div class="admin-header-actions">
+      <a class="btn btn-header" href="/">Customer App</a>
+      <a class="btn btn-header" href="/staff">Staff Portal</a>
+      <button type="button" id="btn-admin-refresh" class="btn btn-header" hidden>Refresh Active Module</button>
+      <button type="button" id="btn-admin-logout" class="btn btn-danger" hidden>Sign Out</button>
+    </div>
+  </header>
+
+  <main class="admin-shell">
+    <div id="admin-alert" class="alert-bar" role="status" aria-live="polite" hidden></div>
+
+    <!-- Dedicated Administrator Sign-In Gate -->
+    <section id="admin-login-view" class="login-panel" aria-labelledby="admin-login-heading">
+      <h1 id="admin-login-heading">Administrator Sign In</h1>
+      <p>Restricted to authorized college canteen administrators (`ADMIN` role). All administrative actions are recorded in immutable audit logs.</p>
+      <form id="admin-login-form">
+        <label for="admin-identifier">Admin Email or Phone
+          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="admin@acecanteen.local" />
+        </label>
+        <label for="admin-password">Password
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••••" />
+        </label>
+        <label for="admin-totp">Authenticator TOTP Code (if MFA enabled)
+          <input id="admin-totp" name="totpCode" type="text" inputmode="numeric" maxlength="8" placeholder="Optional 6-digit code" />
+        </label>
+        <button type="submit" id="btn-admin-login" class="btn btn-primary">Authenticate to Admin Console</button>
+      </form>
+    </section>
+
+    <!-- Authenticated Enterprise Admin Workspace -->
+    <div id="admin-workspace" hidden>
+      <nav class="admin-nav" aria-label="Administrator modules">
+        <button type="button" class="nav-tab active" data-tab="bi">1. BI &amp; 16 Analytics Graphs</button>
+        <button type="button" class="nav-tab" data-tab="reports">2. 14 Reports (PDF / XLSX / CSV)</button>
+        <button type="button" class="nav-tab" data-tab="aibi">3. AI Business Intelligence</button>
+        <button type="button" class="nav-tab" data-tab="users">4. Users, Staff &amp; Permissions</button>
+        <button type="button" class="nav-tab" data-tab="menu">5. Menu, Pricing &amp; Offers</button>
+        <button type="button" class="nav-tab" data-tab="procurement">6. Inventory, Suppliers, POs &amp; Expenses</button>
+        <button type="button" class="nav-tab" data-tab="operations">7. Orders, Payments, Refunds &amp; Feedback</button>
+        <button type="button" class="nav-tab" data-tab="settings">8. Counters &amp; Operating Hours</button>
+        <button type="button" class="nav-tab" data-tab="governance">9. DB Admin, Backups, 4-Day Retention &amp; Security</button>
+      </nav>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 1: ADVANCED BI ANALYTICS (10 KPI CARDS, 11 FILTERS, 4 COMPARISONS, 16 GRAPHS) -->
+      <!-- ===================================================================== -->
+      <section id="tab-bi" class="admin-tab-pane">
+        <form id="bi-filter-form" class="filter-ribbon">
+          <label for="bi-preset">Date Window
+            <select id="bi-preset">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="last_7_days">Last 7 Days</option>
+              <option value="last_30_days" selected>Last 30 Days</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_year">This Year</option>
+              <option value="custom">Custom Date Range</option>
+            </select>
+          </label>
+          <label for="bi-start-date">Custom Start
+            <input id="bi-start-date" type="date" />
+          </label>
+          <label for="bi-end-date">Custom End
+            <input id="bi-end-date" type="date" />
+          </label>
+          <label for="bi-category">Food Category
+            <select id="bi-category"><option value="">All Categories</option></select>
+          </label>
+          <label for="bi-product">Individual Product
+            <select id="bi-product"><option value="">All Products</option></select>
+          </label>
+          <label for="bi-counter">Counter
+            <select id="bi-counter"><option value="">All Counters</option></select>
+          </label>
+          <label for="bi-compare">Period Comparison
+            <select id="bi-compare">
+              <option value="today_vs_yesterday">Today vs Yesterday</option>
+              <option value="this_week_vs_last_week">This Week vs Last Week</option>
+              <option value="this_month_vs_last_month">This Month vs Last Month</option>
+              <option value="this_year_vs_last_year">This Year vs Last Year</option>
+            </select>
+          </label>
+          <div class="inline-controls download-buttons-group">
+            <button type="submit" class="btn btn-primary">Apply Analytics Filters</button>
+            <button type="button" id="btn-bi-download-pdf" class="btn btn-danger" title="Download filtered analytics report in PDF 1.4 format">📥 Download PDF</button>
+            <button type="button" id="btn-bi-download-xlsx" class="btn btn-ok" title="Download filtered analytics report in Excel (.xlsx) format">📊 Download Excel (.xlsx)</button>
+            <button type="button" id="btn-bi-download-csv" class="btn btn-blue" title="Download filtered analytics report in CSV format">📄 Download CSV</button>
+          </div>
+        </form>
+
+        <!-- 10 Required KPI Dashboard Cards -->
+        <div id="bi-kpi-cards" class="kpi-grid-10" aria-label="Key business metrics"></div>
+
+        <!-- Period Comparison Banner -->
+        <div id="bi-comparison-banner" class="comparison-banner"></div>
+
+        <!-- 16 Required Interactive SVG Graphs -->
+        <div class="charts-grid">
+          <article class="chart-card"><div class="card-head"><h3>1. Daily Sales Line Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-daily-sales"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>2. Weekly Sales Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-weekly-sales"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>3. Monthly Sales Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-monthly-sales"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>4. Yearly Sales Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-yearly-sales"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>5. Top-Selling Food Bar Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-top-foods"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>6. Least-Selling Food Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-least-foods"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>7. Category-Wise Sales Pie Chart</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-category-pie"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>8. Peak Ordering Hours Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-peak-hours"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>9. Customer Purchase Trends</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-customer-trends"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>10. Payment Success / Failure Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-payment-status"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>11. Inventory Consumption Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-inventory-consumption"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>12. Food Wastage Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-food-wastage"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>13. Staff Performance Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-staff-performance"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>14. Counter-Wise Sales Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-counter-sales"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>15. Revenue vs Expenses Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-rev-vs-exp"></div></article>
+          <article class="chart-card"><div class="card-head"><h3>16. Profitability Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-profitability"></div></article>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 2: 14 AUTOMATED REPORTS & EXPORT STUDIO (PDF, EXCEL .XLSX, CSV) -->
+      <!-- ===================================================================== -->
+      <section id="tab-reports" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head">
+              <h2>14-Report Generator &amp; Export Studio</h2>
+              <span class="pill pill-ok">PDF 1.4 · Excel .xlsx · CSV</span>
+            </div>
+            <div class="split-2">
+              <label for="rep-type">Report Type (All 14 Official Reports)
+                <select id="rep-type">
+                  <option value="daily_sales">1. Daily Sales Report</option>
+                  <option value="daily_orders">2. Daily Order Report</option>
+                  <option value="daily_payments">3. Daily Payment Report</option>
+                  <option value="weekly_sales">4. Weekly Sales Report</option>
+                  <option value="monthly_financial">5. Monthly Financial Report</option>
+                  <option value="yearly_performance">6. Yearly Performance Report</option>
+                  <option value="best_selling_products">7. Best-Selling Product Report</option>
+                  <option value="least_selling_products">8. Least-Selling Product Report</option>
+                  <option value="inventory">9. Inventory &amp; Batch Stock Report</option>
+                  <option value="supplier_purchase">10. Supplier &amp; Purchase Report</option>
+                  <option value="staff_performance">11. Staff Performance Report</option>
+                  <option value="customer_activity">12. Customer Activity Report</option>
+                  <option value="refunds">13. Refund Report</option>
+                  <option value="profit_expense">14. Profit &amp; Expense Report</option>
+                </select>
+              </label>
+              <label for="rep-counter">Counter Filter (optional)
+                <select id="rep-counter"><option value="">All Counters</option></select>
+              </label>
+              <label for="rep-start">Start Date
+                <input id="rep-start" type="date" />
+              </label>
+              <label for="rep-end">End Date
+                <input id="rep-end" type="date" />
+              </label>
+            </div>
+            <div class="inline-controls">
+              <button type="button" id="btn-rep-preview" class="btn btn-primary">Preview Report</button>
+              <button type="button" id="btn-rep-pdf" class="btn btn-danger">Download PDF</button>
+              <button type="button" id="btn-rep-xlsx" class="btn btn-ok">Download Excel (.xlsx)</button>
+              <button type="button" id="btn-rep-csv" class="btn btn-blue">Download CSV</button>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head">
+              <h2>Automated Daily Reports &amp; Email Delivery</h2>
+              <span id="rep-smtp-badge" class="pill pill-muted">SMTP</span>
+            </div>
+            <form id="rep-schedule-form">
+              <label for="rep-emails">Admin Daily Summary Email Recipients (comma-separated)
+                <input id="rep-emails" type="text" placeholder="principal@college.edu, canteen-admin@college.edu" />
+              </label>
+              <div class="inline-controls">
+                <button type="submit" class="btn btn-teal">Save Email Schedule</button>
+                <button type="button" id="btn-rep-generate-daily" class="btn btn-primary">Run Automated Daily Suite Now</button>
+              </div>
+            </form>
+            <hr />
+            <h3>Recent Generated &amp; Archived Report Runs</h3>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Time</th><th>Report</th><th>Window</th><th>Format</th><th>Rows</th></tr></thead>
+                <tbody id="rep-recent-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-head">
+            <h2 id="rep-preview-title">Report Live Preview</h2>
+            <span id="rep-preview-meta" class="muted"></span>
+          </div>
+          <div id="rep-preview-summary" class="inline-controls"></div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead id="rep-preview-thead"></thead>
+              <tbody id="rep-preview-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 3: AI BUSINESS INTELLIGENCE SUITE (12 MODULES) -->
+      <!-- ===================================================================== -->
+      <section id="tab-aibi" class="admin-tab-pane" hidden>
+        <div class="section-card">
+          <div class="card-head">
+            <h2>AI Executive Business Summary</h2>
+            <div class="inline-controls">
+              <label for="aibi-days">Observation Window (days)
+                <select id="aibi-days">
+                  <option value="14">14 Days</option>
+                  <option value="30" selected>30 Days</option>
+                  <option value="60">60 Days</option>
+                  <option value="90">90 Days</option>
+                </select>
+              </label>
+              <button type="button" id="btn-aibi-run-forecast" class="btn btn-teal">Recompute Today's Slot Forecast</button>
+            </div>
+          </div>
+          <p id="aibi-transparency" class="muted"></p>
+          <div id="aibi-narrative" class="alert-bar success"></div>
+        </div>
+
+        <div class="split-2">
+          <div class="chart-card">
+            <div class="card-head"><h3>7-Day Sales Revenue Forecast</h3><span class="pill pill-pred">PREDICTION</span></div>
+            <div id="chart-aibi-forecast7d"></div>
+          </div>
+          <div class="chart-card">
+            <div class="card-head"><h3>Today's Peak-Hour Demand &amp; Staffing Prediction</h3><span class="pill pill-pred">PREDICTION</span></div>
+            <div id="chart-aibi-peakhours"></div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h3>Food Demand &amp; Prep Recommendations</h3><span class="pill pill-pred">PREDICTION</span></div>
+            <div class="table-scroll"><table class="admin-table"><thead><tr><th>Item</th><th>Predicted</th><th>Rec. Prep</th><th>Stock</th><th>Shortfall</th></tr></thead><tbody id="aibi-demand-tbody"></tbody></table></div>
+          </div>
+          <div class="section-card">
+            <div class="card-head"><h3>Inventory &amp; Raw Ingredient Reorder Alerts</h3><span class="pill pill-pred">PREDICTION</span></div>
+            <div class="table-scroll"><table class="admin-table"><thead><tr><th>Type</th><th>Item / Ingredient</th><th>On Hand</th><th>Suggested Reorder</th><th>Urgency</th></tr></thead><tbody id="aibi-reorder-tbody"></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h3>Menu Engineering Optimization Matrix</h3><span class="pill pill-actual">ACTUAL DB</span></div>
+            <div class="table-scroll"><table class="admin-table"><thead><tr><th>Menu Item</th><th>Quadrant</th><th>Units Sold</th><th>Unit Margin</th><th>Recommended Action</th></tr></thead><tbody id="aibi-matrix-tbody"></tbody></table></div>
+          </div>
+          <div class="section-card">
+            <div class="card-head"><h3>Z-Score Sales Anomalies, Slow Items &amp; Wastage</h3><span class="pill pill-actual">ACTUAL DB</span></div>
+            <div id="aibi-anomalies-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 4: USERS, STAFF ACCOUNTS & GRANULAR PERMISSIONS -->
+      <!-- ===================================================================== -->
+      <section id="tab-users" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Provision Student, Staff or Admin Account</h2></div>
+            <form id="user-create-form" class="split-2">
+              <label>Full Name<input id="usr-name" type="text" required minlength="2" placeholder="Aarav Nair" /></label>
+              <label>Email<input id="usr-email" type="email" required placeholder="staff2@acecanteen.local" /></label>
+              <label>Phone (optional)<input id="usr-phone" type="text" placeholder="9876543210" /></label>
+              <label>Temporary Password<input id="usr-pass" type="password" required minlength="8" placeholder="Min 8 chars" /></label>
+              <label>Role
+                <select id="usr-role">
+                  <option value="student">STUDENT (Customer)</option>
+                  <option value="staff">STAFF (Kitchen / Counter)</option>
+                  <option value="admin">ADMIN (Full Access)</option>
+                </select>
+              </label>
+              <label>Assigned Counter ID (optional for Staff)
+                <input id="usr-counter-id" type="number" min="1" placeholder="1" />
+              </label>
+              <div><button type="submit" class="btn btn-primary">Create Account</button></div>
+            </form>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head"><h2>Granular Staff Permissions Editor</h2></div>
+            <form id="staff-perm-form">
+              <label>Select Staff Member
+                <select id="perm-user-select"><option value="">Select staff user…</option></select>
+              </label>
+              <div class="split-2">
+                <label><input type="checkbox" id="perm-accept" checked /> Accept Incoming Orders</label>
+                <label><input type="checkbox" id="perm-reject" checked /> Reject Orders (Auto-Refund)</label>
+                <label><input type="checkbox" id="perm-prep" checked /> Update Kitchen Prep Status</label>
+                <label><input type="checkbox" id="perm-pickup" checked /> Scan &amp; Verify QR Pickup</label>
+                <label><input type="checkbox" id="perm-avail" checked /> Toggle Menu Availability</label>
+                <label><input type="checkbox" id="perm-inv" checked /> Restock &amp; Record Wastage</label>
+              </div>
+              <button type="submit" class="btn btn-teal">Save Staff Permissions</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-head">
+            <h2>Directory: Students, Staff &amp; Administrators</h2>
+            <div class="inline-controls">
+              <select id="usr-filter-role">
+                <option value="">All Roles</option>
+                <option value="student">Students</option>
+                <option value="staff">Staff</option>
+                <option value="admin">Admins</option>
+              </select>
+              <input id="usr-filter-search" type="search" placeholder="Search name / email / phone…" />
+              <button type="button" id="btn-usr-search" class="btn btn-outline">Filter</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>ID</th><th>Name &amp; Email</th><th>Role</th><th>Status</th><th>Counters / Permissions</th><th>Actions</th></tr></thead>
+              <tbody id="users-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 5: MENU, CATEGORIES, PRICING, COSTS & DISCOUNTS -->
+      <!-- ===================================================================== -->
+      <section id="tab-menu" class="admin-tab-pane" hidden>
+        <div class="split-3">
+          <div class="section-card">
+            <h3>Create Food Category</h3>
+            <form id="cat-create-form">
+              <label>Category Name<input id="cat-name" type="text" required placeholder="South Indian Specials" /></label>
+              <label>Sort Order<input id="cat-sort" type="number" value="10" min="0" /></label>
+              <button type="submit" class="btn btn-primary">Add Category</button>
+            </form>
+          </div>
+
+          <div class="section-card">
+            <h3>Create Menu Item (with Unit Cost)</h3>
+            <form id="item-create-form">
+              <label>Item Name<input id="itm-name" type="text" required placeholder="Paneer Tikka Wrap" /></label>
+              <div class="split-2">
+                <label>Category<select id="itm-cat" required></select></label>
+                <label>Counter<select id="itm-counter"><option value="">Default</option></select></label>
+                <label>Selling Price (₹)<input id="itm-price" type="number" step="0.5" min="1" required placeholder="85" /></label>
+                <label>Unit Cost / COGS (₹)<input id="itm-cost" type="number" step="0.5" min="0" value="35" required /></label>
+                <label>Initial Stock<input id="itm-stock" type="number" min="0" value="40" required /></label>
+                <label>Prep Minutes<input id="itm-prep" type="number" min="1" value="8" required /></label>
+              </div>
+              <label>Description<input id="itm-desc" type="text" placeholder="Grilled paneer wrap with mint chutney" /></label>
+              <label>Dietary Tags (comma-separated)<input id="itm-tags" type="text" placeholder="veg,high-protein" /></label>
+              <button type="submit" class="btn btn-primary">Create Menu Item</button>
+            </form>
+          </div>
+
+          <div class="section-card">
+            <h3>Create Discount / Promo Offer</h3>
+            <form id="disc-create-form">
+              <label>Promo Code<input id="dsc-code" type="text" required placeholder="BREAK15" /></label>
+              <div class="split-2">
+                <label>Discount %<input id="dsc-pct" type="number" step="0.5" min="0" max="100" value="10" /></label>
+                <label>Flat Off (₹)<input id="dsc-flat" type="number" step="1" min="0" value="0" /></label>
+                <label>Min Order (₹)<input id="dsc-min" type="number" step="1" min="0" value="50" /></label>
+                <label>Usage Limit<input id="dsc-limit" type="number" min="1" placeholder="Optional" /></label>
+              </div>
+              <label>Description<input id="dsc-desc" type="text" placeholder="10% off pre-break orders" /></label>
+              <button type="submit" class="btn btn-teal">Create Offer</button>
+            </form>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-head"><h2>Complete Menu &amp; Unit Cost Catalogue</h2></div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>ID</th><th>Item &amp; Category</th><th>Price (₹)</th><th>Cost (₹)</th><th>Stock</th><th>Status</th><th>Quick Update</th></tr></thead>
+              <tbody id="menu-items-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-head"><h2>Active &amp; Historical Discounts</h2></div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Code</th><th>Rule</th><th>Min Order</th><th>Used</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="discounts-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 6: INVENTORY, SUPPLIERS, PURCHASE ORDERS & EXPENSES -->
+      <!-- ===================================================================== -->
+      <section id="tab-procurement" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <h3>Add Supplier</h3>
+            <form id="sup-create-form" class="split-2">
+              <label>Supplier Name<input id="sup-name" type="text" required placeholder="Metro Fresh Foods Pvt Ltd" /></label>
+              <label>Contact Person<input id="sup-contact" type="text" placeholder="Ramesh Kumar" /></label>
+              <label>Phone<input id="sup-phone" type="text" placeholder="9845012345" /></label>
+              <label>Email<input id="sup-email" type="email" placeholder="orders@metrofresh.in" /></label>
+              <div><button type="submit" class="btn btn-primary">Save Supplier</button></div>
+            </form>
+            <hr />
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Supplier</th><th>Contact</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="suppliers-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h3>Create Purchase Order (Auto-Receives into Batches &amp; Stock)</h3>
+            <form id="po-create-form">
+              <div class="split-2">
+                <label>Supplier<select id="po-supplier" required></select></label>
+                <label>Line Target Kind
+                  <select id="po-kind">
+                    <option value="menuItem">Menu Item Stock</option>
+                    <option value="ingredient">Raw Ingredient</option>
+                  </select>
+                </label>
+                <label>Menu Item (if Menu Item)<select id="po-menuitem"></select></label>
+                <label>Raw Ingredient (if Ingredient)<select id="po-ingredient"></select></label>
+                <label>Quantity<input id="po-qty" type="number" step="1" min="1" value="25" required /></label>
+                <label>Unit Cost (₹)<input id="po-unit-cost" type="number" step="0.5" min="0" value="30" required /></label>
+                <label>Batch Expiry Date (optional)<input id="po-expiry" type="date" /></label>
+                <label>Notes<input id="po-notes" type="text" placeholder="Morning delivery" /></label>
+              </div>
+              <button type="submit" class="btn btn-teal">Issue Purchase Order</button>
+            </form>
+            <hr />
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>PO #</th><th>Supplier</th><th>Total Cost</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="pos-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <h3>Raw Ingredients Inventory</h3>
+            <form id="ing-create-form" class="split-2">
+              <label>Ingredient Name<input id="ing-name" type="text" required placeholder="Basmati Rice" /></label>
+              <label>Unit<input id="ing-unit" type="text" value="kg" required /></label>
+              <label>Initial Qty<input id="ing-qty" type="number" step="0.1" min="0" value="20" required /></label>
+              <label>Reorder Level<input id="ing-reorder" type="number" step="0.1" min="0" value="5" required /></label>
+              <label>Cost per Unit (₹)<input id="ing-cost" type="number" step="0.5" min="0" value="75" /></label>
+              <div><button type="submit" class="btn btn-primary">Add Ingredient</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Ingredient</th><th>Current Stock</th><th>Reorder Level</th><th>Unit Cost</th><th>Alert</th></tr></thead>
+                <tbody id="ingredients-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h3>Operational Expenses Ledger (Wages, Utilities, Packaging)</h3>
+            <form id="exp-create-form" class="split-2">
+              <label>Title<input id="exp-title" type="text" required placeholder="Biodegradable takeaway boxes" /></label>
+              <label>Category
+                <select id="exp-cat">
+                  <option value="operations">Operations</option>
+                  <option value="ingredients">Ingredients</option>
+                  <option value="procurement">Procurement</option>
+                  <option value="wages">Staff Wages</option>
+                  <option value="utilities">Gas / Electricity / Water</option>
+                  <option value="packaging">Packaging</option>
+                  <option value="maintenance">Equipment Maintenance</option>
+                </select>
+              </label>
+              <label>Amount (₹)<input id="exp-amount" type="number" step="1" min="1" required placeholder="1500" /></label>
+              <label>Date<input id="exp-date" type="date" /></label>
+              <div><button type="submit" class="btn btn-primary">Record Expense</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Date</th><th>Category</th><th>Title</th><th>Amount</th><th>Action</th></tr></thead>
+                <tbody id="expenses-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 7: ORDERS, PAYMENTS, REFUNDS & CUSTOMER FEEDBACK -->
+      <!-- ===================================================================== -->
+      <section id="tab-operations" class="admin-tab-pane" hidden>
+        <div class="section-card">
+          <div class="card-head">
+            <h2>Complete Order Management &amp; Administrative Override</h2>
+            <div class="inline-controls">
+              <select id="ord-filter-status">
+                <option value="">All Order Statuses</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="accepted">Accepted</option>
+                <option value="preparing">Preparing</option>
+                <option value="ready">Ready</option>
+                <option value="collected">Collected</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="refund_pending">Refund Pending</option>
+              </select>
+              <input id="ord-filter-search" type="search" placeholder="Order # or customer…" />
+              <button type="button" id="btn-ord-filter" class="btn btn-outline">Search Orders</button>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Order #</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Admin Override</th></tr></thead>
+              <tbody id="admin-orders-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Payment Reconciliation &amp; Refunds</h2></div>
+            <form id="refund-create-form" class="split-2">
+              <label>Payment Record ID<input id="ref-payment-id" type="number" min="1" required placeholder="Payment ID from table below" /></label>
+              <label>Refund Amount in ₹ (blank = full remaining)<input id="ref-amount" type="number" step="0.5" min="1" placeholder="Full balance" /></label>
+              <label>Refund Reason<input id="ref-reason" type="text" required minlength="3" placeholder="Item out of stock / duplicate charge" /></label>
+              <div><button type="submit" class="btn btn-danger">Issue Gateway Refund</button></div>
+            </form>
+            <div id="payment-discrepancies-box"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Pay ID</th><th>Order</th><th>Gateway Ref</th><th>Amount</th><th>Status</th></tr></thead>
+                <tbody id="payments-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head">
+              <h2>Customer Ratings &amp; Feedback</h2>
+              <span id="feedback-summary-pill" class="pill pill-ok">Ratings</span>
+            </div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Order</th><th>Student</th><th>Rating</th><th>Feedback &amp; Items</th></tr></thead>
+                <tbody id="feedback-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 8: COUNTERS, CANTEEN OPERATING HOURS & GLOBAL SETTINGS -->
+      <!-- ===================================================================== -->
+      <section id="tab-settings" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <h2>Canteen Operating Hours &amp; System Configuration</h2>
+            <form id="global-settings-form">
+              <div class="split-2">
+                <label>Opening Time (HH:MM)<input id="set-open-time" type="text" placeholder="08:30" required /></label>
+                <label>Closing Time (HH:MM)<input id="set-close-time" type="text" placeholder="17:30" required /></label>
+                <label>GST / Tax Rate (Basis Points, e.g. 500 = 5%)<input id="set-tax-bps" type="number" min="0" max="2800" required /></label>
+                <label>Audit Log Retention (Days)<input id="set-audit-days" type="number" min="30" max="3650" required /></label>
+              </div>
+              <label><input id="set-paused" type="checkbox" /> Temporarily Pause Student Ordering (Emergency Maintenance)</label>
+              <label>Pause Banner Message<input id="set-pause-msg" type="text" placeholder="Kitchen break reset — reopening in 15 mins" /></label>
+              <button type="submit" class="btn btn-primary">Save Operating Settings</button>
+            </form>
+          </div>
+
+          <div class="section-card">
+            <h2>Pickup Counters Management</h2>
+            <form id="counter-create-form" class="split-2">
+              <label>Counter Name<input id="cnt-name" type="text" required placeholder="Express Beverage Counter" /></label>
+              <label>Location<input id="cnt-loc" type="text" value="Ground Floor East" required /></label>
+              <label>Slot Capacity<input id="cnt-cap" type="number" min="1" max="500" value="25" required /></label>
+              <label>Operating Hours<input id="cnt-hours" type="text" value="08:30-17:30" required /></label>
+              <div><button type="submit" class="btn btn-teal">Add Counter</button></div>
+            </form>
+            <hr />
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>Counter</th><th>Hours</th><th>Capacity</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="counters-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 9: DATABASE ADMIN, ENCRYPTED GFS BACKUPS, 4-DAY RETENTION, SECURITY & AUDIT -->
+      <!-- ===================================================================== -->
+      <section id="tab-governance" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head">
+              <h2>Encrypted GFS Backup &amp; Disaster Recovery</h2>
+              <span id="backup-health-pill" class="pill pill-muted">Checking…</span>
+            </div>
+            <p id="backup-policy-text" class="muted"></p>
+            <div class="inline-controls">
+              <button type="button" id="btn-backup-run" class="btn btn-primary">Create Encrypted GFS Backup Now</button>
+              <button type="button" id="btn-backup-drill" class="btn btn-teal">Run Non-Destructive Restore Drill</button>
+            </div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Time</th><th>Tier</th><th>Size</th><th>Encrypted &amp; Verified</th><th>Drill</th><th>SHA-256</th></tr></thead>
+                <tbody id="backups-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head">
+              <h2>4-Day Hybrid Data Retention Engine</h2>
+              <span class="pill pill-ok">Permanent Records Protected</span>
+            </div>
+            <p class="muted">Deletes ONLY eligible temporary records older than N days (expired sessions, used QR tokens, temporary API logs, delivered outbox rows). Orders, payments, refunds, users, stock movements, and audit logs are <strong>never</strong> deleted. Automatically aborts if backup health fails.</p>
+            <div class="inline-controls">
+              <label for="ret-days">Temp Retention Days
+                <input id="ret-days" type="number" min="1" max="365" value="4" />
+              </label>
+              <button type="button" id="btn-ret-dryrun" class="btn btn-outline">Dry-Run Preview</button>
+              <button type="button" id="btn-ret-execute" class="btn btn-warn">Execute Safe 4-Day Cleanup</button>
+            </div>
+            <div id="ret-result-box" class="muted"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Run #</th><th>Status</th><th>Backup Gate</th><th>Archived Days</th><th>Purged Summary</th></tr></thead>
+                <tbody id="retention-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head">
+              <h2>Database Administration &amp; Table Diagnostics</h2>
+              <button type="button" id="btn-db-analyze" class="btn btn-blue">Run Integrity Check &amp; ANALYZE</button>
+            </div>
+            <p id="db-meta-summary" class="muted"></p>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Table Name</th><th>Live Rows</th><th>Retention Classification</th></tr></thead>
+                <tbody id="db-tables-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head">
+              <h2>Security Monitoring &amp; Session Revocation</h2>
+              <span id="sec-summary-pill" class="pill pill-ok">24h Monitor</span>
+            </div>
+            <form id="sec-revoke-form" class="inline-controls">
+              <input id="sec-revoke-uid" type="number" min="1" required placeholder="User ID to force-revoke sessions" />
+              <button type="submit" class="btn btn-danger">Revoke All User Sessions</button>
+            </form>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Time</th><th>Event</th><th>Severity</th><th>Identifier / IP</th></tr></thead>
+                <tbody id="security-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="card-head"><h2>Immutable Administrative Audit Trail</h2></div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
+              <tbody id="audit-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/js/charts-v2.js" defer></script>
+  <script src="/js/admin-portal.js" defer></script>
+</body>
+</html>

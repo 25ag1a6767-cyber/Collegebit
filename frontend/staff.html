@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12372a">
+  <title>CampusBite AI v2.0 — Kitchen &amp; Counter Staff Portal</title>
+  <link rel="stylesheet" href="/css/staff-portal.css">
+  <script src="/js/charts-v2.js" defer></script>
+  <script src="/js/staff-portal.js" defer></script>
+</head>
+<body>
+  <header class="staff-topbar">
+    <div class="staff-brand">
+      <img src="/assets/ace-logo.png" alt="ACE Canteen logo">
+      <div>
+        <strong>CampusBite AI v2.0 · Staff Kitchen Portal</strong>
+        <small>ACE Canteen Live Counter Operations &amp; QR Verification</small>
+      </div>
+    </div>
+    <div class="staff-topbar-right">
+      <span class="ws-pill offline" id="staff-ws-pill"><span class="ws-dot"></span><span id="staff-ws-label">Offline</span></span>
+      <select id="staff-counter-select" aria-label="Select counter" hidden>
+        <option value="">All Assigned Counters</option>
+      </select>
+      <span id="staff-user-badge" hidden></span>
+      <a class="btn btn-ghost-light" href="/">Customer App</a>
+      <button type="button" class="btn btn-ghost-light" id="staff-logout-btn" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <main class="portal-shell">
+    <div id="staff-banner" class="status-banner" role="status" hidden></div>
+
+    <!-- Staff Secure Sign-In -->
+    <section id="staff-login-section" class="login-card" aria-labelledby="staff-login-heading">
+      <h1 id="staff-login-heading">Canteen Staff Sign In</h1>
+      <p>Authorized kitchen and pickup counter staff only. Student accounts cannot access this portal.</p>
+      <form id="staff-login-form">
+        <label>Staff Email or Phone
+          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="staff@college.edu">
+        </label>
+        <label>Password
+          <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
+        </label>
+        <label id="staff-mfa-wrap" hidden>Authenticator / Recovery Code
+          <input id="staff-login-totp" type="text" maxlength="16" placeholder="6-digit TOTP code">
+        </label>
+        <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
+      </form>
+    </section>
+
+    <!-- Authenticated Staff Workspace -->
+    <section id="staff-workspace" hidden>
+      <div class="kpi-strip" aria-label="Live queue summary">
+        <div class="kpi-box"><span>Incoming New</span><strong id="kpi-new">0</strong></div>
+        <div class="kpi-box"><span>Accepted</span><strong id="kpi-accepted">0</strong></div>
+        <div class="kpi-box"><span>Preparing</span><strong id="kpi-preparing">0</strong></div>
+        <div class="kpi-box"><span>Ready for Pickup</span><strong id="kpi-ready">0</strong></div>
+        <div class="kpi-box alert"><span>Overdue Tickets</span><strong id="kpi-overdue">0</strong></div>
+        <div class="kpi-box"><span>Collected Today</span><strong id="kpi-collected">0</strong></div>
+      </div>
+
+      <nav class="tab-nav" aria-label="Staff modules">
+        <button type="button" class="tab-btn active" data-staff-tab="queue">Live Orders &amp; Kitchen (KDS)</button>
+        <button type="button" class="tab-btn" data-staff-tab="pickup">QR Scanner &amp; Order Verification</button>
+        <button type="button" class="tab-btn" data-staff-tab="tokens">Smart Token Management</button>
+        <button type="button" class="tab-btn" data-staff-tab="inventory">Availability, Stock &amp; Alerts</button>
+        <button type="button" class="tab-btn" data-staff-tab="history">Completed Order History</button>
+        <button type="button" class="tab-btn" data-staff-tab="performance">Daily Staff Performance</button>
+      </nav>
+
+      <!-- TAB 1: Live Incoming Orders & KDS -->
+      <section id="tab-queue" data-tab-panel="queue">
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>Live Kitchen Queue</h2>
+            <div class="inline-row">
+              <label>Filter Status
+                <select id="kds-status-filter">
+                  <option value="">All Active</option>
+                  <option value="new">New / Incoming</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="preparing">Preparing</option>
+                  <option value="ready">Ready for Pickup</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-outline" id="kds-refresh-btn">Refresh Queue</button>
+            </div>
+          </div>
+          <div id="kds-tickets" class="kds-grid"></div>
+        </div>
+      </section>
+
+      <!-- TAB 2: QR Scanning & Dedicated Order Verification Screen -->
+      <section id="tab-pickup" data-tab-panel="pickup" hidden>
+        <div class="two-col">
+          <div class="panel-card">
+            <div class="panel-head">
+              <h2>1. Scan or Input QR / Token</h2>
+              <button type="button" class="btn btn-outline" id="qr-camera-btn">Toggle Camera Scanner</button>
+            </div>
+            <video id="qr-video" class="camera-video" playsinline muted hidden></video>
+            
+            <form id="qr-verify-form" class="staff-form-group">
+              <label>QR Token or URL (from student pickup pass)
+                <input id="qr-token-input" type="text" placeholder="pk_... or https://.../pickup?code=pk_..." autocomplete="off">
+              </label>
+              <button type="submit" class="btn btn-primary" id="btn-inspect-qr">Inspect QR Order</button>
+            </form>
+
+            <hr class="staff-divider">
+
+            <form id="quick-token-form" class="staff-form-group">
+              <label>Quick Token Number or Order ID
+                <input id="quick-token-input" type="text" placeholder="e.g. CB-1107-001 or 42" autocomplete="off">
+              </label>
+              <button type="submit" class="btn btn-outline" id="btn-inspect-tok">Inspect by Token #</button>
+            </form>
+
+            <hr class="staff-divider">
+
+            <form id="manual-verify-form">
+              <label>Order ID (numeric)
+                <input id="manual-order-id" type="number" min="1" placeholder="e.g. 42">
+              </label>
+              <label>6-Character Backup Code
+                <input id="manual-code-input" type="text" maxlength="10" placeholder="e.g. 7K9P2M">
+              </label>
+              <button type="submit" class="btn btn-outline" id="btn-inspect-manual">Inspect by Backup Code</button>
+            </form>
+            <div id="pickup-result-box" class="status-banner" hidden></div>
+          </div>
+
+          <!-- Dedicated Order Verification Screen (Part 5 & Part 6) -->
+          <div class="panel-card" id="pickup-verification-panel">
+            <div class="panel-head">
+              <h2>2. Order Verification &amp; Handover</h2>
+              <span id="inspect-status-badge" class="state-pill" hidden></span>
+            </div>
+            <div id="inspection-empty" class="empty-inspection-notice">
+              Scan a student's QR pass or enter a token number above to inspect complete customer details, ordered items, payment verification, and confirm collection.
+            </div>
+            <div id="inspection-card" hidden>
+              <!-- Populated dynamically by staff-portal.js -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2.5: Smart Token Management Dashboard (Part 3) -->
+      <section id="tab-tokens" data-tab-panel="tokens" hidden>
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>Smart Token Management Dashboard</h2>
+            <div class="inline-row">
+              <input type="text" id="token-search-input" placeholder="Search by token, order #, student name..." class="token-search-field">
+              <select id="token-status-filter">
+                <option value="all">All Statuses</option>
+                <option value="preparing">Preparing</option>
+                <option value="ready">Ready for Pickup</option>
+                <option value="collected">Collected</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <button type="button" class="btn btn-outline" id="token-refresh-btn">Search Tokens</button>
+            </div>
+          </div>
+          <div class="token-table-container">
+            <table class="data-table token-full-table" id="token-management-table">
+              <thead>
+                <tr>
+                  <th>Token #</th>
+                  <th>Order #</th>
+                  <th>Customer</th>
+                  <th>Counter</th>
+                  <th>Items Summary</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="token-table-body">
+                <tr><td colspan="8" class="token-empty-row">Loading tokens...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Availability, Inventory & Low-Stock Alerts -->
+      <section id="tab-inventory" data-tab-panel="inventory" hidden>
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>Low-Stock &amp; Expiring Batch Alerts</h2>
+            <button type="button" class="btn btn-outline" id="inv-refresh-btn">Refresh Stock</button>
+          </div>
+          <div id="staff-alerts-box"></div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel-card">
+            <div class="panel-head"><h3>Record Stock Restock / Wastage</h3></div>
+            <form id="staff-stock-form">
+              <label>Target Type
+                <select id="stock-target-kind">
+                  <option value="menuItem">Menu Item (Units)</option>
+                  <option value="ingredient">Raw Ingredient</option>
+                </select>
+              </label>
+              <label>Select Item / Ingredient
+                <select id="stock-target-id" required></select>
+              </label>
+              <label>Movement Type
+                <select id="stock-movement-type">
+                  <option value="restock">Restock (+)</option>
+                  <option value="wastage">Wastage / Spoilage (-)</option>
+                  <option value="adjustment">Positive Adjustment (+)</option>
+                </select>
+              </label>
+              <label>Quantity
+                <input id="stock-qty" type="number" step="0.5" min="0.5" required placeholder="e.g. 10">
+              </label>
+              <label>Reason
+                <input id="stock-reason" type="text" minlength="3" maxlength="200" required placeholder="e.g. Morning batch prep / EOD spoilage">
+              </label>
+              <button type="submit" class="btn btn-primary" id="stock-submit-btn">Record Movement</button>
+            </form>
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-head"><h3>Menu Availability &amp; Live Stock</h3></div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr><th>Item</th><th>Stock</th><th>Status</th><th>Toggle</th></tr>
+                </thead>
+                <tbody id="staff-menu-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Completed Order History -->
+      <section id="tab-history" data-tab-panel="history" hidden>
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>Completed, Collected &amp; Rejected Order History</h2>
+            <div class="inline-row">
+              <label>Service Date
+                <input id="history-date-input" type="date">
+              </label>
+              <button type="button" class="btn btn-outline" id="history-load-btn">Load History</button>
+            </div>
+          </div>
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>Order #</th><th>Token</th><th>Customer</th><th>Items</th><th>Status</th><th>Total</th><th>Updated</th></tr>
+              </thead>
+              <tbody id="staff-history-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: Daily Staff Performance & Processing Stats -->
+      <section id="tab-performance" data-tab-panel="performance" hidden>
+        <div class="kpi-strip" id="perf-kpi-strip">
+          <div class="kpi-box"><span>My Accepted Today</span><strong id="perf-my-accepted">0</strong></div>
+          <div class="kpi-box"><span>My Marked Ready</span><strong id="perf-my-ready">0</strong></div>
+          <div class="kpi-box"><span>My QR Handovers</span><strong id="perf-my-collected">0</strong></div>
+          <div class="kpi-box"><span>Counter Avg Prep</span><strong id="perf-avg-prep">0m</strong></div>
+          <div class="kpi-box"><span>Counter Median Prep</span><strong id="perf-med-prep">0m</strong></div>
+          <div class="kpi-box"><span>On-Time SLA %</span><strong id="perf-sla-pct">100%</strong></div>
+        </div>
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>Today's Hourly Order Throughput</h2>
+            <button type="button" class="btn btn-outline" id="perf-refresh-btn">Refresh Stats</button>
+          </div>
+          <div id="staff-throughput-chart"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- Reject / Exception Reason Modal -->
+  <div id="staff-reason-modal" class="modal-backdrop" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="reason-modal-title">
+      <h3 id="reason-modal-title">Reject Order &amp; Initiate Full Refund</h3>
+      <form id="staff-reason-form">
+        <input type="hidden" id="reason-order-id">
+        <input type="hidden" id="reason-action-kind">
+        <label>Reason shown to student (required)
+          <input id="reason-text-input" type="text" minlength="3" maxlength="220" required placeholder="e.g. Ingredient sold out — full UPI refund initiated">
+        </label>
+        <div class="inline-row">
+          <button type="submit" class="btn btn-danger" id="reason-confirm-btn">Confirm</button>
+          <button type="button" class="btn btn-outline" id="reason-cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

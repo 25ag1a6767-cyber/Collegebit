@@ -1,0 +1,91 @@
+"""Deployment safety preflight for ACE Canteen; never prints secret values."""
+from __future__ import annotations
+import argparse
+import os
+import re
+import sys
+from dataclasses import dataclass, asdict
+from typing import Iterable
+
+@dataclass
+class Check:
+    name: str
+    ok: bool
+    detail: str
+    severity: str = "error"
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+def run_checks(env: dict[str, str] | None = None, *, require_payment: bool = False, require_live_payment: bool = False) -> list[Check]:
+    e = dict(os.environ if env is None else env)
+    production = e.get("ENVIRONMENT", "development").lower() in {"prod", "production"}
+    checks: list[Check] = []
+    def add(name: str, ok: bool, detail: str, severity: str = "error") -> None:
+        checks.append(Check(name, bool(ok), detail, severity))
+
+    secret = e.get("SECRET_KEY", "change-this-development-secret-before-deployment")
+    secret_ok = len(secret) >= 32 and secret != "change-this-development-secret-before-deployment"
+    add("secret_key", secret_ok,
+        "A non-default secret of at least 32 characters is configured." if secret_ok else "Set a unique SECRET_KEY of at least 32 characters; value is never displayed.",
+        "error" if production else "warning")
+    add("environment", e.get("ENVIRONMENT", "development").lower() in {"development", "test", "staging", "production", "prod"}, "Environment value is recognised." if e.get("ENVIRONMENT", "development").lower() in {"development", "test", "staging", "production", "prod"} else "Use development, test, staging, or production.")
+    if production:
+        add("production_migrations", not _truthy(e.get("AUTO_CREATE_TABLES", "true")), "Automatic table creation is disabled for production." if not _truthy(e.get("AUTO_CREATE_TABLES", "true")) else "Set AUTO_CREATE_TABLES=false and run Alembic migrations explicitly.")
+        add("production_demo_seed", not _truthy(e.get("SEED_DEMO_DATA", "true")), "Demo seeding is disabled for production." if not _truthy(e.get("SEED_DEMO_DATA", "true")) else "Set SEED_DEMO_DATA=false in production.")
+        base_url = e.get("PUBLIC_BASE_URL", "")
+        add("production_public_url", base_url.startswith("https://"), "PUBLIC_BASE_URL uses https." if base_url.startswith("https://") else "Set PUBLIC_BASE_URL to the public https:// address (used in password-reset emails).")
+        smtp_ok = bool(e.get("SMTP_HOST", "").strip()) and bool((e.get("SMTP_FROM", "") or e.get("SMTP_USERNAME", "")).strip())
+        add("production_email", smtp_ok, "SMTP is configured for password-reset emails." if smtp_ok else "SMTP_HOST and SMTP_FROM are not set: students cannot receive password-reset emails.", "warning")
+        url = e.get("DATABASE_URL", "")
+        add("production_database", url.startswith(("postgresql://", "postgresql+psycopg://")), "PostgreSQL URL configured." if url.startswith(("postgresql://", "postgresql+psycopg://")) else "Production DATABASE_URL must use PostgreSQL.")
+        add("production_https_proxy", _truthy(e.get("HTTPS_TERMINATED", "false")), "HTTPS termination explicitly acknowledged." if _truthy(e.get("HTTPS_TERMINATED", "false")) else "Set HTTPS_TERMINATED=true only after configuring and verifying HTTPS at the reverse proxy/load balancer.", "error")
+        add("production_debug_docs", e.get("EXPOSE_API_DOCS", "false").lower() not in {"1", "true", "yes", "on"}, "Interactive API documentation is not requested." if e.get("EXPOSE_API_DOCS", "false").lower() not in {"1", "true", "yes", "on"} else "Do not expose interactive API docs publicly.")
+    else:
+        add("demo_seed", True, "Development/test mode: demo seeding may be enabled.", "info")
+    key_id, key_secret = e.get("RAZORPAY_KEY_ID", "").strip(), e.get("RAZORPAY_KEY_SECRET", "").strip()
+    add("payment_credentials_pair", bool(key_id) == bool(key_secret), "Razorpay key ID and secret are either both configured or both empty." if bool(key_id) == bool(key_secret) else "Configure both Razorpay key ID and secret, or leave both empty.")
+    webhook_secret = e.get("RAZORPAY_WEBHOOK_SECRET", "").strip()
+    webhook_ok = not (key_id or key_secret) or bool(key_id and key_secret and webhook_secret)
+    add("payment_webhook_configuration", webhook_ok, "Webhook secret is configured alongside payment keys." if webhook_ok else "Set RAZORPAY_WEBHOOK_SECRET when payment keys are configured.")
+    if require_payment or require_live_payment:
+        payment_ok = bool(key_id and key_secret and webhook_secret)
+        add("payment_credentials_required", payment_ok, "Payment keys and webhook secret are present." if payment_ok else "Payment was requested as required, but credentials/webhook secret are incomplete.")
+    if require_live_payment:
+        live_mode = key_id.startswith("rzp_live_")
+        add("live_payment_key_mode", live_mode, "Live-mode key prefix detected." if live_mode else "Production payment requires a Razorpay live-mode key (rzp_live_...).")
+    vapid_pub, vapid_priv = e.get("VAPID_PUBLIC_KEY", "").strip(), e.get("VAPID_PRIVATE_KEY", "").strip()
+    add("web_push_vapid_pair", bool(vapid_pub) == bool(vapid_priv), "Web Push VAPID public and private keys are either both configured or both empty." if bool(vapid_pub) == bool(vapid_priv) else "Configure both VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY, or leave both empty.")
+    gemini_configured = bool(e.get("GEMINI_API_KEY", "").strip())
+    add("ai_provider_configuration", True, "Gemini API key configured for grounded menu assistant." if gemini_configured else "GEMINI_API_KEY not set; grounded deterministic menu assistant fallback will be used.", "info")
+    if production:
+        cors_ok = bool(e.get("CORS_ORIGINS", "").strip()) and "*" not in e.get("CORS_ORIGINS", "")
+        add("production_cors_origins", cors_ok, "Explicit CORS_ORIGINS configured for web/mobile clients." if cors_ok else "Set explicit CORS_ORIGINS (without wildcards) if serving cross-origin web clients.", "warning")
+    add("postgres_password", not production or len(e.get("POSTGRES_PASSWORD", "")) >= 24 and e.get("POSTGRES_PASSWORD", "") not in {"change-this-postgres-password-before-deployment", "postgres", "password"}, "Production database password meets the minimum length check." if not production or (len(e.get("POSTGRES_PASSWORD", "")) >= 24 and e.get("POSTGRES_PASSWORD", "") not in {"change-this-postgres-password-before-deployment", "postgres", "password"}) else "Set POSTGRES_PASSWORD to a unique value of at least 24 characters.")
+    bkp_key = e.get("BACKUP_ENCRYPTION_KEY", "").strip()
+    add("backup_encryption_key", not production or len(bkp_key) >= 24, "Dedicated BACKUP_ENCRYPTION_KEY configured for encrypted GFS backups." if len(bkp_key) >= 24 else "Set a dedicated BACKUP_ENCRYPTION_KEY (>= 24 chars) so off-host backups can be decrypted independently of SECRET_KEY.", "warning")
+    ret_days = e.get("TEMP_RETENTION_DAYS", "4").strip()
+    add("four_day_hybrid_retention", ret_days.isdigit() and 1 <= int(ret_days) <= 365, f"Hybrid temporary data retention window configured ({ret_days} days); permanent business tables remain protected." if (ret_days.isdigit() and 1 <= int(ret_days) <= 365) else "TEMP_RETENTION_DAYS must be an integer between 1 and 365.")
+    return checks
+
+def main(argv: Iterable[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    parser.add_argument("--require-payment", action="store_true", help="Fail if Razorpay credentials are not configured")
+    parser.add_argument("--require-live-payment", action="store_true", help="Require a complete Razorpay live-mode configuration")
+    args = parser.parse_args(argv)
+    checks = run_checks(require_payment=args.require_payment, require_live_payment=args.require_live_payment)
+    failures = [c for c in checks if not c.ok and c.severity == "error"]
+    warnings = [c for c in checks if not c.ok and c.severity == "warning"]
+    if args.json:
+        import json
+        print(json.dumps({"status": "fail" if failures else "pass", "checks": [asdict(c) for c in checks], "errors": len(failures), "warnings": len(warnings)}, indent=2))
+    else:
+        for c in checks:
+            label = "PASS" if c.ok else ("WARN" if c.severity == "warning" else "FAIL")
+            print(f"[{label}] {c.name}: {c.detail}")
+        print(f"Preflight: {'FAILED' if failures else 'PASSED'} ({len(failures)} errors, {len(warnings)} warnings)")
+    return 1 if failures else 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

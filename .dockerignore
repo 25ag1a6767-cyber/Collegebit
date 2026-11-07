@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.env
+backend/.env
+backend/ace_canteen.db
+backend/ace_canteen.db-*
+node_modules
+mobile/node_modules
+playwright-report
+test-results
+*.db
+*.zip

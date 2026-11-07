@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "CampusBite AI",
+    "slug": "campusbite-ai",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "campusbite",
+    "android": {
+      "package": "com.acecanteen.campus",
+      "versionCode": 200,
+      "permissions": [
+        "INTERNET",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.acecanteen.campus",
+      "buildNumber": "200",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is used to scan QR tokens for order pickups."
+      }
+    },
+    "extra": {
+      "apiUrl": "http://10.0.2.2:8000"
+    }
+  }
+}

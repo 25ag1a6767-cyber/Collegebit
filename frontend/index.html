@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12372a">
+  <meta name="description" content="ACE Canteen — live campus pre-order, UPI checkout, QR pickup and kitchen operations platform.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>ACE Canteen | Campus ordering</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/v1-platform.css">
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/js/app.js" defer></script>
+  <script src="/js/v1-platform.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="ACE Canteen home">
+      <img class="brand-logo" src="/assets/ace-logo.png" alt="ACE Engineering College logo">
+      <span><strong>ACE Canteen</strong><small>Campus food &amp; essentials</small></span>
+    </a>
+    <div class="header-account">
+      <span class="ws-live-pill offline" id="v1-ws-status" title="Real-time order &amp; queue stream"><span class="ws-dot"></span><span id="v1-ws-label">Connecting…</span></span>
+      <button class="secondary-button" id="install-app-button" type="button" hidden>Install app</button>
+      <a class="header-account-link" href="/staff">Staff Portal</a>
+      <a class="header-account-link" href="/admin">Admin Console</a>
+      <a class="header-account-link" id="header-account-link" href="#account">Sign in / Account</a>
+      <span class="header-account-user" id="header-account-user" hidden></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>Good food.<br><span>Less waiting.</span></h1>
+        <p class="hero-description">Order ahead before your break, pay via verified UPI, track live kitchen preparation, and collect fast with a single-use QR token.</p>
+        <div class="inline-toolbar-row">
+          <a class="primary-button" href="#catalogue">Browse the menu <span aria-hidden="true">↗</span></a>
+          <button type="button" class="secondary-button" id="v1-hero-ai-btn">Ask AI Menu Concierge</button>
+        </div>
+      </div>
+      <div class="hero-account-wrap">
+        <section class="auth-section hero-account" id="account" aria-label="Account sign in">
+          <div class="auth-card">
+            <div class="auth-tabs">
+              <button type="button" class="auth-tab active" data-auth-mode="login">Sign in</button>
+              <button type="button" class="auth-tab" data-auth-mode="register">Create account</button>
+            </div>
+            <form id="auth-form">
+              <label id="auth-name-wrap" hidden>Full name<input id="auth-name" autocomplete="name" minlength="2" maxlength="120" placeholder="Your full name"></label>
+              <label id="auth-email-wrap">Email address<input id="auth-email" type="email" autocomplete="email" required placeholder="you@college.edu"></label>
+              <label id="auth-password-wrap"><span id="auth-password-label">Password</span><input id="auth-password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters"></label>
+              <button class="primary-button auth-submit" type="submit" id="auth-submit">Sign in</button>
+              <button type="button" class="link-button" id="auth-forgot">Forgot your password?</button>
+            </form>
+            <p id="auth-message" class="auth-message" role="status" aria-live="polite">You are not signed in.</p>
+            <div id="account-panel" class="account-panel" hidden>
+              <strong id="account-name"></strong>
+              <span id="account-role"></span>
+              <div id="v1-profile-security" class="v1-mini-card">
+                <h4>Profile, Dietary &amp; Security</h4>
+                <div class="form-pair">
+                  <label>Phone<input id="v1-profile-phone" type="tel" maxlength="20" placeholder="+91 9876543210"></label>
+                  <label>Dietary preference
+                    <select id="v1-profile-diet">
+                      <option value="">No preference</option>
+                      <option value="vegetarian">Vegetarian</option>
+                      <option value="vegan">Vegan</option>
+                      <option value="jain">Jain</option>
+                      <option value="eggetarian">Eggetarian</option>
+                      <option value="high-protein">High protein</option>
+                    </select>
+                  </label>
+                </div>
+                <label>Avoid allergens (comma separated)<input id="v1-profile-allergens" maxlength="160" placeholder="e.g. peanuts, dairy, gluten"></label>
+                <div class="v1-inline-actions">
+                  <button type="button" class="secondary-button" id="v1-save-profile-btn">Save profile</button>
+                  <button type="button" class="secondary-button" id="v1-push-toggle-btn">Enable push alerts</button>
+                  <button type="button" class="secondary-button" id="v1-verify-email-btn">Verify email</button>
+                  <button type="button" class="secondary-button" id="v1-mfa-setup-btn" hidden>2FA / MFA</button>
+                </div>
+                <p id="v1-profile-msg" class="management-message" role="status"></p>
+              </div>
+              <section class="notification-center" id="notification-center" aria-labelledby="notification-heading">
+                <div class="management-list-head">
+                  <h3 id="notification-heading">Notifications <span class="notification-count" id="notification-unread-count">0 unread</span></h3>
+                  <button type="button" class="secondary-button" id="notifications-mark-all">Mark all read</button>
+                </div>
+                <p class="management-message" id="notification-message" role="status" aria-live="polite">Your updates will appear here.</p>
+                <div id="notification-list" class="notification-list"></div>
+              </section>
+              <form id="change-password-form" class="password-change-form">
+                <label>Current password<input id="current-password" type="password" required autocomplete="current-password"></label>
+                <label>New password (12+ characters)<input id="new-password" type="password" minlength="12" maxlength="128" required autocomplete="new-password"></label>
+                <button type="submit" class="secondary-button">Change password</button>
+                <p id="password-change-message" class="auth-message" role="status"></p>
+              </form>
+              <button type="button" class="secondary-button" id="auth-logout">Sign out</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- S01: Live Counters, Active Offers & Personalized AI Recommendations -->
+    <section class="v1-discovery-section" id="v1-student-discovery" aria-label="Live counters and recommendations">
+      <div class="v1-counters-grid" id="v1-counters-grid"></div>
+      <div class="v1-offers-strip" id="v1-offers-strip" hidden></div>
+      <div class="v1-reco-panel" id="v1-reco-panel">
+        <div class="v1-reco-head">
+          <div>
+            <p class="eyebrow">SMART MEAL DISCOVERY</p>
+            <h3>Recommended right now</h3>
+          </div>
+          <button type="button" class="secondary-button" id="v1-refresh-reco">Refresh picks</button>
+        </div>
+        <div class="v1-reco-grid" id="v1-reco-grid"></div>
+      </div>
+    </section>
+
+    <!-- S02: Menu & Food Details -->
+    <section class="catalogue-section" id="catalogue">
+      <div class="section-heading">
+        <p class="eyebrow">CAMPUS CATALOGUE</p>
+        <h2>Food, drinks &amp; stationery.</h2>
+        <p>Inspect verified ingredients, allergens, prep times, and customize items before adding to your cart.</p>
+      </div>
+      <div class="catalogue-toolbar">
+        <input id="product-search" type="search" placeholder="Search food or stationery…" aria-label="Search catalogue">
+        <select id="product-type" aria-label="Filter catalogue"><option value="">All items</option><option value="food">Food</option><option value="stationery">Stationery</option></select>
+        <select id="product-category" aria-label="Filter by category"><option value="">All categories</option></select>
+        <select id="product-sort" aria-label="Sort catalogue"><option value="name:asc">Name A–Z</option><option value="name:desc">Name Z–A</option><option value="price:asc">Price low to high</option><option value="price:desc">Price high to low</option></select>
+      </div>
+      <div class="v1-filter-bar" id="v1-menu-filters">
+        <label>Counter
+          <select id="v1-filter-counter"><option value="">All counters</option></select>
+        </label>
+        <label>Dietary
+          <select id="v1-filter-diet">
+            <option value="">Any diet</option>
+            <option value="vegetarian">Vegetarian</option>
+            <option value="vegan">Vegan</option>
+            <option value="jain">Jain</option>
+            <option value="gluten-free">Gluten-free</option>
+          </select>
+        </label>
+        <label>Max budget (₹)
+          <input id="v1-filter-budget" type="number" min="10" max="2000" step="5" placeholder="e.g. 80">
+        </label>
+        <div class="v1-allergen-pills" aria-label="Exclude allergens">
+          <span>Exclude:</span>
+          <label class="v1-pill-check"><input type="checkbox" value="dairy" class="v1-exclude-allergen"> Dairy</label>
+          <label class="v1-pill-check"><input type="checkbox" value="gluten" class="v1-exclude-allergen"> Gluten</label>
+          <label class="v1-pill-check"><input type="checkbox" value="nuts" class="v1-exclude-allergen"> Nuts</label>
+          <label class="v1-pill-check"><input type="checkbox" value="egg" class="v1-exclude-allergen"> Egg</label>
+          <label class="v1-pill-check"><input type="checkbox" value="soy" class="v1-exclude-allergen"> Soy</label>
+        </div>
+        <button type="button" class="secondary-button" id="v1-apply-filters">Apply filters</button>
+      </div>
+      <p class="catalogue-message" id="catalogue-message" role="status" aria-live="polite">Loading catalogue…</p>
+      <div class="catalogue-grid" id="catalogue-grid"></div>
+      <button class="secondary-button" id="catalogue-load-more" type="button">Load more items</button>
+    </section>
+
+    <!-- S03: Cart & Checkout -->
+    <section class="cart-section" id="cart-section" aria-labelledby="cart-heading">
+      <div class="section-heading">
+        <p class="eyebrow">YOUR BASKET · SECURE UPI CHECKOUT</p>
+        <h2 id="cart-heading">Your order basket.</h2>
+        <p>Select your pickup counter &amp; break slot, apply approved campus offers, review taxes, and pay securely via UPI.</p>
+      </div>
+      <div class="management-card cart-card">
+        <div class="management-list-head">
+          <h3>Cart items</h3>
+          <button type="button" class="secondary-button" id="cart-clear">Clear cart</button>
+        </div>
+        <p class="management-message" id="cart-message" role="status" aria-live="polite">Your cart is empty. Add items from the catalogue above.</p>
+        <div id="cart-items" class="cart-items"></div>
+        <div class="cart-summary"><span>Estimated subtotal</span><strong id="cart-subtotal">₹0.00</strong></div>
+
+        <div class="v1-checkout-box" id="v1-checkout-extras">
+          <div class="form-pair">
+            <label>Pickup counter
+              <select id="v1-checkout-counter"><option value="">Main Canteen Counter</option></select>
+            </label>
+            <label>Promo / Discount code
+              <div class="v1-coupon-row">
+                <input id="v1-coupon-code" type="text" maxlength="40" placeholder="Enter coupon code">
+                <button type="button" class="secondary-button" id="v1-apply-coupon">Quote &amp; Apply</button>
+              </div>
+            </label>
+          </div>
+          <div class="v1-quote-lines" id="v1-quote-breakdown" hidden>
+            <div class="v1-quote-line"><span>Items subtotal</span><span id="v1-q-subtotal">₹0.00</span></div>
+            <div class="v1-quote-line"><span>Approved discount</span><span id="v1-q-discount">−₹0.00</span></div>
+            <div class="v1-quote-line"><span>Applicable tax</span><span id="v1-q-tax">₹0.00</span></div>
+            <div class="v1-quote-line total"><span>Authoritative payable total</span><span id="v1-q-total">₹0.00</span></div>
+          </div>
+        </div>
+
+        <p class="canteen-status" id="canteen-status" role="status" aria-live="polite" hidden></p>
+        <label class="cart-notes-label" for="pickup-slot" id="pickup-slot-wrap" hidden>Pickup time<select id="pickup-slot"><option value="">As soon as possible</option></select></label>
+        <label class="cart-notes-label" for="checkout-notes">Order notes (optional)<textarea id="checkout-notes" maxlength="500" rows="3" placeholder="Any useful pickup or preparation note (max 500 characters)"></textarea></label>
+        <div class="cart-actions">
+          <button type="button" class="secondary-button" id="cart-review">Review total</button>
+          <button type="button" class="primary-button" id="cart-checkout">Pay &amp; place order</button>
+        </div>
+        <p class="cart-disclaimer">Payments are verified server-side via Razorpay HMAC signatures and raw-body webhooks before orders enter kitchen preparation.</p>
+      </div>
+    </section>
+
+    <!-- S04: Order Tracking, Short-Lived QR & Fallback Code -->
+    <section class="orders-section" id="my-orders-section" hidden>
+      <div class="section-heading">
+        <p class="eyebrow">STUDENT · LIVE ORDER TRACKING &amp; QR PICKUP</p>
+        <h2>My orders &amp; tokens.</h2>
+        <p>Follow real-time preparation milestones, generate a short-lived collection QR code or 6-character manual code, and rate completed meals.</p>
+      </div>
+      <div id="v1-active-orders-panel"></div>
+      <div class="management-card">
+        <div class="management-list-head">
+          <h3>Order history</h3>
+          <button class="secondary-button" id="refresh-my-orders" type="button">Refresh orders</button>
+        </div>
+        <p id="my-orders-message" class="management-message" role="status"></p>
+        <div id="my-orders-list"></div>
+      </div>
+    </section>
+
+    <section class="orders-section" id="pickup-queue-section" aria-labelledby="pickup-queue-heading">
+      <div class="section-heading">
+        <p class="eyebrow">PICKUP BOARD</p>
+        <h2 id="pickup-queue-heading">Today’s pickup queue.</h2>
+        <p>Track preparation and collection using token numbers. Names and personal details are never shown on this public board.</p>
+      </div>
+      <div class="queue-summary-grid" aria-live="polite">
+        <div class="queue-stat"><span>Active orders</span><strong id="queue-active-count">—</strong></div>
+        <div class="queue-stat"><span>Preparing tokens</span><strong id="queue-preparing-tokens">—</strong></div>
+        <div class="queue-stat"><span>Ready for pickup</span><strong id="queue-ready-tokens">—</strong></div>
+      </div>
+      <p class="management-message" id="public-queue-message" role="status" aria-live="polite">Loading today’s queue…</p>
+      <div class="management-card" id="public-queue-list"></div>
+      <p class="queue-estimate-note" id="queue-estimate-note">Wait times are estimates and may change.</p>
+    </section>
+
+    <!-- T01–T04 & A01–A08 Operations + Admin Workspace -->
+    <section class="admin-section" id="catalogue-management" hidden>
+      <div class="section-heading">
+        <p class="eyebrow">OPERATIONS &amp; ADMINISTRATION</p>
+        <h2>Kitchen, counters &amp; campus management.</h2>
+        <p>Role-based and counter-scoped controls enforced on the server.</p>
+      </div>
+
+      <!-- T01–T04 Counter-Scoped Staff Kitchen Display, QR/Manual Pickup & Recipe Ingredients -->
+      <div class="v1-hub-panel" id="v1-staff-ops-hub">
+        <div class="management-list-head">
+          <div>
+            <p class="eyebrow">T01–T04 · LIVE COUNTER KITCHEN &amp; HANDOVER</p>
+            <h3>Counter Kitchen Display &amp; Single-Use Pickup Verification</h3>
+          </div>
+          <div class="inline-toolbar-row">
+            <select id="v1-staff-counter-select" class="compact-select" aria-label="Select assigned counter"><option value="">All assigned counters</option></select>
+            <button type="button" class="secondary-button" id="v1-refresh-kds">Refresh KDS</button>
+          </div>
+        </div>
+        <p id="v1-kds-message" class="management-message" role="status">Loading active kitchen tickets…</p>
+        <div class="v1-kds-grid" id="v1-kds-grid"></div>
+
+        <div class="v1-subgrid">
+          <form class="v1-mini-card" id="v1-pickup-verify-form">
+            <h4>T04 · Verify Short-Lived QR or 6-Char Manual Code</h4>
+            <label>Order ID (required only for 6-char manual code)<input id="v1-verify-order-id" type="number" min="1" placeholder="e.g. 42 (optional for QR token)"></label>
+            <label>Scanned QR token (<code>pk_…</code>) or 6-char manual code<input id="v1-verify-token" required maxlength="180" placeholder="Paste pk_... token or 6-char manual code"></label>
+            <button type="submit" class="primary-button">Verify &amp; Record Handover</button>
+            <p id="v1-verify-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-ingredient-move-form">
+            <h4>T03 · Raw Ingredient Stock &amp; Wastage Log</h4>
+            <label>Ingredient<select id="v1-staff-ingredient-select"><option value="">Loading ingredients…</option></select></label>
+            <div class="form-pair">
+              <label>Movement
+                <select id="v1-staff-move-type">
+                  <option value="restock">Restock (+)</option>
+                  <option value="wastage">Wastage (−)</option>
+                  <option value="adjustment">Adjustment (±)</option>
+                </select>
+              </label>
+              <label>Quantity<input id="v1-staff-move-qty" type="number" step="0.01" min="0.01" required placeholder="e.g. 5"></label>
+            </div>
+            <label>Reason<input id="v1-staff-move-reason" required minlength="3" maxlength="200" placeholder="e.g. Morning prep delivery or spoilage"></label>
+            <button type="submit" class="secondary-button">Record Ingredient Movement</button>
+            <p id="v1-staff-move-msg" class="management-message" role="status"></p>
+          </form>
+        </div>
+      </div>
+
+      <!-- A01–A08 Enterprise Admin Hub: Counters, Discounts, Refunds & AI Forecasting -->
+      <div class="v1-hub-panel" id="v1-admin-enterprise-hub" hidden>
+        <div class="management-list-head">
+          <div>
+            <p class="eyebrow">A01–A08 · ENTERPRISE ADMIN CONTROLS &amp; AI INSIGHTS</p>
+            <h3>Counters, Discounts, Gateway Refunds &amp; AI Demand Forecasts</h3>
+          </div>
+          <div class="inline-toolbar-row">
+            <button type="button" class="primary-button" id="v1-run-forecast-btn">Run AI Demand Forecast</button>
+            <button type="button" class="secondary-button" id="v1-refresh-admin-hub">Refresh Insights</button>
+          </div>
+        </div>
+
+        <div class="v1-subgrid">
+          <form class="v1-mini-card" id="v1-counter-create-form">
+            <h4>A02 · Create / Configure Pickup Counter</h4>
+            <div class="form-pair">
+              <label>Counter name<input id="v1-counter-name" required minlength="2" maxlength="100" placeholder="e.g. South Meals Counter"></label>
+              <label>Code<input id="v1-counter-code" required minlength="2" maxlength="32" placeholder="e.g. south-meals"></label>
+            </div>
+            <div class="form-pair">
+              <label>Slot capacity<input id="v1-counter-cap" type="number" min="1" max="500" value="40" required></label>
+              <label>Prep SLA (min)<input id="v1-counter-prep" type="number" min="2" max="90" value="12" required></label>
+            </div>
+            <button type="submit" class="secondary-button">Save Counter</button>
+            <p id="v1-counter-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-staff-assign-form">
+            <h4>A02 · Assign Staff to Counter &amp; Upload Item Photo</h4>
+            <div class="form-pair">
+              <label>Staff user ID<input id="v1-assign-user-id" type="number" min="1" placeholder="User ID"></label>
+              <label>Counter IDs (comma sep)<input id="v1-assign-counter-ids" placeholder="e.g. 1,2"></label>
+            </div>
+            <button type="submit" class="secondary-button">Save Counter Assignment</button>
+            <hr>
+            <div class="form-pair">
+              <label>Menu item ID<input id="v1-upload-item-id" type="number" min="1" placeholder="Item ID"></label>
+              <label>Photo (PNG/JPG/WEBP)<input id="v1-upload-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+            </div>
+            <button type="button" class="secondary-button" id="v1-upload-photo-btn">Upload Menu Photo</button>
+            <p id="v1-assign-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-discount-create-form">
+            <h4>A03/A08 · Approved Discount &amp; Tax Rate Policy</h4>
+            <div class="form-pair">
+              <label>Coupon code<input id="v1-disc-code" required minlength="3" maxlength="32" placeholder="BREAK20"></label>
+              <label>Title<input id="v1-disc-title" required minlength="3" maxlength="120" placeholder="₹20 off ₹100+"></label>
+            </div>
+            <div class="form-pair">
+              <label>Type
+                <select id="v1-disc-type">
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="fixed">Fixed (₹)</option>
+                </select>
+              </label>
+              <label>Value (% or ₹)<input id="v1-disc-val" type="number" min="1" step="1" value="10" required></label>
+            </div>
+            <label>Min order (₹)<input id="v1-disc-min" type="number" min="0" step="1" value="80"></label>
+            <div class="v1-inline-actions">
+              <button type="submit" class="secondary-button">Create Offer</button>
+              <button type="button" class="secondary-button" id="v1-set-tax-btn">Set GST / Tax Rate</button>
+            </div>
+            <p id="v1-disc-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-refund-form">
+            <h4>A04 · Authorized Gateway Refund</h4>
+            <label>Payment ID<input id="v1-refund-payment-id" type="number" min="1" required placeholder="Payment record ID"></label>
+            <label>Refund amount in ₹ (leave blank for full refund)<input id="v1-refund-amount" type="number" min="1" step="0.01" placeholder="Full captured amount"></label>
+            <label>Reason<input id="v1-refund-reason" required minlength="3" maxlength="200" placeholder="e.g. Kitchen stockout / late capture"></label>
+            <button type="submit" class="secondary-button">Initiate Gateway Refund</button>
+            <p id="v1-refund-msg" class="management-message" role="status"></p>
+          </form>
+        </div>
+
+        <!-- A06 AI Demand Forecasting & Waste Insights -->
+        <div class="v1-mini-card">
+          <div class="management-list-head">
+            <h4>A06 · AI Demand Forecasts (Weighted Moving Average + Empirical Intervals)</h4>
+            <span id="v1-ai-backtest-badge" class="badge-tag badge-green">Backtest MAE/WAPE: loading…</span>
+          </div>
+          <p id="v1-forecast-msg" class="management-message" role="status">Forecasts are statistical estimates with uncertainty ranges, never guaranteed sales.</p>
+          <div class="table-scroll">
+            <table class="admin-orders-table">
+              <thead>
+                <tr>
+                  <th>Menu Item</th>
+                  <th>Date</th>
+                  <th>Predicted Units</th>
+                  <th>Interval [Low – High]</th>
+                  <th>Confidence</th>
+                  <th>Staff Override</th>
+                </tr>
+              </thead>
+              <tbody id="v1-forecast-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="v1-mini-card">
+          <h4>A05/A06 · Food-Waste Hotspots &amp; Predicted Recipe Ingredient Shortages</h4>
+          <div id="v1-waste-insights-list" class="notification-list"></div>
+        </div>
+      </div>
+
+      <div class="management-card canteen-control" id="canteen-control">
+        <h3>Ordering switch</h3>
+        <p id="canteen-control-state">Checking…</p>
+        <label>Message shown to students while paused (optional)<input id="canteen-pause-message" maxlength="200" placeholder="e.g. Rush hour – back at 1:00 pm"></label>
+        <button type="button" class="primary-button" id="canteen-toggle">Pause ordering</button>
+        <p class="management-message" id="canteen-control-message" role="status" aria-live="polite"></p>
+      </div>
+
+      <div class="phase10-workflow" id="staff-workflow-dashboard">
+        <div class="section-heading workflow-heading"><p class="eyebrow">PHASE 10 · STAFF OPERATIONS</p><h2>Kitchen &amp; pickup counter.</h2><p>Use the kitchen board to accept and prepare paid orders. Use the counter board to mark ready orders as collected. Boards refresh automatically.</p></div>
+        <div class="queue-summary-grid workflow-summary" aria-live="polite">
+          <div class="queue-stat"><span>Kitchen waiting</span><strong id="workflow-kitchen-waiting">—</strong></div>
+          <div class="queue-stat"><span>Being prepared</span><strong id="workflow-kitchen-preparing">—</strong></div>
+          <div class="queue-stat"><span>Ready to collect</span><strong id="workflow-ready-pickup">—</strong></div>
+          <div class="queue-stat"><span>Completed today</span><strong id="workflow-completed-today">—</strong></div>
+        </div>
+        <div class="management-card" id="pickup-qr-scanner-panel">
+          <h3>Scan student pickup QR</h3>
+          <p>Scan only after the order is ready. Verify the items and quantities, then confirm collection.</p>
+          <div id="pickup-qr-reader" class="qr-reader-box"></div>
+          <label for="pickup-qr-code-input">Or enter the QR code manually</label>
+          <div class="cart-actions"><input id="pickup-qr-code-input" type="text" autocomplete="off" placeholder="Paste scanned pickup code"><button class="secondary-button" id="pickup-qr-check" type="button">Verify QR</button></div>
+          <p id="pickup-qr-scan-message" class="management-message" role="status" aria-live="polite"></p>
+          <div id="pickup-qr-order-details"></div>
+        </div>
+        <div class="management-grid workflow-boards">
+          <div class="management-card management-list"><div class="management-list-head"><h3>Kitchen board</h3><div class="inline-toolbar-row"><select id="kitchen-station-filter" class="compact-select"><option value="">All Stations</option><option value="food">Food &amp; Meals</option><option value="stationery">Stationery &amp; Drinks</option></select><button class="secondary-button" id="refresh-kitchen-board" type="button">Refresh</button></div></div><p class="management-message" id="kitchen-board-message" role="status">Waiting for kitchen orders…</p><div id="kitchen-board-list"></div></div>
+          <div class="management-card management-list"><div class="management-list-head"><h3>Pickup counter</h3><button class="secondary-button" id="refresh-counter-board" type="button">Refresh</button></div><p class="management-message" id="counter-board-message" role="status">Waiting for ready orders…</p><div id="counter-board-list"></div></div>
+        </div>
+      </div>
+
+      <div class="management-card management-list" id="order-queue-panel"><div class="management-list-head"><h3>Incoming orders &amp; live queue</h3><div><button class="secondary-button" id="refresh-order-queue" type="button">Refresh queue</button><select id="queue-status-filter" aria-label="Filter queue"><option value="">All statuses</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="preparing">Preparing</option><option value="ready">Ready</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select><select id="queue-payment-filter" aria-label="Filter payment status"><option value="">All payments</option><option value="pending">Payment pending</option><option value="paid">Paid</option><option value="failed">Payment failed</option><option value="refunded">Refund status</option></select></div></div><p class="management-message" id="order-queue-message" role="status">Admin register includes all orders and payment exceptions; staff see paid operational orders.</p><div id="order-queue-list"></div></div>
+
+      <div class="management-grid">
+        <form class="management-card" id="product-form">
+          <h3>Add a product</h3>
+          <label>Product name<input id="new-product-name" required minlength="2" maxlength="120" placeholder="e.g. Veg sandwich"></label>
+          <label>Description<input id="new-product-description" maxlength="2000" placeholder="Short description"></label>
+          <label>Image URL (optional)<input id="new-product-image" type="text" inputmode="url" maxlength="500" placeholder="https://… or /assets/item.jpg"></label>
+          <label>Dietary information<input id="new-product-dietary" maxlength="255" placeholder="e.g. Vegetarian, vegan"></label>
+          <label>Allergens<input id="new-product-allergens" maxlength="255" placeholder="e.g. Milk, peanuts, gluten; leave blank if unknown"></label>
+          <label>Item type<select id="new-product-type" required><option value="food">Food</option><option value="stationery">Stationery</option></select></label>
+          <label>Category<select id="new-product-category" required></select></label>
+          <div class="form-pair"><label>Price (₹)<input id="new-product-price" type="number" min="0.01" step="0.01" required></label><label>Stock quantity<input id="new-product-stock" type="number" min="0" step="1" value="10" required></label></div>
+          <button class="primary-button" type="submit">Save product</button><p class="management-message" id="product-form-message" role="status"></p>
+        </form>
+        <form class="management-card" id="category-form" hidden>
+          <h3>Add a category</h3>
+          <label>Category name<input id="new-category-name" required minlength="2" maxlength="80" placeholder="e.g. Bakery"></label>
+          <label>Slug<input id="new-category-slug" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="90" placeholder="e.g. bakery"></label>
+          <label>Item type<select id="new-category-type"><option value="food">Food</option><option value="stationery">Stationery</option></select></label>
+          <label>Description<input id="new-category-description" maxlength="255" placeholder="Category description"></label>
+          <button class="primary-button" type="submit">Save category</button><p class="management-message" id="category-form-message" role="status"></p>
+        </form>
+      </div>
+
+      <div class="management-card management-list" id="category-management" hidden><div class="management-list-head"><h3>Manage categories</h3><button type="button" class="secondary-button" id="refresh-categories">Refresh categories</button></div><p class="management-message" id="manage-categories-message" role="status"></p><div id="manage-categories-list"></div></div>
+      <div class="management-card management-list" id="user-management" hidden><div class="management-list-head"><h3>Staff &amp; permissions</h3><button type="button" class="secondary-button" id="refresh-users">Refresh users</button></div>
+        <form id="staff-account-form" class="management-form"><div class="form-grid"><label>Full name<input id="staff-full-name" required minlength="2" maxlength="120" autocomplete="name"></label><label>Work email<input id="staff-email" type="email" required maxlength="255" autocomplete="email"></label><label>Role<select id="staff-role"><option value="staff">Staff</option><option value="admin">Administrator</option></select></label><label>Temporary password<input id="staff-temporary-password" type="password" required minlength="12" maxlength="128" autocomplete="new-password" aria-describedby="staff-password-help"></label></div><p id="staff-password-help">Use a unique password of at least 12 characters. Share it securely with the staff member; they should change it after signing in.</p><button class="primary-button" type="submit">Create staff account</button><p class="management-message" id="staff-account-message" role="status"></p></form>
+        <p class="management-message" id="manage-users-message" role="status"></p><div id="manage-users-list"></div></div>
+      <div class="management-card management-list"><div class="management-list-head"><h3>Manage products</h3><button type="button" class="secondary-button" id="refresh-products">Refresh list</button></div><p class="management-message" id="manage-products-message" role="status">Sign in with an admin account to manage products and prices.</p><div id="manage-products-list"></div></div>
+
+      <section class="inventory-panel" id="inventory-management" aria-labelledby="inventory-heading">
+        <div class="section-heading workflow-heading"><p class="eyebrow">PHASE 11 · INVENTORY CONTROL</p><h2 id="inventory-heading">Stock, alerts &amp; movement history.</h2><p>Record every receipt, physical stock count and write-off. Low-stock alerts are calculated from each product’s configurable threshold.</p></div>
+        <div class="queue-summary-grid inventory-summary" aria-live="polite">
+          <div class="queue-stat"><span>Tracked products</span><strong id="inventory-product-count">—</strong></div><div class="queue-stat"><span>Total units</span><strong id="inventory-unit-count">—</strong></div><div class="queue-stat"><span>Low-stock alerts</span><strong id="inventory-low-count">—</strong></div><div class="queue-stat"><span>Out of stock</span><strong id="inventory-empty-count">—</strong></div>
+        </div>
+        <div class="management-grid inventory-grid">
+          <form class="management-card" id="inventory-adjustment-form"><h3>Update stock</h3>
+            <label>Product<select id="inventory-product" required></select></label>
+            <label>Movement type<select id="inventory-movement-type"><option value="receipt">Receive stock (+)</option><option value="adjustment">Physical count (set exact quantity)</option><option value="waste">Write off / waste (−)</option></select></label>
+            <label id="inventory-quantity-label">Quantity<input id="inventory-quantity" type="number" min="1" max="100000" step="1" required></label>
+            <label>Reason<input id="inventory-reason" required minlength="3" maxlength="255" placeholder="e.g. Weekly supplier delivery"></label>
+            <button class="primary-button" type="submit">Save stock movement</button><p class="management-message" id="inventory-form-message" role="status"></p>
+          </form>
+          <div class="management-card"><h3>Low-stock alert settings</h3><label>Product<select id="inventory-threshold-product"></select></label><label>Alert when stock is at or below<input id="inventory-threshold-value" type="number" min="0" max="100000" step="1" value="5" required></label><button type="button" class="secondary-button" id="save-inventory-threshold">Save threshold</button><p class="management-message" id="inventory-threshold-message" role="status"></p><p class="inventory-help">Example: threshold 5 means stock of 5, 4, 3… triggers an alert.</p></div>
+        </div>
+        <div class="management-card management-list inventory-alerts"><div class="management-list-head"><h3>Low-stock alerts</h3><button type="button" class="secondary-button" id="refresh-inventory">Refresh inventory</button></div><p class="management-message" id="inventory-alert-message" role="status">Loading inventory…</p><div id="inventory-alert-list"></div></div>
+        <div class="management-card management-list inventory-ledger"><div class="management-list-head"><h3>Inventory movement ledger</h3><div class="inventory-filters"><select id="inventory-ledger-product" aria-label="Filter by product"><option value="">All products</option></select><select id="inventory-ledger-type" aria-label="Filter by movement type"><option value="">All movement types</option><option value="initial">Initial</option><option value="receipt">Receipt</option><option value="adjustment">Adjustment</option><option value="waste">Waste</option><option value="reservation">Reservation</option><option value="release">Release</option></select><button type="button" class="secondary-button" id="refresh-inventory-ledger">Refresh ledger</button></div></div><p class="management-message" id="inventory-ledger-message" role="status">Loading movement history…</p><div class="inventory-ledger-list" id="inventory-ledger-list"></div></div>
+      </section>
+
+      <section class="inventory-panel procurement-panel" id="procurement-management" hidden aria-labelledby="procurement-heading">
+        <div class="section-heading workflow-heading">
+          <p class="eyebrow">PROCUREMENT &amp; BATCH TRACEABILITY</p>
+          <h2 id="procurement-heading">Suppliers, purchase orders &amp; batch expiry.</h2>
+          <p>Manage vendors, issue purchase orders, receive traceable batches (FEFO), monitor expiry dates, and reconcile batch balances.</p>
+        </div>
+        <div class="management-grid">
+          <form class="management-card" id="supplier-form">
+            <h3>Add Supplier</h3>
+            <label>Supplier / Company Name<input id="supplier-name" required minlength="2" maxlength="120" placeholder="e.g. Metro Food Supplies Ltd"></label>
+            <label>Contact Person<input id="supplier-contact" maxlength="120" placeholder="e.g. Ramesh Kumar"></label>
+            <div class="form-pair">
+              <label>Phone<input id="supplier-phone" type="tel" maxlength="40" placeholder="+91 9876543210"></label>
+              <label>Email<input id="supplier-email" type="email" maxlength="255" placeholder="vendor@domain.com"></label>
+            </div>
+            <label>Notes / Address<input id="supplier-notes" maxlength="500" placeholder="e.g. Bread, Dairy delivery"></label>
+            <button class="primary-button" type="submit">Save Supplier</button>
+            <p class="management-message" id="supplier-form-message" role="status"></p>
+          </form>
+
+          <form class="management-card" id="purchase-order-form">
+            <h3>Create Purchase Order</h3>
+            <label>Supplier<select id="po-supplier" required><option value="">Select supplier…</option></select></label>
+            <label>Product<select id="po-product" required><option value="">Select product…</option></select></label>
+            <div class="form-pair">
+              <label>Quantity<input id="po-quantity" type="number" min="1" max="10000" step="1" required value="50"></label>
+              <label>Unit Cost (₹)<input id="po-unit-cost" type="number" min="0.01" step="0.01" required value="15.00"></label>
+            </div>
+            <label>Expected Expiry Date (optional)<input id="po-expiry-date" type="date"></label>
+            <label>Notes<input id="po-notes" maxlength="500" placeholder="PO reference, invoice notes"></label>
+            <button class="primary-button" type="submit">Create Purchase Order</button>
+            <p class="management-message" id="po-form-message" role="status"></p>
+          </form>
+        </div>
+
+        <div class="management-card management-list">
+          <div class="management-list-head">
+            <h3>Active Suppliers</h3>
+            <button type="button" class="secondary-button" id="refresh-suppliers">Refresh Suppliers</button>
+          </div>
+          <p class="management-message" id="suppliers-message" role="status">Loading suppliers…</p>
+          <div class="table-scroll">
+            <table class="admin-orders-table">
+              <thead><tr><th>Supplier Name</th><th>Contact Person</th><th>Phone</th><th>Email</th><th>Notes</th></tr></thead>
+              <tbody id="suppliers-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="management-card management-list mt-20">
+          <div class="management-list-head">
+            <h3>Purchase Orders &amp; Stock Receiving</h3>
+            <button type="button" class="secondary-button" id="refresh-purchase-orders">Refresh Orders</button>
+          </div>
+          <p class="management-message" id="purchase-orders-message" role="status">Loading purchase orders…</p>
+          <div class="table-scroll">
+            <table class="admin-orders-table">
+              <thead><tr><th>PO #</th><th>Supplier</th><th>Items / Units</th><th>Total Cost</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="purchase-orders-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="management-grid mt-20">
+          <form class="management-card" id="batch-receipt-form">
+            <h3>Direct Batch Stock Receipt</h3>
+            <label>Product<select id="batch-product" required><option value="">Select product…</option></select></label>
+            <label>Supplier (optional)<select id="batch-supplier"><option value="">Select supplier…</option></select></label>
+            <label>Batch Code<input id="batch-code" required maxlength="80" placeholder="e.g. BATCH-2026-10-A"></label>
+            <div class="form-pair">
+              <label>Quantity<input id="batch-quantity" type="number" min="1" max="10000" step="1" required value="20"></label>
+              <label>Unit Cost (₹)<input id="batch-unit-cost" type="number" min="0" step="0.01" placeholder="0.00"></label>
+            </div>
+            <label>Expiry Date (optional)<input id="batch-expiry-date" type="date"></label>
+            <button class="primary-button" type="submit">Receive Batch</button>
+            <p class="management-message" id="batch-form-message" role="status"></p>
+          </form>
+
+          <div class="management-card management-list">
+            <div class="management-list-head">
+              <h3>Batch Expiry Alerts</h3>
+              <div class="inline-toolbar-row">
+                <select id="expiry-days-filter" class="compact-select">
+                  <option value="30">Next 30 Days</option>
+                  <option value="7">Next 7 Days</option>
+                  <option value="90">Next 90 Days</option>
+                </select>
+                <button type="button" class="secondary-button" id="refresh-expiry">Refresh</button>
+              </div>
+            </div>
+            <p class="management-message" id="expiry-message" role="status">Loading batch expiry data…</p>
+            <div class="table-scroll">
+              <table class="admin-orders-table">
+                <thead><tr><th>Batch Code</th><th>Product</th><th>Remaining</th><th>Expiry Date</th><th>Status</th></tr></thead>
+                <tbody id="expiry-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="management-card management-list mt-20">
+          <div class="management-list-head">
+            <h3>Stock Reconciliation (Aggregate vs. Batch Traceability)</h3>
+            <button type="button" class="secondary-button" id="refresh-reconciliation">Reconcile Stock</button>
+          </div>
+          <p class="management-message" id="reconciliation-message" role="status">Click Reconcile Stock to check audit status.</p>
+          <div class="table-scroll">
+            <table class="admin-orders-table">
+              <thead><tr><th>Product Name</th><th>Catalogue Stock</th><th>Traceable Batch Stock</th><th>Difference</th><th>Status</th></tr></thead>
+              <tbody id="reconciliation-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="admin-reporting-panel" id="admin-reporting" hidden aria-labelledby="admin-reporting-heading">
+        <div class="section-heading workflow-heading"><p class="eyebrow">PHASE 12 · ADMIN ANALYTICS</p><h2 id="admin-reporting-heading">Sales, operations &amp; audit trail.</h2><p>Review paid sales and order status for a date range, identify best-selling products, and inspect recorded privileged changes.</p></div>
+        <form class="management-card report-filters" id="report-filter-form"><label>From date<input id="report-start-date" type="date" required></label><label>To date<input id="report-end-date" type="date" required></label><button type="submit" class="primary-button">Run reports</button><button type="button" class="secondary-button" id="export-daily-sales">Export daily sales CSV</button></form>
+        <p class="management-message" id="report-message" role="status">Choose a date range and run reports.</p>
+        <div class="queue-summary-grid report-kpis" aria-live="polite"><div class="queue-stat"><span>Paid revenue</span><strong id="report-revenue">—</strong></div><div class="queue-stat"><span>Paid orders</span><strong id="report-paid-orders">—</strong></div><div class="queue-stat"><span>All orders</span><strong id="report-all-orders">—</strong></div><div class="queue-stat"><span>Average order value</span><strong id="report-average-order">—</strong></div></div>
+        <div class="management-grid report-grid"><div class="management-card management-list"><h3>Orders by status</h3><div id="report-status-list"></div></div><div class="management-card management-list"><h3>Top-selling products</h3><div id="report-top-products"></div></div></div>
+        <div class="management-card management-list"><div class="management-list-head"><h3>Daily paid sales</h3><button type="button" class="secondary-button" id="refresh-reports">Refresh reports</button></div><div class="report-table-wrap"><table class="report-table"><thead><tr><th>Date</th><th>Paid orders</th><th>Revenue</th></tr></thead><tbody id="report-daily-sales"></tbody></table></div></div>
+        <div class="management-card management-list admin-audit-list"><div class="management-list-head"><h3>Audit trail</h3><button type="button" class="secondary-button" id="refresh-audit-events">Refresh audit trail</button></div><div class="report-audit-filters"><select id="audit-entity-filter" aria-label="Filter audit by entity"><option value="">All entities</option><option value="user">Users</option><option value="product">Products</option><option value="order">Orders</option></select><select id="audit-action-filter" aria-label="Filter audit by action"><option value="">All actions</option><option value="order.status_changed">Order status changes</option><option value="inventory.stock_changed">Stock changes</option><option value="inventory.threshold_changed">Stock threshold changes</option><option value="product.created">Product created</option><option value="product.updated">Product updated</option><option value="product.archived">Product archived</option><option value="user.role_changed">User role changes</option><option value="user.activation_changed">User activation changes</option></select></div><p class="management-message" id="audit-message" role="status">Audit events will appear here.</p><div id="audit-events-list"></div></div>
+        <div class="management-card management-list mt-20">
+          <div class="management-list-head">
+            <h3>Demand Analytics &amp; Reorder Forecasting</h3>
+            <div class="inline-toolbar-row">
+              <select id="demand-days-filter" class="compact-select">
+                <option value="30">Last 30 Days</option>
+                <option value="7">Last 7 Days</option>
+                <option value="14">Last 14 Days</option>
+              </select>
+              <button type="button" class="secondary-button" id="refresh-demand-analytics">Refresh Demand</button>
+            </div>
+          </div>
+          <p class="management-message" id="demand-message" role="status">Demand analytics will appear here.</p>
+          <div class="table-scroll">
+            <table class="admin-orders-table">
+              <thead><tr><th>Product Name</th><th>Units Sold</th><th>Daily Demand Avg</th><th>Current Stock</th><th>Estimated Stock Runout</th><th>Reorder Advice</th></tr></thead>
+              <tbody id="demand-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="admin-control-centre" id="admin-control-centre" hidden aria-labelledby="admin-control-heading">
+      <div class="section-heading"><p class="eyebrow">PHASE 45 · ADMIN CONTROL CENTRE</p><h2 id="admin-control-heading">All orders, payments &amp; operations</h2><p>Review every order, investigate payment states, export records, and inspect payment webhook events.</p></div>
+      <div class="admin-kpi-grid" id="admin-kpi-grid" aria-live="polite"></div>
+      <div class="admin-order-toolbar">
+        <label>Search orders<input id="admin-order-search" type="search" maxlength="120" placeholder="Order ID, customer, email or gateway ID"></label>
+        <label>Order status<select id="admin-order-status"><option value="">All statuses</option><option>pending</option><option>confirmed</option><option>preparing</option><option>ready</option><option>completed</option><option>cancelled</option></select></label>
+        <label>Payment status<select id="admin-payment-status"><option value="">All payments</option><option>pending</option><option>paid</option><option>failed</option><option>refunded</option></select></label>
+        <button type="button" id="admin-refresh-orders">Refresh orders</button>
+        <button type="button" class="secondary-button" id="admin-export-orders">Export CSV</button>
+      </div>
+      <p id="admin-orders-message" role="status" aria-live="polite"></p>
+      <div class="table-scroll"><table class="admin-orders-table"><thead><tr><th>Order</th><th>Customer</th><th>Created</th><th>Order status</th><th>Payment</th><th>Amount</th><th>Pickup</th></tr></thead><tbody id="admin-orders-body"></tbody></table></div>
+      <div class="admin-pagination"><button type="button" class="secondary-button" id="admin-orders-prev">Previous</button><span id="admin-orders-page">Page 1</span><button type="button" class="secondary-button" id="admin-orders-next">Next</button></div>
+      <div class="section-heading admin-webhook-heading"><h3>Payment webhook event ledger</h3><p>Event metadata for payment troubleshooting; sensitive signatures are not displayed.</p></div>
+      <button type="button" class="secondary-button" id="admin-refresh-webhooks">Refresh webhook events</button>
+      <p id="admin-webhook-message" role="status"></p>
+      <div class="table-scroll"><table><thead><tr><th>Event ID</th><th>Event</th><th>Received</th></tr></thead><tbody id="admin-webhooks-body"></tbody></table></div>
+      <div class="section-heading admin-webhook-heading">
+        <h3>Payment Exceptions &amp; Diagnostic Reconciliation</h3>
+        <p>Diagnostic view of unresolved payments requiring manual provider verification.</p>
+      </div>
+      <button type="button" class="secondary-button" id="admin-refresh-reconciliation-payments">Refresh Unresolved Payments</button>
+      <p id="admin-reconciliation-payments-message" class="management-message" role="status"></p>
+      <div class="table-scroll">
+        <table class="admin-orders-table">
+          <thead><tr><th>Order ID</th><th>Created</th><th>Order Status</th><th>Payment Status</th><th>Amount</th><th>Gateway Order ID</th><th>Action Recommendation</th></tr></thead>
+          <tbody id="admin-reconciliation-payments-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- S02 Menu Item Details & Customization Modal -->
+  <div class="v1-modal-backdrop" id="v1-item-modal" hidden>
+    <div class="v1-modal" role="dialog" aria-modal="true" aria-labelledby="v1-modal-title">
+      <div class="v1-modal-head">
+        <div>
+          <p class="eyebrow" id="v1-modal-category">MENU ITEM</p>
+          <h3 id="v1-modal-title">Item details</h3>
+        </div>
+        <button type="button" class="secondary-button" id="v1-modal-close">Close</button>
+      </div>
+      <div id="v1-modal-body"></div>
+    </div>
+  </div>
+
+  <!-- S05 AI Food Assistant Slide-over Drawer -->
+  <button type="button" class="v1-ai-fab" id="v1-ai-launcher">✨ AI Food Assistant</button>
+  <aside class="v1-drawer" id="v1-ai-drawer" hidden aria-label="AI Menu Concierge">
+    <div class="v1-drawer-head">
+      <div>
+        <strong>AI Menu Concierge</strong>
+        <div><small class="muted">Grounded strictly on live verified menu data</small></div>
+      </div>
+      <button type="button" class="secondary-button" id="v1-ai-close">Close</button>
+    </div>
+    <div class="v1-drawer-body" id="v1-ai-messages">
+      <div class="v1-prompt-chips">
+        <button type="button" class="v1-prompt-chip" data-ai-prompt="What can I get under ₹80?">Under ₹80</button>
+        <button type="button" class="v1-prompt-chip" data-ai-prompt="Quick vegetarian snacks ready in 10 minutes">Quick veg snack</button>
+        <button type="button" class="v1-prompt-chip" data-ai-prompt="Dairy-free items currently in stock">Dairy-free options</button>
+      </div>
+      <div class="v1-chat-msg assistant">Ask me about budget meals, prep times, dietary tags or verified allergens. Suggested items are never added to your cart without your confirmation.</div>
+    </div>
+    <form class="v1-drawer-foot" id="v1-ai-form">
+      <input id="v1-ai-input" type="text" maxlength="300" required placeholder="e.g. High protein lunch under ₹100">
+      <button type="submit" class="primary-button">Ask</button>
+    </form>
+  </aside>
+
+  <footer><a class="footer-brand" href="/">ACE Canteen</a><span>Live campus canteen pre-order, UPI &amp; QR collection platform.</span><span>Server-verified RBAC, payments &amp; inventory</span></footer>
+</body>
+</html>
