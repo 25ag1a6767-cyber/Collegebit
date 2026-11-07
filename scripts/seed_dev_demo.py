@@ -32,8 +32,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.config import get_settings  # noqa: E402
 
-DEMO_EMAIL_DOMAIN = "example.edu"  # RFC 2606 reserved example domain for local dev only
-
+DEMO_EMAIL_DOMAIN = "example.edu"
 
 def _guard() -> None:
     settings = get_settings()
@@ -41,7 +40,6 @@ def _guard() -> None:
         raise SystemExit("Refusing to seed demo data: ENVIRONMENT is %s." % settings.environment)
     if not settings.database_url.startswith("sqlite"):
         raise SystemExit("Refusing to seed demo data into a non-SQLite database. Demo data is for local development only.")
-
 
 def seed(rotate_passwords: bool = False) -> None:
     _guard()
@@ -73,8 +71,6 @@ def seed(rotate_passwords: bool = False) -> None:
                 created_credentials.append((role.value, email, password))
             users[role.value] = user
 
-        # The previous college-demo script created accounts with published passwords.
-        # Disable them so a copied database cannot be signed into with those passwords.
         for legacy_email in ("admin@acecanteen.com", "kitchen@acecanteen.com", "student@acecanteen.com", "faculty@acecanteen.com"):
             legacy = db.scalar(select(User).where(User.email == legacy_email))
             if legacy is not None and legacy.is_active:
@@ -144,7 +140,6 @@ def seed(rotate_passwords: bool = False) -> None:
             print(f"  {role:<8} {email}  /  {password}")
     else:
         print("Existing development accounts were kept. Use --rotate-passwords to issue new passwords.")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seed local development sample data")

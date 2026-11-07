@@ -8,7 +8,6 @@ down_revision = "0016_order_collected_at"
 branch_labels = None
 depends_on = None
 
-
 def upgrade():
     inspector = inspect(op.get_bind())
     if "checkout_idempotency" not in inspector.get_table_names():
@@ -25,7 +24,6 @@ def upgrade():
             sa.UniqueConstraint("user_id", "idempotency_key", name="uq_checkout_idempotency_user_key"),
         )
         op.create_index("ix_checkout_idempotency_created", "checkout_idempotency", ["created_at"])
-
 
 def downgrade():
     if "checkout_idempotency" in inspect(op.get_bind()).get_table_names():

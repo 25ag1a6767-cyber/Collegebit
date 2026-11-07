@@ -13,7 +13,7 @@ def send_email(to_address: str, subject: str, body: str) -> bool:
         if settings.environment.lower() in {"production", "prod"}:
             logger.warning("SMTP is not configured; email '%s' was not sent. Set SMTP_HOST and related settings.", subject)
         else:
-            # Development convenience only: lets you click the link from the console.
+
             logger.info("DEV EMAIL (SMTP not configured) to=%s subject=%s\n%s", to_address, subject, body)
         return False
     message = EmailMessage()

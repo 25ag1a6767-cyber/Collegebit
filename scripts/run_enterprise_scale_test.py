@@ -27,7 +27,6 @@ BACKEND_DIR = REPO_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-
 def run_enterprise_scale_benchmark() -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         db_file = Path(tmpdir) / "enterprise_scale_v2.db"
@@ -64,7 +63,7 @@ def run_enterprise_scale_benchmark() -> dict:
 
         client = None
         try:
-            # Seed realistic canteen data
+
             pw_hash = hash_password("EnterprisePass#2026!")
             with SessionLocal() as db:
                 counters = [
@@ -92,7 +91,6 @@ def run_enterprise_scale_benchmark() -> dict:
                 db.add_all(products)
                 db.flush()
 
-                # Limited stock product for contention stress testing
                 limited_stock_item = Product(
                     category_id=categories[1].id,
                     counter_id=counters[1].id,
@@ -129,7 +127,6 @@ def run_enterprise_scale_benchmark() -> dict:
                 admin_token = create_access_token(admin_user, mfa_verified=True)
                 staff_token = create_access_token(staff_user, mfa_verified=True)
 
-                # Generate student tokens for checkout and contention tests
                 student_tokens = []
                 for i in range(100):
                     student = User(
@@ -153,9 +150,6 @@ def run_enterprise_scale_benchmark() -> dict:
                 idx = min(len(sorted_vals) - 1, max(0, int(round((p / 100.0) * (len(sorted_vals) - 1)))))
                 return round(sorted_vals[idx], 2)
 
-            # -------------------------------------------------------------
-            # Scenario 1: Multi-tier Concurrency (100, 500, 1000, 2000 Requests)
-            # -------------------------------------------------------------
             tier_results = {}
             read_endpoints = [
                 ("/api/v1/menu/items?limit=20", None),
@@ -201,9 +195,6 @@ def run_enterprise_scale_benchmark() -> dict:
                     "latencyP99Ms": pct(latencies, 99),
                 }
 
-            # -------------------------------------------------------------
-            # Scenario 2: High-Contention Atomic Stock Reservation (75 buyers for 25 units)
-            # -------------------------------------------------------------
             initial_stock = 25
             num_buyers = 75
             contention_latencies = []
@@ -245,9 +236,6 @@ def run_enterprise_scale_benchmark() -> dict:
 
             stock_safety_verified = (created_count == initial_stock and final_stock == 0)
 
-            # -------------------------------------------------------------
-            # Scenario 3: Direct BI Analytics Download Exports Under Load
-            # -------------------------------------------------------------
             export_formats = ["csv", "xlsx", "pdf"]
             export_results = {}
             for fmt in export_formats:
@@ -265,9 +253,6 @@ def run_enterprise_scale_benchmark() -> dict:
                     "isDownloadValid": res.status_code == 200 and len(res.content) >= 50,
                 }
 
-            # -------------------------------------------------------------
-            # Scenario 4: Database Integrity & Zero-Duplication Check
-            # -------------------------------------------------------------
             with SessionLocal() as db:
                 total_orders = db.scalar(select(func.count(Order.id))) or 0
                 distinct_orders = db.scalar(select(func.count(func.distinct(Order.id)))) or 0
@@ -325,7 +310,6 @@ def run_enterprise_scale_benchmark() -> dict:
                 engine.dispose()
             except Exception:
                 pass
-
 
 if __name__ == "__main__":
     result = run_enterprise_scale_benchmark()

@@ -7,7 +7,6 @@ from app.models import User, UserRole, AuditEvent
 from app.security import hash_password
 from sqlalchemy import select
 
-
 def _login(client, role='admin'):
     email = f'phase47-{role}-{uuid.uuid4().hex[:10]}@example.edu'
     password = 'Phase47-secure-password!'
@@ -17,7 +16,6 @@ def _login(client, role='admin'):
     response = client.post('/api/auth/login', json={'email': email, 'password': password})
     assert response.status_code == 200, response.text
     return {'Authorization': f"Bearer {response.json()['access_token']}"}, email
-
 
 def test_admin_can_create_staff_account_and_audit_it():
     with TestClient(app) as client:
@@ -39,7 +37,6 @@ def test_admin_can_create_staff_account_and_audit_it():
             assert event is not None
             assert event.actor_user_id is not None
 
-
 def test_admin_account_creation_rejects_duplicates_and_student_role():
     with TestClient(app) as client:
         headers, _ = _login(client)
@@ -51,7 +48,6 @@ def test_admin_account_creation_rejects_duplicates_and_student_role():
         payload['role'] = 'student'
         assert client.post('/api/admin/users', headers=headers, json=payload).status_code == 422
 
-
 def test_staff_cannot_create_accounts_and_short_password_is_rejected():
     with TestClient(app) as client:
         staff_headers, _ = _login(client, 'staff')
@@ -59,7 +55,6 @@ def test_staff_cannot_create_accounts_and_short_password_is_rejected():
         assert client.post('/api/admin/users', headers=staff_headers, json=payload).status_code == 403
         admin_headers, _ = _login(client)
         assert client.post('/api/admin/users', headers=admin_headers, json=payload).status_code == 422
-
 
 def test_role_change_revokes_existing_token():
     with TestClient(app) as client:

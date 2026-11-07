@@ -134,7 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ refreshToken: rt })
       }, false);
     } catch {
-      // Ignore network errors during sign-out
+
     } finally {
       await clearTokens();
       setUser(null);

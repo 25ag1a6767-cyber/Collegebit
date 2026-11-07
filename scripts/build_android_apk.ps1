@@ -6,7 +6,7 @@
   - If ANDROID_HOME / Android SDK is installed locally, runs `npx expo prebuild --platform android`
     followed by Gradle `assembleRelease` (.apk) and `bundleRelease` (.aab).
   - Otherwise, if EAS CLI is authenticated, triggers cloud APK/AAB builds via `mobile/eas.json`.
-#>
+
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $MobileDir = Join-Path $RepoRoot "mobile"

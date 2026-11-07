@@ -1,14 +1,12 @@
 from fastapi.testclient import TestClient
 from app.main import app
 
-
 def test_homepage_serves_html():
     with TestClient(app) as client:
         response = client.get("/")
         assert response.status_code == 200
         assert "ACE Canteen" in response.text
         assert "catalogue-grid" in response.text
-
 
 def test_health_endpoint():
     with TestClient(app) as client:
@@ -18,20 +16,17 @@ def test_health_endpoint():
         assert payload["status"] == "ok"
         assert payload["application"] == "ACE Canteen"
 
-
 def test_ready_endpoint_checks_database():
     with TestClient(app) as client:
         response = client.get("/api/ready")
         assert response.status_code == 200
         assert response.json() == {"status": "ready", "checks": {"database": "ok"}}
 
-
 def test_info_endpoint():
     with TestClient(app) as client:
         response = client.get("/api/info")
         assert response.status_code == 200
         assert "database" in response.json()["phase"]
-
 
 def test_catalogue_is_seeded_and_returns_products():
     with TestClient(app) as client:
@@ -43,7 +38,6 @@ def test_catalogue_is_seeded_and_returns_products():
         assert len(products.json()) >= 9
         assert all(float(product["price"]) > 0 for product in products.json())
 
-
 def test_catalogue_filters():
     with TestClient(app) as client:
         food = client.get("/api/products", params={"item_type": "food"})
@@ -54,23 +48,20 @@ def test_catalogue_filters():
         assert stationery.status_code == 200 and all(p["item_type"] == "stationery" for p in stationery.json())
         assert any(p["name"] == "Notebook" for p in search.json())
 
-
 def test_catalogue_summary():
     with TestClient(app) as client:
         response = client.get("/api/catalogue/summary")
         assert response.status_code == 200
         assert response.json()["total_products"] >= 9
 
-
 def test_unknown_route_returns_404():
     with TestClient(app) as client:
         assert client.get("/route-that-does-not-exist").status_code == 404
 
-
 def test_student_registration_login_and_me():
     with TestClient(app) as client:
         email = "phase3-student@example.edu"
-        # Make the test repeatable when run against the local development database.
+
         from app.database import SessionLocal
         from app.models import User
         from sqlalchemy import select
@@ -90,7 +81,6 @@ def test_student_registration_login_and_me():
         assert me.status_code == 200
         assert me.json()["email"] == email
 
-
 def test_auth_rejects_bad_password_and_duplicate_email():
     with TestClient(app) as client:
         email = "phase3-duplicate@example.edu"
@@ -106,7 +96,6 @@ def test_auth_rejects_bad_password_and_duplicate_email():
         assert client.post("/api/auth/register", json=payload).status_code == 201
         assert client.post("/api/auth/register", json=payload).status_code == 409
         assert client.post("/api/auth/login", json={"email": email, "password": "wrong-password"}).status_code == 401
-
 
 def test_auth_and_rbac_protect_privileged_routes():
     with TestClient(app) as client:
@@ -125,7 +114,6 @@ def test_auth_and_rbac_protect_privileged_routes():
         headers = {"Authorization": f"Bearer {token}"}
         assert client.get("/api/admin/users", headers=headers).status_code == 403
         assert client.get("/api/staff/dashboard", headers=headers).status_code == 403
-
 
 def test_admin_can_manage_roles_and_catalogue():
     with TestClient(app) as client:
@@ -156,7 +144,6 @@ def test_admin_can_manage_roles_and_catalogue():
         updated_category = client.patch(f"/api/admin/categories/{category.json()['id']}", headers=headers, json={"description": "Updated by admin"})
         assert updated_category.status_code == 200, updated_category.text
         assert updated_category.json()["description"] == "Updated by admin"
-
 
 def test_admin_can_create_update_and_archive_products():
     with TestClient(app) as client:
@@ -192,7 +179,6 @@ def test_admin_can_create_update_and_archive_products():
         assert visible.status_code == 200
         assert all(item["id"] != product_id for item in visible.json())
 
-
 def test_staff_cannot_create_categories_or_products():
     with TestClient(app) as client:
         import uuid
@@ -212,7 +198,6 @@ def test_staff_cannot_create_categories_or_products():
         mismatch = client.post("/api/admin/products", headers=headers, json={"category_id": stationery_category["id"], "name": f"Mismatched Item {suffix}", "item_type": "food", "price": "10.00", "stock_quantity": 1})
         assert mismatch.status_code == 403
 
-
 def test_catalogue_searches_descriptions_and_categories_and_supports_paging_sorting():
     with TestClient(app) as client:
         description = client.get('/api/products', params={'search': 'Crispy potato-filled snack'})
@@ -224,7 +209,6 @@ def test_catalogue_searches_descriptions_and_categories_and_supports_paging_sort
         assert float(page.json()[0]['price']) <= float(page.json()[1]['price'])
         assert client.get('/api/products', params={'limit': 101}).status_code == 422
         assert client.get('/api/products', params={'sort_by': 'sql'}).status_code == 422
-
 
 def test_password_change_invalidates_existing_access_tokens():
     with TestClient(app) as client:
@@ -242,7 +226,6 @@ def test_password_change_invalidates_existing_access_tokens():
         assert client.get('/api/auth/me', headers=headers).status_code == 401
         relogin = client.post('/api/auth/login', json={'email': email, 'password': 'new-password-4567'})
         assert relogin.status_code == 200
-
 
 def test_product_metadata_and_image_url_validation():
     with TestClient(app) as client:
@@ -264,7 +247,6 @@ def test_product_metadata_and_image_url_validation():
         assert good.status_code == 201, good.text
         assert good.json()['dietary_info'] == 'Vegetarian'
         assert good.json()['allergens'] == 'Gluten'
-
 
 def test_admin_can_list_archive_and_reactivate_categories():
     with TestClient(app) as client:
@@ -290,7 +272,6 @@ def test_admin_can_list_archive_and_reactivate_categories():
         restored = client.patch(f'/api/admin/categories/{category_id}', headers=headers, json={'is_active': True, 'slug': f'renamed-{suffix}'})
         assert restored.status_code == 200 and restored.json()['slug'] == f'renamed-{suffix}'
 
-
 def test_login_abuse_protection_throttles_repeated_failures():
     import uuid
     email = f"rate-limit-{uuid.uuid4().hex}@example.edu"
@@ -301,7 +282,6 @@ def test_login_abuse_protection_throttles_repeated_failures():
         throttled = client.post("/api/auth/login", json={"email": email, "password": "wrong-password"})
         assert throttled.status_code == 429
         assert "Retry-After" in throttled.headers
-
 
 def test_database_rejects_invalid_product_price_and_stock():
     from sqlalchemy.exc import IntegrityError
@@ -319,7 +299,6 @@ def test_database_rejects_invalid_product_price_and_stock():
         except IntegrityError:
             db.rollback()
 
-
 def test_seed_is_idempotent():
     from app.database import SessionLocal
     from app.seed import seed_demo_data
@@ -333,7 +312,6 @@ def test_seed_is_idempotent():
         after_products = db.scalar(select(func.count()).select_from(Product))
         assert (after_categories, after_products) == (before_categories, before_products)
 
-
 def test_product_detail_only_returns_available_catalogue_items():
     with TestClient(app) as client:
         notebook = next(p for p in client.get('/api/products', params={'search': 'Notebook'}).json() if p['name'] == 'Notebook')
@@ -341,7 +319,6 @@ def test_product_detail_only_returns_available_catalogue_items():
         assert detail.status_code == 200
         assert detail.json()['name'] == 'Notebook'
         assert detail.json()['category_name'] == 'Stationery'
-
 
 def test_archived_products_are_not_exposed_by_public_catalogue_query():
     with TestClient(app) as client:
@@ -372,7 +349,6 @@ def test_archived_products_are_not_exposed_by_public_catalogue_query():
         assert managed.status_code == 200
         archived = next(p for p in managed.json() if p['id'] == product_id)
         assert archived['is_available'] is False
-
 
 def test_archiving_category_hides_its_products_and_reactivation_restores_them():
     with TestClient(app) as client:
@@ -405,7 +381,6 @@ def test_archiving_category_hides_its_products_and_reactivation_restores_them():
         assert client.patch(f'/api/admin/categories/{category_id}', headers=headers, json={'is_active': True}).status_code == 200
         assert any(p['id'] == product_id for p in client.get('/api/products', params={'search': f'Test Drink {suffix}'}).json())
 
-
 def test_management_patch_rejects_null_for_required_fields_cleanly():
     with TestClient(app) as client:
         import uuid
@@ -428,7 +403,6 @@ def test_management_patch_rejects_null_for_required_fields_cleanly():
         assert client.patch(f"/api/admin/products/{product.json()['id']}", headers=headers, json={'price': None}).status_code == 422
         assert client.patch(f"/api/admin/categories/{category['id']}", headers=headers, json={'name': None}).status_code == 422
 
-
 def test_legacy_order_endpoint_cannot_bypass_payment():
     import uuid
     with TestClient(app) as client:
@@ -438,7 +412,6 @@ def test_legacy_order_endpoint_cannot_bypass_payment():
         response = client.post('/api/orders', headers={'Authorization': f'Bearer {token}'}, json={'items': [{'product_id': 1, 'quantity': 1}]})
         assert response.status_code == 410
         assert 'payment verification' in response.json()['detail'].lower() or 'pay and place' in response.json()['detail'].lower()
-
 
 def test_order_status_transition_rules_reject_skipping_queue_steps():
     import uuid
@@ -458,12 +431,10 @@ def test_order_status_transition_rules_reject_skipping_queue_steps():
         assert response.status_code == 409
         assert 'Cannot change order' in response.json()['detail']
 
-
 def test_checkout_quote_requires_student_authentication():
     with TestClient(app) as client:
         response = client.post('/api/orders/quote', json={'items': [{'product_id': 1, 'quantity': 1}]})
         assert response.status_code == 401
-
 
 def test_checkout_quote_uses_server_prices_and_merges_duplicate_lines():
     from app.database import SessionLocal
@@ -488,7 +459,6 @@ def test_checkout_quote_uses_server_prices_and_merges_duplicate_lines():
         assert quote['currency'] == 'INR'
         assert quote['stock_reserved'] is False
 
-
 def test_checkout_quote_rejects_non_student_role():
     from app.database import SessionLocal
     from app.models import User, UserRole
@@ -503,7 +473,6 @@ def test_checkout_quote_rejects_non_student_role():
         assert token_response.status_code == 200, token_response.text
         response = client.post('/api/orders/quote', headers={'Authorization': f"Bearer {token_response.json()['access_token']}"}, json={'items': [{'product_id': 1, 'quantity': 1}]})
         assert response.status_code == 403
-
 
 def test_phase6_payment_order_requires_student_auth_and_provider_keys():
     from app.main import settings
@@ -555,7 +524,6 @@ def test_phase6_payment_verification_rejects_invalid_signature():
         finally:
             settings.razorpay_key_secret = old_secret
 
-
 def test_phase7_dashboard_removes_development_and_promo_sections():
     with TestClient(app) as client:
         html = client.get('/').text
@@ -585,7 +553,6 @@ def test_phase7_staff_queue_only_shows_paid_orders_and_blocks_unpaid_transitions
         assert update.status_code == 409
         assert 'Only paid orders' in update.json()['detail']
 
-
 def test_phase8_public_queue_is_privacy_preserving_and_has_daily_metrics():
     with TestClient(app) as client:
         response = client.get('/api/queue/overview')
@@ -596,7 +563,6 @@ def test_phase8_public_queue_is_privacy_preserving_and_has_daily_metrics():
         for token in payload['queue']:
             assert {'token_number', 'status', 'estimated_wait_minutes', 'created_at'} <= set(token)
             assert 'customer_name' not in token and 'customer_email' not in token
-
 
 def test_phase8_queue_position_requires_auth_and_protects_order_ownership():
     import uuid
@@ -621,7 +587,6 @@ def test_phase8_queue_position_requires_auth_and_protects_order_ownership():
         assert own.json()['queue_position'] is None
         assert 'after payment' in own.json()['message']
 
-
 def test_phase10_staff_workflow_summary_requires_staff_or_admin():
     with TestClient(app) as client:
         assert client.get('/api/staff/workflow-summary').status_code == 401
@@ -631,7 +596,6 @@ def test_phase10_staff_workflow_summary_requires_staff_or_admin():
         token = client.post('/api/auth/login', json={'email': email, 'password': 'phase10-student-password'}).json()['access_token']
         response = client.get('/api/staff/workflow-summary', headers={'Authorization': f'Bearer {token}'})
         assert response.status_code == 403
-
 
 def test_phase10_staff_workflow_summary_returns_operational_counts():
     import uuid
@@ -660,7 +624,6 @@ def test_phase10_staff_workflow_summary_returns_operational_counts():
         assert payload['kitchen_preparing'] >= 1
         assert payload['ready_for_pickup'] >= 1
         assert 'completed_today' in payload and 'paid_orders_today' in payload
-
 
 def test_phase11_inventory_receipt_waste_threshold_and_ledger():
     with TestClient(app) as client:
@@ -695,7 +658,7 @@ def test_phase11_inventory_receipt_waste_threshold_and_ledger():
         summary = client.get('/api/admin/inventory/summary', headers=headers)
         assert summary.status_code == 200
         assert any(row['product_id'] == pid for row in summary.json()['low_stock_items'])
-        # Phase 12 audit trail records the stock mutation; only admins can read it.
+
         admin_email = f'inventory-audit-admin-{uuid.uuid4().hex[:8]}@example.edu'
         with SessionLocal() as db:
             db.add(User(full_name='Inventory Audit Admin', email=admin_email, password_hash=hash_password('inventory-admin-password-123'), role=UserRole.ADMIN, is_active=True))
@@ -704,7 +667,6 @@ def test_phase11_inventory_receipt_waste_threshold_and_ledger():
         audit = client.get('/api/admin/audit-events', headers={'Authorization': f'Bearer {admin_token}'}, params={'entity_type': 'product', 'limit': 100})
         assert audit.status_code == 200
         assert any(event['action'] == 'inventory.stock_changed' and event['entity_id'] == str(pid) for event in audit.json())
-
 
 def test_phase11_inventory_routes_require_staff_or_admin():
     with TestClient(app) as client:
@@ -717,7 +679,6 @@ def test_phase11_inventory_routes_require_staff_or_admin():
         headers = {'Authorization': f'Bearer {token}'}
         assert client.get('/api/admin/inventory/summary', headers=headers).status_code == 403
         assert client.post('/api/admin/inventory/adjustments', headers=headers, json={'product_id': 1, 'movement_type': 'receipt', 'quantity': 2, 'reason': 'Not authorized'}).status_code == 403
-
 
 def test_phase12_admin_reports_and_audit_trail_are_role_protected_and_work():
     import uuid
@@ -752,7 +713,6 @@ def test_phase12_admin_reports_and_audit_trail_are_role_protected_and_work():
         assert audit.json()[0]['details'] == {'ok': True}
         assert client.get('/api/admin/reports/overview').status_code == 401
 
-
 def test_phase12_student_cannot_read_admin_reports_or_audit():
     import uuid
     with TestClient(app) as client:
@@ -764,7 +724,6 @@ def test_phase12_student_cannot_read_admin_reports_or_audit():
         assert client.get('/api/admin/reports/overview', headers=headers).status_code == 403
         assert client.get('/api/admin/reports/daily-sales', headers=headers).status_code == 403
         assert client.get('/api/admin/audit-events', headers=headers).status_code == 403
-
 
 def test_phase13_notifications_are_user_scoped_and_can_be_marked_read():
     from uuid import uuid4
@@ -800,12 +759,10 @@ def test_phase13_notifications_are_user_scoped_and_can_be_marked_read():
         assert client.get("/api/notifications", headers=headers_a).json()["unread_count"] == 0
         assert client.post("/api/notifications/read-all", headers=headers_a).json()["marked_read"] == 0
 
-
 def test_phase13_notifications_require_authentication():
     with TestClient(app) as client:
         assert client.get("/api/notifications").status_code == 401
         assert client.post("/api/notifications/read-all").status_code == 401
-
 
 def test_phase14_security_headers_are_present():
     with TestClient(app) as client:
@@ -817,20 +774,17 @@ def test_phase14_security_headers_are_present():
         assert "default-src 'self'" in response.headers["content-security-policy"]
         assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
 
-
 def test_phase14_rejects_oversized_declared_request_body():
     with TestClient(app) as client:
         response = client.post("/api/auth/login", headers={"Content-Length": str(1_048_577), "Content-Type": "application/json"}, content="{}")
         assert response.status_code == 413
         assert response.json()["error"]["code"] == "REQUEST_TOO_LARGE"
 
-
 def test_phase14_invalid_content_length_is_rejected():
     with TestClient(app) as client:
         response = client.post("/api/auth/login", headers={"Content-Length": "invalid", "Content-Type": "application/json"}, content="{}")
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "INVALID_CONTENT_LENGTH"
-
 
 def test_phase15_request_id_is_returned_and_safe():
     with TestClient(app) as client:
@@ -843,14 +797,12 @@ def test_phase15_request_id_is_returned_and_safe():
         assert generated and generated != 'bad id\nforged'
         assert all(ch.isalnum() or ch in '-_' for ch in generated)
 
-
 def test_phase15_info_reports_current_phase():
     with TestClient(app) as client:
         response = client.get('/api/info')
         assert response.status_code == 200
         assert response.json()['version'] in {'0.7.0', '1.0.0', '2.0.0'}
         assert response.json()['phase'].startswith('1-16')
-
 
 def test_phase15_production_configuration_requires_explicit_migration_and_no_demo_seed():
     import pytest
@@ -871,7 +823,6 @@ def test_phase15_production_configuration_requires_explicit_migration_and_no_dem
         Settings(_env_file=None, **{**common, 'seed_demo_data': True})
     with pytest.raises(ValidationError):
         Settings(_env_file=None, **{**common, 'secret_key': 'change-this-development-secret-before-deployment'})
-
 
 def test_phase16_student_favorites_are_persistent_and_student_scoped():
     with TestClient(app) as client:
@@ -904,7 +855,6 @@ def test_phase16_favorites_require_student_role():
     with TestClient(app) as client:
         assert client.get('/api/favorites').status_code == 401
 
-
 def test_payment_webhook_delivery_is_idempotent():
     import hashlib
     import hmac
@@ -930,7 +880,6 @@ def test_payment_webhook_delivery_is_idempotent():
     finally:
         settings.razorpay_webhook_secret = original_secret
 
-
 def test_public_catalogue_uses_short_shared_cache_ttl():
     with TestClient(app) as client:
         categories = client.get("/api/categories")
@@ -940,19 +889,16 @@ def test_public_catalogue_uses_short_shared_cache_ttl():
         assert products.headers["cache-control"] == "public, max-age=0, s-maxage=5, stale-while-revalidate=5"
         assert summary.headers["cache-control"] == "public, max-age=0, s-maxage=15, stale-while-revalidate=10"
 
-
 def test_private_api_responses_are_not_cacheable():
     with TestClient(app) as client:
         response = client.get("/api/orders/mine")
         assert response.headers["cache-control"] == "no-store"
-
 
 def test_public_catalogue_request_with_authorization_header_is_not_shared_cached():
     with TestClient(app) as client:
         response = client.get("/api/products", headers={"Authorization": "Bearer deliberately-not-a-real-token"})
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
-
 
 def test_dynamic_canteen_endpoints_have_very_short_cache_ttls():
     with TestClient(app) as client:

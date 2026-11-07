@@ -39,7 +39,7 @@ def should_exclude(rel_path: Path) -> bool:
             return True
     if rel_path.suffix.lower() in EXCLUDE_EXTS:
         return True
-    # Exclude zip files themselves
+
     if rel_path.suffix.lower() == ".zip":
         return True
     return False
@@ -52,7 +52,7 @@ def package():
     count = 0
     with zipfile.ZipFile(target_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
         for root, dirs, files in os.walk(ROOT):
-            # Prune excluded directories in-place
+
             dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
 
             for file in files:
@@ -66,7 +66,6 @@ def package():
     size_mb = target_zip.stat().st_size / (1024 * 1024)
     print(f"Successfully packaged {count} files into {target_zip.name} ({size_mb:.2f} MB)")
 
-    # Copy to Desktop and Downloads
     destinations = [
         Path.home() / "Desktop" / zip_filename,
         Path.home() / "Downloads" / zip_filename,

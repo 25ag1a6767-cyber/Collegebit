@@ -49,10 +49,8 @@ from app.security import get_current_user, get_optional_user, require_roles
 
 router = APIRouter(tags=["v1-menu-cart"])
 
-
 def _canteen_tz() -> ZoneInfo:
     return ZoneInfo(get_settings().canteen_timezone)
-
 
 def is_item_available_in_window(db: Session, product: Product, when_local: datetime | None = None) -> tuple[bool, int | None]:
     """Check whether any configured MenuItemAvailability windows restrict this product right now."""
@@ -75,7 +73,6 @@ def is_item_available_in_window(db: Session, product: Product, when_local: datet
                 return True, cap
     return False, 0
 
-
 def _product_ratings_map(db: Session, product_ids: list[int]) -> dict[int, tuple[float | None, int]]:
     if not product_ids:
         return {}
@@ -90,7 +87,6 @@ def _product_ratings_map(db: Session, product_ids: list[int]) -> dict[int, tuple
         .group_by(OrderItem.product_id)
     ).all()
     return {int(r.product_id): (round(float(r.avg_r), 2) if r.avg_r is not None else None, int(r.cnt)) for r in rows}
-
 
 def _product_popularity_map(db: Session, product_ids: list[int]) -> dict[int, int]:
     if not product_ids:
@@ -107,7 +103,6 @@ def _product_popularity_map(db: Session, product_ids: list[int]) -> dict[int, in
         .group_by(OrderItem.product_id)
     ).all()
     return {int(r.product_id): int(r.qty or 0) for r in rows}
-
 
 def compute_counter_pickup_slots(db: Session, counter_id: int | None = None) -> dict[str, Any]:
     """Compute available pickup slots for today per counter (or global canteen hours)."""
@@ -186,7 +181,6 @@ def compute_counter_pickup_slots(db: Session, counter_id: int | None = None) -> 
         "alwaysOpen": False,
     }
 
-
 @router.get("/counters")
 def list_active_counters_v1(request: Request, db: Session = Depends(get_db)):
     ensure_default_counter(db)
@@ -202,7 +196,6 @@ def list_active_counters_v1(request: Request, db: Session = Depends(get_db)):
             "items": [serialize_counter_v1(db, c) for c in counters],
         },
     )
-
 
 @router.get("/menu/categories")
 def list_menu_categories_v1(
@@ -231,7 +224,6 @@ def list_menu_categories_v1(
         },
     )
 
-
 @router.get("/menu/items")
 def list_menu_items_v1(
     request: Request,
@@ -258,7 +250,7 @@ def list_menu_items_v1(
     if availableOnly:
         stmt = stmt.where(Product.is_available.is_(True), Product.stock_quantity > 0)
     elif user is None or user.role.value not in {"staff", "admin"}:
-        # Staff preview and admins can view unavailable items; students see available items unless explicitly checking item details.
+
         stmt = stmt.where(Product.is_available.is_(True), Product.stock_quantity > 0)
 
     if categoryId is not None:
@@ -273,7 +265,6 @@ def list_menu_items_v1(
 
     all_matching = db.scalars(stmt).all()
 
-    # Apply paise budget, verified dietary tag and allergen exclusion filters cleanly.
     filtered: list[Product] = []
     for p in all_matching:
         if availableOnly:
@@ -321,7 +312,6 @@ def list_menu_items_v1(
 
     return ok(request, {"items": items_out, "total": total, "limit": limit, "offset": offset})
 
-
 @router.get("/menu/items/{item_id}")
 def get_menu_item_details_v1(item_id: int, request: Request, db: Session = Depends(get_db)):
     product = db.scalar(
@@ -356,7 +346,6 @@ def get_menu_item_details_v1(item_id: int, request: Request, db: Session = Depen
     ]
     return ok(request, out)
 
-
 @router.get("/menu/availability")
 def check_menu_availability_v1(
     request: Request,
@@ -381,19 +370,15 @@ def check_menu_availability_v1(
         })
     return ok(request, {"checkedAt": datetime.now(timezone.utc), "items": out})
 
-
-# --- Server-side persistent student cart ---
 class CartItemUpsertIn(BaseModel):
     quantity: int = Field(ge=0, le=50)
     customizations: dict[str, Any] = Field(default_factory=dict)
-
 
 class CartMetaPatchIn(BaseModel):
     counterId: int | None = Field(default=None, gt=0)
     couponCode: str | None = Field(default=None, max_length=50)
     pickupSlot: str | None = Field(default=None, max_length=50)
     notes: str | None = Field(default=None, max_length=500)
-
 
 def _get_or_create_cart(db: Session, user_id: int) -> Cart:
     cart = db.scalar(select(Cart).options(joinedload(Cart.items).joinedload(CartItem.product).joinedload(Product.category)).where(Cart.user_id == user_id))
@@ -402,7 +387,6 @@ def _get_or_create_cart(db: Session, user_id: int) -> Cart:
         db.add(cart)
         db.flush()
     return cart
-
 
 def serialize_cart_v1(db: Session, cart: Cart) -> dict[str, Any]:
     lines = []
@@ -460,13 +444,11 @@ def serialize_cart_v1(db: Session, cart: Cart) -> dict[str, Any]:
         "updatedAt": as_utc(cart.updated_at),
     }
 
-
 @router.get("/cart")
 def get_cart_v1(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cart = _get_or_create_cart(db, user.id)
     db.commit()
     return ok(request, serialize_cart_v1(db, cart))
-
 
 @router.patch("/cart")
 def patch_cart_meta_v1(
@@ -504,7 +486,6 @@ def patch_cart_meta_v1(
     db.refresh(cart)
     return ok(request, serialize_cart_v1(db, _get_or_create_cart(db, user.id)))
 
-
 @router.put("/cart/items/{item_id}")
 def put_cart_item_v1(
     item_id: int,
@@ -541,7 +522,6 @@ def put_cart_item_v1(
     db.commit()
     return ok(request, serialize_cart_v1(db, _get_or_create_cart(db, user.id)))
 
-
 @router.delete("/cart/items/{item_id}")
 def delete_cart_item_v1(
     item_id: int,
@@ -557,7 +537,6 @@ def delete_cart_item_v1(
         db.commit()
     return ok(request, serialize_cart_v1(db, _get_or_create_cart(db, user.id)))
 
-
 @router.delete("/cart")
 def clear_cart_v1(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cart = _get_or_create_cart(db, user.id)
@@ -570,7 +549,6 @@ def clear_cart_v1(request: Request, user: User = Depends(get_current_user), db: 
     db.commit()
     return ok(request, serialize_cart_v1(db, _get_or_create_cart(db, user.id)))
 
-
 @router.get("/pickup-slots")
 def get_pickup_slots_v1(
     request: Request,
@@ -578,7 +556,6 @@ def get_pickup_slots_v1(
     db: Session = Depends(get_db),
 ):
     return ok(request, compute_counter_pickup_slots(db, counterId))
-
 
 @router.get("/discounts/active")
 def list_active_discounts_v1(request: Request, db: Session = Depends(get_db)):
@@ -602,7 +579,6 @@ def list_active_discounts_v1(request: Request, db: Session = Depends(get_db)):
         })
     return ok(request, {"items": active})
 
-
 @router.get("/favorites")
 def list_favorites_v1(request: Request, user: User = Depends(require_roles("student")), db: Session = Depends(get_db)):
     rows = db.scalars(
@@ -624,7 +600,6 @@ def list_favorites_v1(request: Request, user: User = Depends(require_roles("stud
         },
     )
 
-
 @router.post("/favorites/{item_id}", status_code=201)
 def add_favorite_v1(item_id: int, request: Request, user: User = Depends(require_roles("student")), db: Session = Depends(get_db)):
     product = db.scalar(select(Product).where(Product.id == item_id, Product.is_archived.is_(False)))
@@ -635,7 +610,6 @@ def add_favorite_v1(item_id: int, request: Request, user: User = Depends(require
         db.add(Favorite(user_id=user.id, product_id=item_id))
         db.commit()
     return ok(request, {"saved": True, "menuItemId": item_id}, status_code=201)
-
 
 @router.delete("/favorites/{item_id}")
 def remove_favorite_v1(item_id: int, request: Request, user: User = Depends(require_roles("student")), db: Session = Depends(get_db)):

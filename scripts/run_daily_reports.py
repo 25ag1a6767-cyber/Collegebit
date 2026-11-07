@@ -15,7 +15,6 @@ if str(BACKEND_DIR) not in sys.path:
 from app.database import SessionLocal  # noqa: E402
 from app.modules.reporting_engine import generate_daily_reports_job  # noqa: E402
 
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--date", type=date.fromisoformat, default=None, help="Target YYYY-MM-DD (defaults to today)")
@@ -27,7 +26,6 @@ def main() -> int:
         out = generate_daily_reports_job(db, target_date=args.date, email_recipients=recipients)
         print(json.dumps(out, indent=2, default=str))
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

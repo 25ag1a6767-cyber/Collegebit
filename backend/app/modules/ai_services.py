@@ -58,12 +58,10 @@ from app.security import get_optional_user, require_roles
 logger = logging.getLogger("ace_canteen.ai")
 router = APIRouter(prefix="/ai", tags=["v1-ai"])
 
-# Per-user/IP rate limiter for AI endpoints (25 calls / 5 min)
 _AI_LIMIT = 25
 _AI_WINDOW_SECONDS = 300
 _ai_buckets: dict[str, deque[float]] = defaultdict(deque)
 _ai_lock = Lock()
-
 
 def _enforce_ai_rate_limit(request: Request, user: User | None) -> None:
     key = f"user:{user.id}" if user is not None else f"ip:{request.client.host if request.client else 'anon'}"
@@ -75,7 +73,6 @@ def _enforce_ai_rate_limit(request: Request, user: User | None) -> None:
         if len(dq) >= _AI_LIMIT:
             raise ApiError(429, "AI_RATE_LIMITED", "Too many AI assistant requests. Please wait a moment and try again.")
         dq.append(now)
-
 
 def _record_ai_telemetry(
     db: Session,
@@ -100,10 +97,6 @@ def _record_ai_telemetry(
         )
     )
 
-
-# ==============================================================================
-# AI 1 — Personalized & Explainable Meal Recommendations
-# ==============================================================================
 @router.get("/recommendations")
 def get_ai_recommendations_v1(
     request: Request,
@@ -138,7 +131,7 @@ def get_ai_recommendations_v1(
         if excl_allergens and (excl_allergens & a_tags):
             continue
         if dietaryPreference:
-            # Strict filter when explicitly passed as query param
+
             d_tags = {t.lower() for t in parse_tags(p.dietary_tags, p.dietary_info)}
             if eff_diet and eff_diet not in d_tags:
                 continue
@@ -256,21 +249,15 @@ def get_ai_recommendations_v1(
         },
     )
 
-
-# ==============================================================================
-# AI 2 — Grounded Natural-Language Menu Assistant (Gemini + Verified Fallback)
-# ==============================================================================
 class AssistantQueryIn(BaseModel):
     message: str = Field(min_length=2, max_length=500)
     counterId: int | None = Field(default=None, gt=0)
     maxBudgetPaise: int | None = Field(default=None, gt=0)
 
-
 def _extract_query_constraints(message: str, explicit_budget_paise: int | None) -> dict[str, Any]:
     msg_low = message.lower()
     budget_paise = explicit_budget_paise
 
-    # Match "under ₹80", "under 80", "below rs 120", "within 50 rupees", "<= 60"
     m = re.search(r"(?:under|below|within|less than|max|<=?)\s*(?:₹|rs\.?|inr)?\s*(\d{1,4})", msg_low)
     if m and budget_paise is None:
         budget_paise = int(m.group(1)) * 100
@@ -300,7 +287,6 @@ def _extract_query_constraints(message: str, explicit_budget_paise: int | None) 
         "avoidAllergens": avoid_allergens,
         "wantsFast": wants_fast,
     }
-
 
 def _call_gemini_grounded(menu_catalog: list[dict[str, Any]], user_question: str, constraints: dict[str, Any]) -> dict[str, Any] | None:
     cfg = get_settings()
@@ -360,7 +346,6 @@ def _call_gemini_grounded(menu_catalog: list[dict[str, Any]], user_question: str
         logger.warning("Gemini assistant call failed (%s); using deterministic verified-menu engine", type(exc).__name__)
     return None
 
-
 def _deterministic_menu_concierge(
     candidates: list[dict[str, Any]],
     question: str,
@@ -384,7 +369,7 @@ def _deterministic_menu_concierge(
             if item_allergens & avoid_allergens:
                 continue
             if not item_allergens:
-                # Never claim an unverified item is allergen-free!
+
                 continue
         item_diets = {d.lower() for d in item["dietaryTags"]}
         if diet_terms and not any(dt in item_diets for dt in diet_terms):
@@ -435,7 +420,6 @@ def _deterministic_menu_concierge(
         "dietaryWarnings": warnings[:3],
     }
 
-
 @router.post("/assistant")
 def query_ai_menu_assistant_v1(
     payload: AssistantQueryIn,
@@ -455,7 +439,6 @@ def query_ai_menu_assistant_v1(
         stmt = stmt.where(or_(Product.counter_id == payload.counterId, Product.counter_id.is_(None)))
     live_products = [p for p in db.scalars(stmt).unique().all() if is_item_available_in_window(db, p)[0]]
 
-    # Build zero-PII verified menu snapshot
     verified_catalog: list[dict[str, Any]] = []
     by_id: dict[int, Product] = {}
     for p in live_products:
@@ -482,8 +465,6 @@ def query_ai_menu_assistant_v1(
     if raw_result is None:
         raw_result = _deterministic_menu_concierge(verified_catalog, payload.message, constraints)
 
-    # Mandatory Post-Generation Grounding Check:
-    # Strip any hallucinated/unavailable IDs, budget violations, or allergen violations.
     valid_suggestions = []
     seen_ids: set[int] = set()
     budget_cap = constraints["budgetPaise"]
@@ -540,16 +521,11 @@ def query_ai_menu_assistant_v1(
         },
     )
 
-
-# ==============================================================================
-# AI 3 — Demand Forecasting, Empirical Backtesting & Staff Override
-# ==============================================================================
 SERVICE_SLOTS = (
     ("Breakfast (08:00-11:00)", 0, 11),
     ("Lunch (11:00-14:30)", 11, 15),
     ("Snacks (14:30-18:00)", 15, 24),
 )
-
 
 def _slot_label_for_hour(hour: int) -> str:
     if hour < 11:
@@ -558,15 +534,12 @@ def _slot_label_for_hour(hour: int) -> str:
         return SERVICE_SLOTS[1][0]
     return SERVICE_SLOTS[2][0]
 
-
 class ForecastRunIn(BaseModel):
     forecastDate: date | None = None
-
 
 class ForecastOverrideIn(BaseModel):
     approvedQuantity: int = Field(ge=0, le=10_000)
     reason: str = Field(min_length=3, max_length=255)
-
 
 def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: int | None) -> ForecastRun:
     tz = ZoneInfo(get_settings().canteen_timezone)
@@ -585,7 +558,6 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
         .where(Order.payment_status == PaymentStatus.PAID, Order.created_at >= since_utc)
     ).all()
 
-    # Aggregate daily slot sales: history[(product_id, slot_label)][local_date] = qty
     history: dict[tuple[int, str], dict[date, int]] = defaultdict(lambda: defaultdict(int))
     observed_dates: set[date] = set()
     for pid, qty, created_at in paid_lines:
@@ -604,7 +576,6 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
     active_days_count = len(sorted_dates)
     target_weekday = target_date.weekday()
 
-    # Compute genuine rolling 1-step backtest MAE & WAPE on observed historical days
     abs_errors: list[float] = []
     actual_sum = 0.0
     if len(sorted_dates) >= 2:
@@ -654,13 +625,13 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
             samples = [float(series.get(d, 0)) for d in ref_dates]
 
             if samples:
-                # Linearly weight recent observations higher
+
                 weights = [float(i + 1) for i in range(len(samples))]
                 w_mean = sum(s * w for s, w in zip(samples, weights)) / sum(weights)
                 variance = sum((s - w_mean) ** 2 for s in samples) / max(1, len(samples))
                 std_dev = math.sqrt(variance)
             else:
-                # Cold-start baseline explicitly flagged as low-confidence
+
                 w_mean = 3.0 if slot_lbl.startswith("Lunch") else 2.0
                 std_dev = 2.0
 
@@ -698,7 +669,6 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
     db.refresh(run)
     return run
 
-
 def _serialize_forecast_run(run: ForecastRun) -> dict[str, Any]:
     return {
         "runId": run.id,
@@ -727,7 +697,6 @@ def _serialize_forecast_run(run: ForecastRun) -> dict[str, Any]:
         ],
     }
 
-
 @router.get("/demand-forecasts")
 def get_demand_forecasts_v1(
     request: Request,
@@ -752,7 +721,6 @@ def get_demand_forecasts_v1(
         )
     return ok(request, _serialize_forecast_run(run))
 
-
 @router.post("/forecasts/run", status_code=201)
 def trigger_demand_forecast_run_v1(
     payload: ForecastRunIn,
@@ -770,7 +738,6 @@ def trigger_demand_forecast_run_v1(
     record_audit(db, "ai.forecast_run_created", "forecast_run", run.id, admin.id, {"forecast_date": target_d.isoformat()})
     db.commit()
     return ok(request, _serialize_forecast_run(run), status_code=201)
-
 
 @router.patch("/forecasts/items/{forecast_item_id}/override")
 def override_forecast_item_v1(
@@ -809,10 +776,6 @@ def override_forecast_item_v1(
         },
     )
 
-
-# ==============================================================================
-# AI 4 — Food-Waste Reduction & Predicted Ingredient Stockout Risk Insights
-# ==============================================================================
 @router.get("/insights/waste")
 def get_ai_waste_insights_v1(
     request: Request,
@@ -824,7 +787,6 @@ def get_ai_waste_insights_v1(
     today = datetime.now(tz).date()
     since_utc = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Ensure today's forecast exists to project recipe ingredient requirements
     run = db.scalar(
         select(ForecastRun)
         .options(joinedload(ForecastRun.items))
@@ -864,7 +826,6 @@ def get_ai_waste_insights_v1(
                 "recommendation": f"Restock at least {deficit} {ing.unit} before peak service to avoid mid-break stockout.",
             })
 
-    # Wastage hotspots (menu products + ingredients)
     prod_waste_rows = db.execute(
         select(
             InventoryMovement.product_id,
@@ -892,7 +853,6 @@ def get_ai_waste_insights_v1(
             "actionSuggestion": "Reduce pre-break batch size by 15-20% or switch to made-to-order during slow slots.",
         })
 
-    # Expiring batches within 5 days -> markdown / combo opportunity
     soon = today + timedelta(days=5)
     expiring = db.scalars(
         select(ProductBatch)
@@ -917,7 +877,6 @@ def get_ai_waste_insights_v1(
         for b in expiring
     ]
 
-    # Repeated manual stock adjustments (anomaly detection)
     adj_rows = db.execute(
         select(InventoryMovement.product_id, Product.name, func.count(InventoryMovement.id).label("adj_cnt"))
         .join(Product, Product.id == InventoryMovement.product_id)
@@ -947,10 +906,6 @@ def get_ai_waste_insights_v1(
         },
     )
 
-
-# ==============================================================================
-# AI 5 — Queue & Preparation ETA + Admin AI Performance Telemetry
-# ==============================================================================
 @router.get("/queue-eta")
 def get_ai_queue_eta_v1(
     request: Request,
@@ -967,7 +922,6 @@ def get_ai_queue_eta_v1(
                 max_prep = max(int(p or 8) for p in preps)
     eta = estimate_counter_wait_minutes(db, counterId, max_prep)
     return ok(request, {"counterId": counterId, "maxItemPrepMinutes": max_prep, **eta})
-
 
 @router.get("/metrics")
 def get_admin_ai_metrics_v1(
@@ -1009,11 +963,6 @@ def get_admin_ai_metrics_v1(
         },
     )
 
-
-# ==============================================================================
-# AI 6 — CampusBite AI v2.0 Complete Business Intelligence Suite (12 Modules)
-# Explicitly separates ACTUAL relational statistics from statistical PREDICTIONS.
-# ==============================================================================
 def _generate_executive_summary_narrative(actuals_payload: dict[str, Any], predictions_payload: dict[str, Any]) -> tuple[str, str]:
     cfg = get_settings()
     if cfg.gemini_api_key:
@@ -1052,7 +1001,6 @@ def _generate_executive_summary_narrative(actuals_payload: dict[str, Any], predi
         except Exception:
             pass
 
-    # Deterministic grounded narrative
     rev_str = actuals_payload["windowRevenueRupees"]
     ord_cnt = actuals_payload["windowPaidOrders"]
     top_food = actuals_payload["topItemName"] or "N/A"
@@ -1065,7 +1013,6 @@ def _generate_executive_summary_narrative(actuals_payload: dict[str, Any], predi
         f"Inventory intelligence flags {reorder_cnt} item/ingredient reorder action(s) and {actuals_payload['anomalyCount']} daily sales anomaly event(s) for review."
     )
     return narrative, "deterministic-grounded-bi-v2"
-
 
 @router.get("/bi/dashboard")
 def get_ai_business_intelligence_dashboard_v1(
@@ -1081,7 +1028,6 @@ def get_ai_business_intelligence_dashboard_v1(
     today_local = datetime.now(tz).date()
     since_utc = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Ensure today's demand forecast exists
     run = db.scalar(
         select(ForecastRun)
         .options(joinedload(ForecastRun.items).joinedload(ForecastItem.product))
@@ -1108,7 +1054,6 @@ def get_ai_business_intelligence_dashboard_v1(
         .order_by(Order.created_at.asc())
     ).unique().all()
 
-    # --- 1. Food Demand Prediction (PREDICTION) ---
     demand_by_item: dict[int, dict[str, Any]] = defaultdict(lambda: {"predictedUnits": 0, "recommendedPrep": 0, "lower": 0, "upper": 0})
     for fi in run.items:
         b = demand_by_item[fi.product_id]
@@ -1124,7 +1069,6 @@ def get_ai_business_intelligence_dashboard_v1(
         for pid, vals in sorted(demand_by_item.items(), key=lambda kv: -kv[1]["predictedUnits"])
     ]
 
-    # --- Aggregate observed daily & item actuals ---
     daily_rev_actual: dict[date, int] = defaultdict(int)
     daily_orders_actual: dict[date, int] = defaultdict(int)
     weekday_revs: dict[int, list[int]] = defaultdict(list)
@@ -1171,7 +1115,6 @@ def get_ai_business_intelligence_dashboard_v1(
         else overall_daily_mean * 0.25
     )
 
-    # --- 2. 7-Day Sales Forecast (PREDICTION) ---
     sales_forecast_7d = []
     proj_7d_total_paise = 0
     for offset in range(1, 8):
@@ -1195,7 +1138,6 @@ def get_ai_business_intelligence_dashboard_v1(
             "projectedOrders": max(0, proj_ord),
         })
 
-    # --- 3 & 4. Popular & Slow-Selling Food Identification (ACTUAL) ---
     catalog_perf = [
         {
             "menuItemId": p.id,
@@ -1221,7 +1163,6 @@ def get_ai_business_intelligence_dashboard_v1(
         for item in sorted(catalog_perf, key=lambda x: (x["unitsSold"], x["revenuePaise"], x["name"]))[:8]
     ]
 
-    # --- 5. Peak-Hour Prediction for Today's Weekday (PREDICTION) ---
     today_wd = today_local.weekday()
     wd_day_count = max(1, len(observed_weekday_counts.get(today_wd, set())))
     peak_hour_predictions = []
@@ -1237,7 +1178,6 @@ def get_ai_business_intelligence_dashboard_v1(
             "staffingSuggestion": "Open express QR pickup lane + pre-portion sides" if load_level == "HIGH" else "Standard counter staffing",
         })
 
-    # --- 6 & 7. Ingredient Demand Estimation & Inventory Reorder Recommendations (PREDICTION) ---
     recipes = db.scalars(select(RecipeItem).options(joinedload(RecipeItem.ingredient))).all()
     ing_projected: dict[int, Decimal] = defaultdict(lambda: Decimal("0.00"))
     for ri in recipes:
@@ -1292,7 +1232,6 @@ def get_ai_business_intelligence_dashboard_v1(
                 "urgency": "CRITICAL" if p.stock_quantity <= p.low_stock_threshold else "UPCOMING_3D",
             })
 
-    # --- 8. Food Wastage Analysis (ACTUAL + Actionable Suggestion) ---
     waste_rows = db.scalars(
         select(InventoryMovement)
         .options(joinedload(InventoryMovement.product))
@@ -1318,7 +1257,6 @@ def get_ai_business_intelligence_dashboard_v1(
             "recommendation": "Cut batch pre-prep by 20% and cook last-mile batches on demand." if waste_ratio >= 15 else "Monitor holding temperatures and FEFO rotation.",
         })
 
-    # --- 9. Unusual Sales Anomaly Detection via Z-Score (ACTUAL) ---
     sales_anomalies = []
     if len(daily_rev_actual) >= 3 and overall_daily_std > 0:
         for d_obs, r_p in sorted(daily_rev_actual.items(), reverse=True):
@@ -1338,7 +1276,6 @@ def get_ai_business_intelligence_dashboard_v1(
                     ),
                 })
 
-    # --- 10. Customer Purchasing Trends (ACTUAL) ---
     total_buyers = len(customer_orders)
     repeat_buyers = sum(1 for c in customer_orders.values() if c >= 2)
     diet_counts = db.execute(
@@ -1358,7 +1295,6 @@ def get_ai_business_intelligence_dashboard_v1(
         "dietaryPreferences": [{"preference": str(r[0]), "students": int(r[1])} for r in diet_counts if r[0]],
     }
 
-    # --- 12. Menu Engineering Optimization Matrix (Stars, Plowhorses, Puzzles, Dogs) ---
     food_prods = [p for p in products if p.item_type == "food"] or products
     avg_units_benchmark = (sum(item_units_sold.get(p.id, 0) for p in food_prods) / max(1, len(food_prods)))
     unit_margins = {p.id: (p.effective_price_paise - unit_costs.get(p.id, 0)) for p in food_prods}
@@ -1396,7 +1332,6 @@ def get_ai_business_intelligence_dashboard_v1(
             "action": quadrant_Guidance[quad],
         })
 
-    # --- 11. AI-Generated Daily Business Summary ---
     window_rev_paise = sum(o.effective_total_paise for o in paid_orders)
     actuals_meta = {
         "windowDays": days,

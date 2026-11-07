@@ -1,6 +1,3 @@
--- CampusBite AI v2.0 — Self-Hosted College PostgreSQL Bootstrap
--- Run as the 'postgres' superuser on college-owned hardware:
---   psql -U postgres -v app_password="'REPLACE_WITH_STRONG_32_CHAR_PASSWORD'" -f deploy/postgres-college/init_campusbite_db.sql
 
 CREATE ROLE campusbite_app WITH LOGIN PASSWORD :app_password NOSUPERUSER NOCREATEDB NOCREATEROLE CONNECTION LIMIT 80;
 

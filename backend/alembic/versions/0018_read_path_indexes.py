@@ -12,7 +12,6 @@ down_revision = "0017_checkout_idempotency"
 branch_labels = None
 depends_on = None
 
-# Keep this list intentionally limited to query shapes found in app/main.py.
 INDEXES = (
     ("ix_orders_user_created", "orders", ["user_id", "created_at", "id"]),
     ("ix_orders_payment_created", "orders", ["payment_status", "created_at", "id"]),
@@ -20,7 +19,6 @@ INDEXES = (
     ("ix_audit_events_entity_created", "audit_events", ["entity_type", "entity_id", "created_at", "id"]),
     ("ix_inventory_movements_order_created", "inventory_movements", ["order_id", "created_at", "id"]),
 )
-
 
 def upgrade():
     bind = op.get_bind()
@@ -33,7 +31,7 @@ def upgrade():
         if name in existing:
             continue
         if dialect == "postgresql":
-            # CONCURRENTLY cannot run inside a transaction block.
+
             with op.get_context().autocommit_block():
                 op.execute(
                     sa.text(
@@ -43,7 +41,6 @@ def upgrade():
                 )
         else:
             op.create_index(name, table, columns, unique=False, if_not_exists=True)
-
 
 def downgrade():
     bind = op.get_bind()

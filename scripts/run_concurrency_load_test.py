@@ -25,7 +25,6 @@ BACKEND_DIR = REPO_ROOT / "backend"
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-
 def run_benchmark() -> dict:
     with tempfile.TemporaryDirectory() as tmpdir:
         db_file = Path(tmpdir) / "load_test_v2.db"
@@ -116,7 +115,6 @@ def run_benchmark() -> dict:
 
         client = TestClient(app)
 
-        # --- Phase 1: 40 Concurrent Buyers Competing for 15 Stock Units ---
         def place_competing_order(tok: str) -> tuple[int, float]:
             t0 = time.perf_counter()
             res = client.post(
@@ -155,7 +153,6 @@ def run_benchmark() -> dict:
         assert remaining_stock == 0, f"Expected 0 remaining stock, got {remaining_stock}"
         assert remaining_stock >= 0, "Stock went negative!"
 
-        # --- Phase 2: 200 Mixed Break-Time Burst Requests ---
         endpoints = [
             ("/api/v1/menu/items?limit=24", None),
             ("/api/v1/counters", None),
@@ -218,7 +215,6 @@ def run_benchmark() -> dict:
         client.close()
         engine.dispose()
         return report
-
 
 if __name__ == "__main__":
     result = run_benchmark()

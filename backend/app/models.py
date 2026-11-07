@@ -25,10 +25,8 @@ from sqlalchemy.sql import expression
 
 from app.database import Base
 
-
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
-
 
 def rupees_to_paise(value: Decimal | int | float | str | None) -> int:
     if value is None:
@@ -36,18 +34,15 @@ def rupees_to_paise(value: Decimal | int | float | str | None) -> int:
     dec = value if isinstance(value, Decimal) else Decimal(str(value))
     return int((dec * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
-
 def paise_to_rupees(paise: int | None) -> Decimal:
     if paise is None:
         return Decimal("0.00")
     return (Decimal(int(paise)) / Decimal(100)).quantize(Decimal("0.01"))
 
-
 class UserRole(str, enum.Enum):
     STUDENT = "student"
     STAFF = "staff"
     ADMIN = "admin"
-
 
 class OrderStatus(str, enum.Enum):
     PENDING = "pending"
@@ -60,7 +55,6 @@ class OrderStatus(str, enum.Enum):
     CANCELLED = "cancelled"
     REFUND_PENDING = "refund_pending"
 
-
 class PaymentStatus(str, enum.Enum):
     PENDING = "pending"
     PAID = "paid"
@@ -70,10 +64,8 @@ class PaymentStatus(str, enum.Enum):
     PARTIALLY_REFUNDED = "partially_refunded"
     REFUNDED = "refunded"
 
-
 def new_uuid() -> str:
     return str(uuid.uuid4())
-
 
 class User(Base):
     __tablename__ = "users"
@@ -98,7 +90,6 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship(back_populates="user", foreign_keys="Order.user_id")
     counter_assignments: Mapped[list["UserCounterAssignment"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
-
 class RefreshSession(Base):
     """Rotating refresh token family for session management and revocation."""
     __tablename__ = "refresh_sessions"
@@ -118,7 +109,6 @@ class RefreshSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     user: Mapped[User] = relationship()
 
-
 class CanteenCounter(Base):
     """Physical pickup / kitchen service counter with independent slot capacity and hours."""
     __tablename__ = "canteen_counters"
@@ -131,7 +121,6 @@ class CanteenCounter(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     assignments: Mapped[list["UserCounterAssignment"]] = relationship(back_populates="counter", cascade="all, delete-orphan")
 
-
 class UserCounterAssignment(Base):
     """Scopes staff members to the specific canteen counters they are authorized to operate."""
     __tablename__ = "user_counter_assignments"
@@ -142,7 +131,6 @@ class UserCounterAssignment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     user: Mapped[User] = relationship(back_populates="counter_assignments")
     counter: Mapped[CanteenCounter] = relationship(back_populates="assignments")
-
 
 class Category(Base):
     __tablename__ = "categories"
@@ -155,7 +143,6 @@ class Category(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     products: Mapped[list["Product"]] = relationship(back_populates="category")
-
 
 class Product(Base):
     __tablename__ = "products"
@@ -204,7 +191,6 @@ class Product(Base):
             return int(self.price_paise)
         return rupees_to_paise(self.price)
 
-
 class MenuItemAvailability(Base):
     """Optional date/time service windows and slot-specific quantity caps for menu items."""
     __tablename__ = "menu_item_availability"
@@ -218,7 +204,6 @@ class MenuItemAvailability(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     product: Mapped[Product] = relationship()
 
-
 class Cart(Base):
     """Server-persisted student shopping cart shared across web and Android."""
     __tablename__ = "carts"
@@ -231,7 +216,6 @@ class Cart(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
     items: Mapped[list["CartItem"]] = relationship(back_populates="cart", cascade="all, delete-orphan")
 
-
 class CartItem(Base):
     __tablename__ = "cart_items"
     __table_args__ = (UniqueConstraint("cart_id", "product_id", name="uq_cart_product"),)
@@ -242,7 +226,6 @@ class CartItem(Base):
     customizations_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     cart: Mapped[Cart] = relationship(back_populates="items")
     product: Mapped[Product] = relationship()
-
 
 class Discount(Base):
     """Approved canteen discount / promotional offer configurable by admin."""
@@ -261,7 +244,6 @@ class Discount(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-
 
 class Order(Base):
     __tablename__ = "orders"
@@ -321,14 +303,12 @@ class Order(Base):
             return rupees_to_paise(self.final_total)
         return rupees_to_paise(self.subtotal)
 
-
 class AppSetting(Base):
     """Small key/value store for runtime switches and operational policies."""
     __tablename__ = "app_settings"
     key: Mapped[str] = mapped_column(String(60), primary_key=True)
     value: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
-
 
 class OrderItem(Base):
     __tablename__ = "order_items"
@@ -350,7 +330,6 @@ class OrderItem(Base):
     order: Mapped[Order] = relationship(back_populates="items")
     product: Mapped[Product] = relationship(back_populates="order_items")
 
-
 class OrderStatusHistory(Base):
     """Immutable state-transition log for every order."""
     __tablename__ = "order_status_history"
@@ -365,7 +344,6 @@ class OrderStatusHistory(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     order: Mapped[Order] = relationship(back_populates="status_history")
     actor: Mapped[User | None] = relationship()
-
 
 class Payment(Base):
     """Authoritative payment intent/capture record separate from order fulfillment state."""
@@ -390,7 +368,6 @@ class Payment(Base):
     order: Mapped[Order] = relationship(back_populates="payments")
     refunds: Mapped[list["Refund"]] = relationship(back_populates="payment_record")
 
-
 class Refund(Base):
     """Provider-backed refund record with gateway reference and lifecycle status."""
     __tablename__ = "refunds"
@@ -411,7 +388,6 @@ class Refund(Base):
     order: Mapped[Order] = relationship()
     payment_record: Mapped[Payment | None] = relationship(back_populates="refunds")
 
-
 class PickupToken(Base):
     """Short-lived opaque QR token issued for an eligible paid order."""
     __tablename__ = "pickup_tokens"
@@ -424,7 +400,6 @@ class PickupToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     order: Mapped[Order] = relationship()
-
 
 class Pickup(Base):
     """Single-use collection receipt written atomically when an order is handed over."""
@@ -439,7 +414,6 @@ class Pickup(Base):
     order: Mapped[Order] = relationship()
     collector: Mapped[User | None] = relationship()
 
-
 class Ingredient(Base):
     """Raw kitchen ingredient tracked for recipe consumption, restocking and wastage."""
     __tablename__ = "ingredients"
@@ -452,7 +426,6 @@ class Ingredient(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
-
 class RecipeItem(Base):
     """Maps a menu product to the ingredient quantity consumed per serving."""
     __tablename__ = "recipe_items"
@@ -463,7 +436,6 @@ class RecipeItem(Base):
     quantity_per_serving: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
     product: Mapped[Product] = relationship(back_populates="recipe_items")
     ingredient: Mapped[Ingredient] = relationship()
-
 
 class StockMovement(Base):
     """Append-only ledger for ingredient restocks, recipe consumption and wastage."""
@@ -483,7 +455,6 @@ class StockMovement(Base):
     ingredient: Mapped[Ingredient] = relationship()
     actor: Mapped[User | None] = relationship()
 
-
 class InventoryMovementType(str, enum.Enum):
     INITIAL = "initial"
     RECEIPT = "receipt"
@@ -491,7 +462,6 @@ class InventoryMovementType(str, enum.Enum):
     WASTE = "waste"
     RESERVATION = "reservation"
     RELEASE = "release"
-
 
 class InventoryMovement(Base):
     __tablename__ = "inventory_movements"
@@ -516,7 +486,6 @@ class InventoryMovement(Base):
     actor: Mapped[User | None] = relationship()
     order: Mapped[Order | None] = relationship()
 
-
 class AuditEvent(Base):
     """Append-only record of privileged operational changes and important events."""
     __tablename__ = "audit_events"
@@ -529,7 +498,6 @@ class AuditEvent(Base):
     details_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     actor: Mapped[User | None] = relationship()
-
 
 class Notification(Base):
     """Durable, per-user in-app notification with explicit read state."""
@@ -549,7 +517,6 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-
 class PushSubscription(Base):
     """Browser Web Push subscription endpoint per authenticated user."""
     __tablename__ = "push_subscriptions"
@@ -560,7 +527,6 @@ class PushSubscription(Base):
     auth: Mapped[str] = mapped_column(String(100), nullable=False)
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-
 
 class OutboxEvent(Base):
     """Transactional outbox event for reliable WebSocket and push delivery."""
@@ -574,7 +540,6 @@ class OutboxEvent(Base):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-
 class Favorite(Base):
     """Student's saved catalogue items; one row per student/product."""
     __tablename__ = "favorites"
@@ -584,7 +549,6 @@ class Favorite(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     product: Mapped[Product] = relationship()
-
 
 class OrderReview(Base):
     """Verified student feedback; one review per completed paid order."""
@@ -601,7 +565,6 @@ class OrderReview(Base):
     order: Mapped[Order] = relationship()
     user: Mapped[User] = relationship()
 
-
 class PaymentWebhookEvent(Base):
     """Durable idempotency ledger for payment-provider webhook deliveries."""
     __tablename__ = "payment_webhook_events"
@@ -614,7 +577,6 @@ class PaymentWebhookEvent(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-
 class Supplier(Base):
     """Canteen supplier contact record."""
     __tablename__ = "suppliers"
@@ -626,7 +588,6 @@ class Supplier(Base):
     notes: Mapped[str | None] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
 
 class PurchaseOrder(Base):
     """Supplier purchase order; lines are stored as a validated JSON snapshot."""
@@ -644,7 +605,6 @@ class PurchaseOrder(Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     supplier: Mapped[Supplier] = relationship()
     created_by: Mapped[User | None] = relationship()
-
 
 class ProductBatch(Base):
     """Received stock batch with optional expiry date and supplier traceability."""
@@ -665,7 +625,6 @@ class ProductBatch(Base):
     product: Mapped[Product] = relationship()
     supplier: Mapped[Supplier | None] = relationship()
 
-
 class BatchReservation(Base):
     """Tracks which received stock batches were consumed by a checkout reservation."""
     __tablename__ = "batch_reservations"
@@ -680,7 +639,6 @@ class BatchReservation(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-
 
 class CheckoutIdempotency(Base):
     """Durable user-scoped checkout idempotency ledger."""
@@ -699,7 +657,6 @@ class CheckoutIdempotency(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     user: Mapped[User] = relationship()
 
-
 class ForecastRun(Base):
     """Persisted demand-forecast run with measured backtest accuracy metrics."""
     __tablename__ = "forecast_runs"
@@ -710,7 +667,6 @@ class ForecastRun(Base):
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     items: Mapped[list["ForecastItem"]] = relationship(back_populates="run", cascade="all, delete-orphan")
-
 
 class ForecastItem(Base):
     """Per-item, per-slot predicted quantity with uncertainty bounds and staff override."""
@@ -734,7 +690,6 @@ class ForecastItem(Base):
     run: Mapped[ForecastRun] = relationship(back_populates="items")
     product: Mapped[Product] = relationship()
 
-
 class AIInteraction(Base):
     """Privacy-preserving AI telemetry: stores input hashes and structured metadata, never PII or secrets."""
     __tablename__ = "ai_interactions"
@@ -748,7 +703,6 @@ class AIInteraction(Base):
     response_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     output_metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-
 
 class OperationalExpense(Base):
     """Recorded canteen operating, utility, wage, packaging or supplier expense for profit analytics."""
@@ -769,7 +723,6 @@ class OperationalExpense(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-
 class DailySalesArchive(Base):
     """Permanent aggregated daily financial & operational rollup preserved by the hybrid retention engine."""
     __tablename__ = "daily_sales_archives"
@@ -780,7 +733,7 @@ class DailySalesArchive(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     archive_date: Mapped[date] = mapped_column(Date, nullable=False)
     counter_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    counter_key: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 0 = global rollup
+    counter_key: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     total_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     paid_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completed_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -797,7 +750,6 @@ class DailySalesArchive(Base):
     estimated_profit_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
-
 class RetentionCleanupRun(Base):
     """Audit log of scheduled 4-day hybrid retention executions and backup-health safety gate checks."""
     __tablename__ = "retention_cleanup_runs"
@@ -813,7 +765,6 @@ class RetentionCleanupRun(Base):
     deleted_counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
-
 
 class BackupRun(Base):
     """Catalog of encrypted GFS database backups (7 daily, 4 weekly, 3 monthly) and restore drills."""
@@ -834,7 +785,6 @@ class BackupRun(Base):
     detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
-
 class GeneratedReport(Base):
     """Audit trail of automated or on-demand PDF, Excel and CSV business reports."""
     __tablename__ = "generated_reports"
@@ -851,7 +801,6 @@ class GeneratedReport(Base):
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-
 class SecurityEvent(Base):
     """Security monitoring event log: failed logins, rate limits, invalid webhooks, MFA failures."""
     __tablename__ = "security_events"
@@ -866,7 +815,6 @@ class SecurityEvent(Base):
     details_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-
 class TemporaryApiLog(Base):
     """Short-lived operational API diagnostic log purged automatically after 4 days."""
     __tablename__ = "temporary_api_logs"
@@ -880,8 +828,6 @@ class TemporaryApiLog(Base):
     role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-
-# --- Automatic Decimal <-> integer paise synchronization ---
 @event.listens_for(Product, "before_insert")
 @event.listens_for(Product, "before_update")
 def _sync_product_paise(_mapper, _connection, target: Product) -> None:
@@ -889,7 +835,6 @@ def _sync_product_paise(_mapper, _connection, target: Product) -> None:
         target.price_paise = rupees_to_paise(target.price)
     elif target.price_paise is not None:
         target.price = paise_to_rupees(target.price_paise)
-
 
 @event.listens_for(Order, "before_insert")
 @event.listens_for(Order, "before_update")
@@ -904,7 +849,6 @@ def _sync_order_paise(_mapper, _connection, target: Order) -> None:
     else:
         target.total_paise = rupees_to_paise(target.final_total)
 
-
 @event.listens_for(OrderItem, "before_insert")
 @event.listens_for(OrderItem, "before_update")
 def _sync_order_item_paise(_mapper, _connection, target: OrderItem) -> None:
@@ -912,7 +856,6 @@ def _sync_order_item_paise(_mapper, _connection, target: OrderItem) -> None:
         target.unit_price_paise = rupees_to_paise(target.unit_price)
     if target.line_total is not None:
         target.line_total_paise = rupees_to_paise(target.line_total)
-
 
 @event.listens_for(Refund, "before_insert")
 @event.listens_for(Refund, "before_update")

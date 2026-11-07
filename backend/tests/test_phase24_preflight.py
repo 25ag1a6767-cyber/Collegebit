@@ -45,5 +45,5 @@ def test_preflight_never_echoes_secret_values(capsys, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "super-secret-value-that-must-not-print")
     result = module.main([])
     output = capsys.readouterr().out
-    assert result == 0  # Development mode treats the configured secret as acceptable.
+    assert result == 0
     assert "super-secret-value-that-must-not-print" not in output

@@ -12,7 +12,7 @@ def upgrade():
     bind = op.get_bind()
     inspector = inspect(bind)
     if "audit_events" in inspector.get_table_names():
-        return  # Initial metadata migration creates current tables on brand-new databases.
+        return
     op.create_table(
         "audit_events",
         sa.Column("id", sa.Integer(), primary_key=True),

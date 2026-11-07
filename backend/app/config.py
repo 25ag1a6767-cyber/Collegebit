@@ -9,8 +9,7 @@ class Settings(BaseSettings):
     app_version: str = "2.0.0"
     environment: str = "development"
     log_level: str = "INFO"
-    # Primary deployment uses self-hosted PostgreSQL on college-owned hardware (or Neon Free PostgreSQL for cloud dev).
-    # SQLite gives a zero-configuration local/test fallback.
+
     database_url: str = "sqlite:///./backend/ace_canteen.db"
     db_pool_size: int = 10
     db_max_overflow: int = 20
@@ -30,44 +29,44 @@ class Settings(BaseSettings):
     razorpay_key_secret: str = ""
     razorpay_webhook_secret: str = ""
     payment_currency: str = "INR"
-    # AI assistant (Google Gemini API, optional — deterministic verified-menu engine used when empty)
+
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
-    # Optional Web Push VAPID configuration
+
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:canteen@example.edu"
-    # Optional S3-compatible object storage configuration
+
     object_storage_bucket: str = ""
     object_storage_public_url: str = ""
-    # CORS origins for mobile / separate web builds (comma-separated; empty = same-origin only in production)
+
     cors_origins: str = ""
-    # Public base URL used in emailed links (no trailing slash), e.g. https://canteen.example.edu
+
     public_base_url: str = "http://127.0.0.1:8000"
     password_reset_minutes: int = 30
     email_verification_required: bool = False
     email_receipts_enabled: bool = True
-    # SMTP is optional. Without it, password-reset emails are only logged in development.
+
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
     smtp_use_ssl: bool = False
-    email_order_ready: bool = True  # email the student when their order is ready (needs SMTP in production)
-    # Canteen hours (24h HH:MM, in CANTEEN_TIMEZONE). Leave both empty for "always open, no pickup slots".
+    email_order_ready: bool = True
+
     canteen_open_time: str = ""
     canteen_close_time: str = ""
     canteen_timezone: str = "Asia/Kolkata"
-    canteen_open_days: str = "0,1,2,3,4,5"  # Monday=0 ... Sunday=6
+    canteen_open_days: str = "0,1,2,3,4,5"
     pickup_slot_minutes: int = 15
-    pickup_slot_capacity: int = 10  # max orders per pickup slot
+    pickup_slot_capacity: int = 10
     pickup_min_lead_minutes: int = 10
     overdue_preparation_minutes: int = 20
-    # Optional shared store for login/reset throttling and response caching so several app workers share state.
+
     redis_url: str = ""
     api_rate_limit_per_minute: int = 300
-    # Four-day hybrid data retention & encrypted GFS backup / disaster recovery policy
+
     temp_retention_days: int = 4
     backup_primary_dir: str = "backups/primary"
     backup_secondary_dir: str = "backups/secondary_offhost"
@@ -81,7 +80,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_security_settings(self):
-        # Normalize relative SQLite paths so the app always finds its db regardless of current working directory
+
         if self.database_url.startswith("sqlite:///.") or self.database_url.startswith("sqlite:///backend/"):
             from pathlib import Path
             project_root = Path(__file__).resolve().parent.parent.parent

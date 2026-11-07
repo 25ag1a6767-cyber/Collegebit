@@ -14,7 +14,6 @@ down_revision = "0018_read_path_indexes"
 branch_labels = None
 depends_on = None
 
-
 def _ensure_columns(bind, table: str, columns: list[sa.Column]) -> None:
     inspector = inspect(bind)
     if table not in inspector.get_table_names():
@@ -24,7 +23,6 @@ def _ensure_columns(bind, table: str, columns: list[sa.Column]) -> None:
         if col.name not in existing:
             op.add_column(table, col)
 
-
 def _ensure_index(bind, name: str, table: str, cols: list[str], unique: bool = False) -> None:
     inspector = inspect(bind)
     if table not in inspector.get_table_names():
@@ -33,15 +31,12 @@ def _ensure_index(bind, name: str, table: str, cols: list[str], unique: bool = F
     if name not in existing:
         op.create_index(name, table, cols, unique=unique)
 
-
 def upgrade():
     bind = op.get_bind()
     dialect = bind.dialect.name
 
-    # Create any brand-new tables cleanly on both SQLite and PostgreSQL.
     Base.metadata.create_all(bind=bind, checkfirst=True)
 
-    # Widen enum VARCHAR columns on PostgreSQL before storing longer state names.
     if dialect == "postgresql":
         op.alter_column("orders", "status", existing_type=sa.String(9), type_=sa.String(30), existing_nullable=False)
         op.alter_column("orders", "payment_status", existing_type=sa.String(8), type_=sa.String(30), existing_nullable=False)
@@ -153,7 +148,6 @@ def upgrade():
         sa.Column("output_metadata_json", sa.Text(), nullable=True),
     ])
 
-    # Backfill integer paise fields for existing rows.
     bind.execute(sa.text("UPDATE products SET price_paise = CAST(ROUND(price * 100) AS INTEGER) WHERE price_paise IS NULL"))
     bind.execute(sa.text("UPDATE order_items SET unit_price_paise = CAST(ROUND(unit_price * 100) AS INTEGER), line_total_paise = CAST(ROUND(line_total * 100) AS INTEGER) WHERE unit_price_paise IS NULL"))
     bind.execute(sa.text(
@@ -166,18 +160,15 @@ def upgrade():
         "WHERE subtotal_paise IS NULL OR subtotal_paise = 0"
     ))
 
-    # Normalize empty phone strings to NULL so the unique index allows unset phones.
     bind.execute(sa.text("UPDATE users SET phone = NULL WHERE phone IS NOT NULL AND TRIM(phone) = ''"))
     bind.execute(sa.text("UPDATE users SET phone = NULL WHERE id NOT IN (SELECT MIN(id) FROM users WHERE phone IS NOT NULL GROUP BY phone)"))
 
-    # Indexes specified in Section 5 of the production specification.
     _ensure_index(bind, "ix_orders_counter_status_created", "orders", ["counter_id", "status", "created_at"])
     _ensure_index(bind, "ix_orders_order_number", "orders", ["order_number"], unique=True)
     _ensure_index(bind, "ix_products_counter_available", "products", ["counter_id", "is_available"])
     _ensure_index(bind, "ix_payments_provider_payment", "payments", ["provider_payment_id"])
     _ensure_index(bind, "ix_notifications_user_read_at", "notifications", ["user_id", "read_at"])
     _ensure_index(bind, "ix_users_phone", "users", ["phone"], unique=True)
-
 
 def downgrade():
     bind = op.get_bind()

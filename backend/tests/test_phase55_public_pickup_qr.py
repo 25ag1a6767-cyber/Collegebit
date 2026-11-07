@@ -7,7 +7,6 @@ from app.database import SessionLocal, Base, engine
 from app.models import User, UserRole, Product, Category, Order, OrderItem, OrderStatus, PaymentStatus
 from app.security import hash_password
 
-
 def _make_paid_order(status=OrderStatus.READY):
     Base.metadata.create_all(bind=engine)
     with SessionLocal() as db:
@@ -24,7 +23,6 @@ def _make_paid_order(status=OrderStatus.READY):
         db.add(OrderItem(order_id=order.id, product_id=product.id, product_name=product.name, unit_price=45, quantity=1, line_total=45))
         db.commit()
         return order.id
-
 
 def test_phone_qr_url_opens_mobile_pickup_page_and_displays_non_private_order_details():
     order_id = _make_paid_order()
@@ -43,18 +41,15 @@ def test_phone_qr_url_opens_mobile_pickup_page_and_displays_non_private_order_de
         assert body["subtotal"] == "45.00"
         assert "customer_name" not in body and "customer_email" not in body and "user_id" not in body
 
-
 def test_staff_scanner_accepts_the_https_url_encoded_in_qr():
     code = "123.abcdef"
     assert _pickup_code_from_input(f"https://canteen.example.edu/pickup#code={code}") == code
     assert _pickup_code_from_input(code) == code
 
-
 def test_invalid_public_pickup_qr_is_rejected():
     with TestClient(app) as client:
         response = client.post("/api/pickup/status", json={"code": "not-a-valid-code"})
         assert response.status_code in (404, 422)
-
 
 def test_staff_scan_and_collection_records_one_time_collection_timestamp():
     order_id = _make_paid_order()

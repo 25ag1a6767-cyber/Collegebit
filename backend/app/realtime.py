@@ -19,14 +19,12 @@ from app.models import OutboxEvent, PushSubscription, User, UserCounterAssignmen
 
 logger = logging.getLogger("ace_canteen.realtime")
 
-
 @dataclass
 class ConnectedClient:
     websocket: WebSocket
     user_id: int | None = None
     role: str = "public"
     counter_ids: set[int] = field(default_factory=set)
-
 
 class RealtimeHub:
     """In-process WebSocket pub/sub hub backed by the database outbox."""
@@ -101,7 +99,7 @@ class RealtimeHub:
                     return True
                 return counter_id in client.counter_ids
             return False
-        # Student: strictly own user-targeted events only.
+
         return target_user_id is not None and client.user_id == target_user_id
 
     def notify_flush(self) -> None:
@@ -113,9 +111,7 @@ class RealtimeHub:
             except Exception:
                 logger.debug("Could not schedule async outbox flush", exc_info=True)
 
-
 hub = RealtimeHub()
-
 
 def stage_outbox_event(
     db: Session,
@@ -134,7 +130,6 @@ def stage_outbox_event(
     )
     db.add(row)
     return row
-
 
 def send_web_push_to_user(db: Session, user_id: int, title: str, body: str, data: dict[str, Any] | None = None) -> int:
     """Deliver Web Push notifications when VAPID credentials are configured."""
@@ -168,7 +163,6 @@ def send_web_push_to_user(db: Session, user_id: int, title: str, body: str, data
             logger.debug("Web push delivery failed", exc_info=True)
     return sent
 
-
 async def flush_outbox_async(limit: int = 100) -> int:
     """Deliver pending outbox rows to connected WebSockets and mark them delivered."""
     processed = 0
@@ -197,7 +191,6 @@ async def flush_outbox_async(limit: int = 100) -> int:
             processed += 1
         db.commit()
     return processed
-
 
 def build_ws_client_for_user(db: Session, user: User | None, websocket: WebSocket) -> ConnectedClient:
     if user is None:

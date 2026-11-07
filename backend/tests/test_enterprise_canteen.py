@@ -38,10 +38,8 @@ from app.models import (
 from app.modules.common import format_token_display
 from app.security import create_access_token, hash_password
 
-
 def _hdr(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
-
 
 import uuid
 
@@ -61,7 +59,6 @@ def _seed_test_user(role: UserRole, prefix: str) -> tuple[int, str, str]:
         db.commit()
         db.refresh(user)
         return user.id, user.email, "Pass#123456"
-
 
 def _ensure_counters_and_items() -> tuple[int, int, int, int]:
     """Create two distinct counters (Snacks & Beverages) and one item for each."""
@@ -119,12 +116,10 @@ def _ensure_counters_and_items() -> tuple[int, int, int, int]:
         db.commit()
         return c_snacks.id, c_bev.id, item_snack.id, item_bev.id
 
-
 def _login(client: TestClient, email: str, pw: str) -> str:
     res = client.post("/api/v1/auth/login", json={"identifier": email, "password": pw})
     assert res.status_code == 200, res.text
     return res.json()["data"]["accessToken"]
-
 
 def _mark_paid(order_id: int) -> None:
     with SessionLocal() as db:
@@ -144,14 +139,12 @@ def _mark_paid(order_id: int) -> None:
         db.add(p)
         db.commit()
 
-
 def test_smart_token_formatting_and_display():
     assert format_token_display(1, counter_name="Snacks Counter", token_date="2026-11-07") == "S-1107-001"
     assert format_token_display(2, counter_name="Beverages Counter", token_date="2026-11-07") == "B-1107-002"
     assert format_token_display(12, counter_name="Lunch Counter", token_date="2026-11-07") == "L-1107-012"
     assert format_token_display(5, counter_name=None, token_date="2026-11-07") == "CB-1107-005"
     assert format_token_display(0) == "-"
-
 
 def test_dedicated_pickup_inspection_and_collection_workflow():
     c_snack_id, _, item_snack_id, _ = _ensure_counters_and_items()
@@ -162,7 +155,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         stu_tok = _login(client, stu_email, stu_pw)
         stf_tok = _login(client, stf_email, stf_pw)
 
-        # 1. Student places order
         ord_res = client.post(
             "/api/v1/orders",
             headers=_hdr(stu_tok),
@@ -172,7 +164,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         order_data = ord_res.json()["data"]["order"]
         order_id = order_data["id"]
 
-        # 2. Inspect before payment -> MUST NOT be eligible for collection!
         insp_unpaid = client.post(
             "/api/v1/pickups/inspect",
             headers=_hdr(stf_tok),
@@ -182,7 +173,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert insp_unpaid.json()["data"]["eligibleForCollection"] is False
         assert "Unpaid" in insp_unpaid.json()["data"]["blockReason"]
 
-        # 3. Mark paid -> Inspect while in kitchen -> still NOT eligible (not ready!)
         _mark_paid(order_id)
         insp_paid_unready = client.post(
             "/api/v1/pickups/inspect",
@@ -193,17 +183,14 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert insp_paid_unready.json()["data"]["eligibleForCollection"] is False
         assert "not marked it READY" in insp_paid_unready.json()["data"]["blockReason"]
 
-        # 4. Student gets QR pickup token
         qr_res = client.post(f"/api/v1/orders/{order_id}/pickup-token", headers=_hdr(stu_tok))
         assert qr_res.status_code == 200
         raw_qr_token = qr_res.json()["data"]["pickupToken"]
         manual_code = qr_res.json()["data"]["manualPickupCode"]
 
-        # 5. Kitchen marks ready
         ready_res = client.post(f"/api/v1/staff/orders/{order_id}/ready", headers=_hdr(stf_tok))
         assert ready_res.status_code == 200
 
-        # 6. Staff scans QR -> Inspect yields full rich order details and ELIGIBLE FOR COLLECTION = TRUE!
         insp_ready = client.post(
             "/api/v1/pickups/inspect",
             headers=_hdr(stf_tok),
@@ -220,7 +207,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert idata["items"][0]["quantity"] == 2
         assert idata["items"][0]["name"] == "Crispy Veg Burger"
 
-        # 7. Staff confirms collection atomically
         col_res = client.post(
             "/api/v1/pickups/verify",
             headers=_hdr(stf_tok),
@@ -231,7 +217,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert cdata["verified"] is True
         assert cdata["order"]["rawStatus"] == "collected"
 
-        # 8. Immediate duplicate collection MUST FAIL with 409 ORDER_ALREADY_COLLECTED!
         dup_res = client.post(
             "/api/v1/pickups/verify",
             headers=_hdr(stf_tok),
@@ -240,7 +225,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert dup_res.status_code == 409
         assert dup_res.json()["error"]["code"] == "ORDER_ALREADY_COLLECTED"
 
-        # 9. Re-inspecting now clearly reveals "ALREADY COLLECTED" with staff name and timestamp!
         insp_after = client.post(
             "/api/v1/pickups/inspect",
             headers=_hdr(stf_tok),
@@ -249,7 +233,6 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         assert insp_after.status_code == 200
         assert insp_after.json()["data"]["eligibleForCollection"] is False
         assert "ALREADY COLLECTED" in insp_after.json()["data"]["blockReason"]
-
 
 def test_public_tv_token_display_board_endpoint_and_html():
     c_snack_id, _, item_snack_id, _ = _ensure_counters_and_items()
@@ -260,7 +243,6 @@ def test_public_tv_token_display_board_endpoint_and_html():
         stu_tok = _login(client, stu_email, stu_pw)
         stf_tok = _login(client, stf_email, stf_pw)
 
-        # Place & pay an order
         ord_res = client.post(
             "/api/v1/orders",
             headers=_hdr(stu_tok),
@@ -269,16 +251,13 @@ def test_public_tv_token_display_board_endpoint_and_html():
         order_id = ord_res.json()["data"]["order"]["id"]
         _mark_paid(order_id)
 
-        # Mark ready
         client.post(f"/api/v1/staff/orders/{order_id}/ready", headers=_hdr(stf_tok))
 
-        # Check public /display HTML page
         html_res = client.get("/display")
         assert html_res.status_code == 200
         assert "CAMPUSBITE AI" in html_res.text
         assert "CANTEEN TOKEN DISPLAY BOARD" in html_res.text
 
-        # Check /api/v1/queue/display-board endpoint
         board_res = client.get("/api/v1/queue/display-board")
         assert board_res.status_code == 200
         bdata = board_res.json()["data"]
@@ -286,11 +265,10 @@ def test_public_tv_token_display_board_endpoint_and_html():
         assert "preparingTokens" in bdata
         assert "recentlyCollected" in bdata
         assert any(t["orderId"] == order_id for t in bdata["readyTokens"])
-        # Privacy check: zero student names or phones in display board data!
+
         raw_text = board_res.text
         assert "User tv-stu" not in raw_text
         assert "stu-@" not in raw_text
-
 
 def test_token_management_search_endpoint():
     c_snack_id, _, item_snack_id, _ = _ensure_counters_and_items()
@@ -317,27 +295,23 @@ def test_token_management_search_endpoint():
         assert matched["customerName"] == "User tok-stu"
         assert "Crispy Veg Burger" in matched["itemsSummary"]
 
-
 def test_direct_bi_analytics_report_downloads():
     _, adm_email, adm_pw = _seed_test_user(UserRole.ADMIN, "bi-dl-adm")
 
     with TestClient(app) as client:
         adm_tok = _login(client, adm_email, adm_pw)
 
-        # Download Analytics PDF
         pdf_res = client.get("/api/v1/admin/reports/download?reportType=daily_sales&format=pdf", headers=_hdr(adm_tok))
         assert pdf_res.status_code == 200
         assert pdf_res.headers["content-type"] == "application/pdf"
         assert pdf_res.content.startswith(b"%PDF-1.4")
 
-        # Download Analytics Excel (.xlsx)
         xlsx_res = client.get("/api/v1/admin/reports/download?reportType=daily_sales&format=xlsx", headers=_hdr(adm_tok))
         assert xlsx_res.status_code == 200
         assert "spreadsheetml" in xlsx_res.headers["content-type"]
         with zipfile.ZipFile(io.BytesIO(xlsx_res.content)) as zf:
             assert "[Content_Types].xml" in zf.namelist()
 
-        # Download Analytics CSV
         csv_res = client.get("/api/v1/admin/reports/download?reportType=daily_sales&format=csv", headers=_hdr(adm_tok))
         assert csv_res.status_code == 200
         assert "text/csv" in csv_res.headers["content-type"]

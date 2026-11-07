@@ -13,7 +13,6 @@ from app.database import SessionLocal
 from app.main import app, settings
 from app.models import BatchReservation, Category, InventoryMovement, Notification, Order, Product, ProductBatch, User
 
-
 class FakeGatewayResponse:
     def __init__(self, payload):
         self.payload = payload
@@ -23,7 +22,6 @@ class FakeGatewayResponse:
 
     def json(self):
         return self.payload
-
 
 def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypatch):
     suffix = uuid.uuid4().hex[:12]
@@ -62,7 +60,7 @@ def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypa
             created = client.post("/api/payments/create-order", headers=checkout_headers, json=checkout_payload)
             assert created.status_code == 201, created.text
             order_id = created.json()["order"]["id"]
-            # A network retry of the same checkout returns the same order and never calls Razorpay twice.
+
             replay = client.post("/api/payments/create-order", headers=checkout_headers, json=checkout_payload)
             assert replay.status_code == 201, replay.text
             assert replay.headers.get("Idempotency-Replayed") == "true"
@@ -71,7 +69,6 @@ def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypa
             mismatch = client.post("/api/payments/create-order", headers=checkout_headers, json=changed_payload)
             assert mismatch.status_code == 409
 
-            # A capture webhook missing its currency is not accepted as proof of payment.
             webhook_body = json.dumps({"event": "payment.captured", "payload": {"payment": {"entity": {
                 "id": payment_id, "order_id": gateway_order_id, "amount": 1250
             }}}}).encode()
@@ -83,7 +80,6 @@ def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypa
             with SessionLocal() as db:
                 assert db.get(Order, order_id).payment_status.value == "pending"
 
-            # Empty response is ambiguous: provider propagation can be delayed.
             status = client.get(f"/api/payments/status/{order_id}", headers=headers)
             assert status.status_code == 200
             assert status.json()["retry_allowed"] is False
@@ -95,7 +91,6 @@ def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypa
             assert status.json()["retry_allowed"] is False
             assert status.json()["status"] == "processing"
 
-            # Even a captured payment with the wrong amount must never enable retry.
             provider_items["items"] = [{"id": payment_id, "order_id": gateway_order_id, "amount": 1,
                                         "currency": "INR", "status": "captured"}]
             status = client.get(f"/api/payments/status/{order_id}", headers=headers)
@@ -114,7 +109,6 @@ def test_payment_status_only_allows_retry_after_explicit_failed_attempt(monkeypa
             assert status.json()["retry_allowed"] is False
             assert status.json()["status"] == "paid"
 
-            # A different event ID for the same capture must not create a duplicate notification.
             with SessionLocal() as db:
                 order = db.get(Order, order_id)
                 user_id = order.user_id

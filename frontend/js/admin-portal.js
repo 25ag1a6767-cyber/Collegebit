@@ -1,7 +1,4 @@
-/* CampusBite AI v2.0 — Dedicated Enterprise Admin & Business Intelligence Portal Controller.
- * Strictly enforces ADMIN RBAC, CSP (zero inline styles/scripts), real PostgreSQL/SQLAlchemy metrics,
- * 10 KPI cards, 16 interactive SVG charts, 14 PDF/XLSX/CSV reports, 12 AI BI modules, and full operations.
- */
+
 (function () {
   "use strict";
 

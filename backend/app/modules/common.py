@@ -42,8 +42,6 @@ from app.models import (
 )
 from app.realtime import hub, send_web_push_to_user, stage_outbox_event
 
-
-# Canonical uppercase external state mapping for /api/v1
 V1_ORDER_STATUS_OUT = {
     OrderStatus.PENDING: "PENDING_PAYMENT",
     OrderStatus.CONFIRMED: "CONFIRMED",
@@ -66,12 +64,10 @@ V1_PAYMENT_STATUS_OUT = {
     PaymentStatus.REFUNDED: "REFUNDED",
 }
 
-
 def as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
-
 
 def parse_tags(csv_or_json: str | None, fallback_text: str | None = None) -> list[str]:
     raw = csv_or_json or fallback_text or ""
@@ -87,7 +83,6 @@ def parse_tags(csv_or_json: str | None, fallback_text: str | None = None) -> lis
             pass
     return [part.strip() for part in raw.split(",") if part.strip()]
 
-
 def parse_json_safe(raw: str | None, default: Any) -> Any:
     if not raw:
         return default
@@ -96,11 +91,9 @@ def parse_json_safe(raw: str | None, default: Any) -> Any:
     except (TypeError, ValueError):
         return default
 
-
 def get_app_setting(db: Session, key: str, default: str = "") -> str:
     row = db.get(AppSetting, key)
     return row.value if row else default
-
 
 def set_app_setting(db: Session, key: str, value: str) -> None:
     row = db.get(AppSetting, key)
@@ -108,7 +101,6 @@ def set_app_setting(db: Session, key: str, value: str) -> None:
         db.add(AppSetting(key=key, value=str(value)[:500]))
     else:
         row.value = str(value)[:500]
-
 
 def get_tax_rate_bps(db: Session) -> int:
     """Return configured tax rate in basis points (e.g. 500 = 5.00%). Default 0."""
@@ -118,7 +110,6 @@ def get_tax_rate_bps(db: Session) -> int:
         return max(0, min(val, 2800))
     except ValueError:
         return 0
-
 
 def ensure_default_counter(db: Session) -> CanteenCounter:
     """Guarantee at least one active counter exists so products and orders always resolve cleanly."""
@@ -136,7 +127,6 @@ def ensure_default_counter(db: Session) -> CanteenCounter:
         db.add(counter)
         db.flush()
     return counter
-
 
 def record_audit(
     db: Session,
@@ -161,7 +151,6 @@ def record_audit(
         )
     )
 
-
 def record_order_status_change(
     db: Session,
     order: Order,
@@ -179,7 +168,6 @@ def record_order_status_change(
             reason=reason[:255] if reason else None,
         )
     )
-
 
 def notify_user(
     db: Session,
@@ -211,7 +199,6 @@ def notify_user(
         send_web_push_to_user(db, user_id, title, message, {"entityType": entity_type, "entityId": str(entity_id) if entity_id else None})
     return notif
 
-
 def notify_counter_staff(
     db: Session,
     counter_id: int | None,
@@ -231,7 +218,6 @@ def notify_counter_staff(
             recipients[st.id] = st
     for u in recipients.values():
         notify_user(db, u.id, notification_type, title, message, entity_type=entity_type, entity_id=entity_id, push=False)
-
 
 def record_product_stock_movement(
     db: Session,
@@ -279,7 +265,6 @@ def record_product_stock_movement(
             counter_id=product.counter_id,
         )
 
-
 def reserve_batch_stock_fefo(db: Session, product_id: int, quantity: int, order_id: int) -> None:
     today = datetime.now(ZoneInfo(get_settings().canteen_timezone)).date()
     batches = db.scalars(
@@ -302,7 +287,6 @@ def reserve_batch_stock_fefo(db: Session, product_id: int, quantity: int, order_
             db.add(BatchReservation(order_id=order_id, batch_id=b.id, quantity=take))
             rem -= take
 
-
 def release_batch_stock_once(db: Session, order_id: int) -> int:
     rows = db.scalars(
         select(BatchReservation)
@@ -318,7 +302,6 @@ def release_batch_stock_once(db: Session, order_id: int) -> int:
             restored += alloc.quantity
         alloc.released_at = now
     return restored
-
 
 def consume_recipe_ingredients(db: Session, product_id: int, servings: int, order_id: int, actor_user_id: int | None = None) -> None:
     """Deduct linked recipe ingredients atomically when an order reserves stock."""
@@ -358,7 +341,6 @@ def consume_recipe_ingredients(db: Session, product_id: int, servings: int, orde
                 entity_type="ingredient",
                 entity_id=ing.id,
             )
-
 
 def restore_recipe_ingredients(db: Session, order_id: int, actor_user_id: int | None = None) -> None:
     """Reverse recipe ingredient deductions once if an unfulfilled order is cancelled."""
@@ -400,7 +382,6 @@ def restore_recipe_ingredients(db: Session, order_id: int, actor_user_id: int | 
             )
         )
 
-
 def compute_customization_extra_paise(product: Product, chosen_customizations: dict[str, Any] | list[Any] | None) -> tuple[int, dict[str, Any]]:
     """Validate selected customizations against the item's declared options and sum extra paise."""
     if not chosen_customizations:
@@ -434,7 +415,6 @@ def compute_customization_extra_paise(product: Product, chosen_customizations: d
                 cleaned.pop(k_clean, None)
     return extra_paise, cleaned
 
-
 def evaluate_discount_paise(db: Session, code: str | None, subtotal_paise: int, *, lock_for_update: bool = False) -> tuple[int, Discount | None]:
     if not code or not code.strip():
         return 0, None
@@ -465,7 +445,6 @@ def evaluate_discount_paise(db: Session, code: str | None, subtotal_paise: int, 
     discount_paise = max(0, min(discount_paise, subtotal_paise))
     return discount_paise, offer
 
-
 def estimate_counter_wait_minutes(db: Session, counter_id: int | None, extra_prep_minutes: int = 8) -> dict[str, Any]:
     """Transparent queue + preparation duration + recent fulfillment speed formula."""
     active_statuses = [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.ACCEPTED, OrderStatus.PREPARING]
@@ -477,7 +456,6 @@ def estimate_counter_wait_minutes(db: Session, counter_id: int | None, extra_pre
     counter = db.get(CanteenCounter, counter_id) if counter_id else None
     parallel_capacity = max(2, min(8, (counter.capacity_per_slot // 4) if counter and counter.capacity_per_slot else 3))
 
-    # Measure median fulfillment duration from recent completed/collected orders today if available.
     today = datetime.now(ZoneInfo(get_settings().canteen_timezone)).date().isoformat()
     recent_orders = db.scalars(
         select(Order)
@@ -508,11 +486,9 @@ def estimate_counter_wait_minutes(db: Session, counter_id: int | None, extra_pre
         "sampleSize": len(measured_durations),
     }
 
-
 def generate_manual_pickup_code() -> str:
     alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"
     return "".join(secrets.choice(alphabet) for _ in range(6))
-
 
 DEFAULT_STAFF_PERMISSIONS: dict[str, bool] = {
     "canAcceptOrders": True,
@@ -522,7 +498,6 @@ DEFAULT_STAFF_PERMISSIONS: dict[str, bool] = {
     "canManageAvailability": True,
     "canManageInventory": True,
 }
-
 
 def get_effective_staff_permissions(user: User) -> dict[str, bool]:
     if user.role == UserRole.ADMIN:
@@ -537,12 +512,10 @@ def get_effective_staff_permissions(user: User) -> dict[str, bool]:
                 merged[k] = bool(raw[k])
     return merged
 
-
 def assert_staff_permission(user: User, perm_key: str) -> None:
     perms = get_effective_staff_permissions(user)
     if not perms.get(perm_key, False):
         raise ApiError(403, "PERMISSION_DENIED", f"Your staff account is not granted '{perm_key}' permission.")
-
 
 def serialize_user_v1(db: Session, user: User) -> dict[str, Any]:
     counter_ids = db.scalars(select(UserCounterAssignment.counter_id).where(UserCounterAssignment.user_id == user.id)).all()
@@ -564,7 +537,6 @@ def serialize_user_v1(db: Session, user: User) -> dict[str, Any]:
         "createdAt": as_utc(user.created_at),
     }
 
-
 def serialize_counter_v1(db: Session, counter: CanteenCounter) -> dict[str, Any]:
     eta = estimate_counter_wait_minutes(db, counter.id, 6)
     return {
@@ -578,7 +550,6 @@ def serialize_counter_v1(db: Session, counter: CanteenCounter) -> dict[str, Any]
         "approximateWaitMinutes": eta["estimatedMinutes"],
         "createdAt": as_utc(counter.created_at),
     }
-
 
 def serialize_product_v1(product: Product, *, rating_avg: float | None = None, rating_count: int = 0) -> dict[str, Any]:
     price_paise = product.effective_price_paise
@@ -606,7 +577,6 @@ def serialize_product_v1(product: Product, *, rating_avg: float | None = None, r
         "ratingAverage": rating_avg,
         "ratingCount": rating_count,
     }
-
 
 def format_token_display(
     token_number: int | None,
@@ -638,7 +608,6 @@ def format_token_display(
     if token_date and len(token_date) >= 10:
         date_tag = f"-{token_date[5:7]}{token_date[8:10]}"
     return f"{prefix}{date_tag}-{token_number:03d}" if date_tag else f"{prefix}-{token_number:03d}"
-
 
 def serialize_order_v1(order: Order, *, include_customer: bool = False, include_history: bool = False) -> dict[str, Any]:
     cfg = get_settings()
@@ -732,7 +701,6 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
             for h in sorted(order.status_history, key=lambda x: x.id)
         ]
     return out
-
 
 def commit_and_flush_outbox(db: Session) -> None:
     db.commit()

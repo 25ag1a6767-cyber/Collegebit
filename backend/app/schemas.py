@@ -84,7 +84,6 @@ class CategoryCreate(BaseModel):
     item_type: str = Field(pattern="^(food|stationery)$")
     description: str | None = Field(default=None, max_length=255)
 
-
 class ProductUpdate(BaseModel):
     category_id: int | None = Field(default=None, gt=0)
     name: str | None = Field(default=None, min_length=2, max_length=120)
@@ -104,7 +103,6 @@ class CategoryUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
 
-
 class CanteenOrderingIn(BaseModel):
     paused: bool
     message: str | None = Field(default=None, max_length=200)
@@ -120,7 +118,6 @@ class ChangePasswordIn(BaseModel):
     current_password: str = Field(min_length=1, max_length=128)
     new_password: str = Field(min_length=12, max_length=128)
 
-
 class OrderItemIn(BaseModel):
     product_id: int = Field(gt=0)
     quantity: int = Field(ge=1, le=50)
@@ -156,7 +153,6 @@ class OrderOut(BaseModel):
     items: list[OrderItemOut]
     model_config = ConfigDict(from_attributes=True)
 
-
 class OrderItemIn(BaseModel):
     product_id: int = Field(gt=0)
     quantity: int = Field(ge=1, le=50)
@@ -191,7 +187,6 @@ class OrderOut(BaseModel):
     updated_at: datetime
     items: list[OrderItemOut]
     model_config = ConfigDict(from_attributes=True)
-
 
 class StockAdjustmentIn(BaseModel):
     product_id: int = Field(gt=0)

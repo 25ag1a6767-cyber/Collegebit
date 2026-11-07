@@ -37,8 +37,7 @@ def upgrade():
         )
         op.create_index("ix_inventory_movements_product_created", "inventory_movements", ["product_id", "created_at"])
         op.create_index("ix_inventory_movements_created", "inventory_movements", ["created_at"])
-    # 0001 uses current metadata for new databases, so the table may already exist here.
-    # Backfill only products with no ledger entries to keep this migration idempotent.
+
     op.get_bind().execute(sa.text("""INSERT INTO inventory_movements (product_id, actor_user_id, order_id, movement_type, quantity_delta, quantity_before, quantity_after, reason, created_at) SELECT p.id, NULL, NULL, 'INITIAL', p.stock_quantity, 0, p.stock_quantity, 'Opening balance recorded during Phase 11 migration', CURRENT_TIMESTAMP FROM products p WHERE p.stock_quantity > 0 AND NOT EXISTS (SELECT 1 FROM inventory_movements m WHERE m.product_id = p.id)"""))
 
 def downgrade():

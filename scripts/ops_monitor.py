@@ -7,7 +7,6 @@ from pathlib import Path
 from urllib.error import URLError, HTTPError
 from urllib.request import Request, urlopen
 
-
 def check_endpoint(url: str, timeout: float) -> dict:
     request = Request(url, headers={"User-Agent": "ACE-Canteen-Ops-Monitor/1.0"})
     started = time.monotonic()
@@ -22,7 +21,6 @@ def check_endpoint(url: str, timeout: float) -> dict:
         return {"ok": False, "status_code": exc.code, "latency_ms": round((time.monotonic()-started)*1000, 1), "detail": "HTTP error"}
     except (URLError, TimeoutError, OSError) as exc:
         return {"ok": False, "status_code": None, "latency_ms": round((time.monotonic()-started)*1000, 1), "detail": type(exc).__name__}
-
 
 def check_backup(directory: Path, max_age_hours: float) -> dict:
     now = time.time()
@@ -52,7 +50,6 @@ def check_backup(directory: Path, max_age_hours: float) -> dict:
         return {"ok": False, "latest": latest.name, "age_hours": round(age, 2), "max_age_hours": max_age_hours, "detail": f"backup verification failed: {exc}"}
     fresh = age <= max_age_hours
     return {"ok": fresh, "latest": latest.name, "age_hours": round(age, 2), "max_age_hours": max_age_hours, "detail": "fresh and checksum verified" if fresh else "backup is stale"}
-
 
 def main() -> int:
     parser=argparse.ArgumentParser(description=__doc__)

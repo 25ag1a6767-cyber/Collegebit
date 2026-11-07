@@ -64,10 +64,6 @@ from app.security import require_roles, revoke_refresh_sessions
 
 router = APIRouter(prefix="/admin", tags=["v1-admin-enterprise"])
 
-
-# ==============================================================================
-# 1. Granular Staff Permissions
-# ==============================================================================
 class StaffPermissionsUpdateIn(BaseModel):
     canAcceptOrders: bool = True
     canRejectOrders: bool = True
@@ -75,7 +71,6 @@ class StaffPermissionsUpdateIn(BaseModel):
     canVerifyPickup: bool = True
     canManageAvailability: bool = True
     canManageInventory: bool = True
-
 
 @router.put("/users/{user_id}/permissions")
 def update_staff_permissions_v1(
@@ -95,10 +90,6 @@ def update_staff_permissions_v1(
     db.refresh(target)
     return ok(request, serialize_user_v1(db, target))
 
-
-# ==============================================================================
-# 2. Supplier Management
-# ==============================================================================
 class SupplierCreateV1In(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     contactName: str | None = Field(default=None, max_length=120)
@@ -107,7 +98,6 @@ class SupplierCreateV1In(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     isActive: bool = True
 
-
 class SupplierPatchV1In(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     contactName: str | None = Field(default=None, max_length=120)
@@ -115,7 +105,6 @@ class SupplierPatchV1In(BaseModel):
     email: EmailStr | None = None
     notes: str | None = Field(default=None, max_length=500)
     isActive: bool | None = None
-
 
 def _serialize_supplier(s: Supplier) -> dict[str, Any]:
     return {
@@ -129,7 +118,6 @@ def _serialize_supplier(s: Supplier) -> dict[str, Any]:
         "createdAt": as_utc(s.created_at),
     }
 
-
 @router.get("/suppliers")
 def list_admin_suppliers_v1(
     request: Request,
@@ -142,7 +130,6 @@ def list_admin_suppliers_v1(
         stmt = stmt.where(Supplier.is_active.is_(True))
     rows = db.scalars(stmt).all()
     return ok(request, {"items": [_serialize_supplier(s) for s in rows]})
-
 
 @router.post("/suppliers", status_code=201)
 def create_admin_supplier_v1(
@@ -167,7 +154,6 @@ def create_admin_supplier_v1(
     db.commit()
     db.refresh(sup)
     return ok(request, _serialize_supplier(sup), status_code=201)
-
 
 @router.patch("/suppliers/{supplier_id}")
 def patch_admin_supplier_v1(
@@ -198,10 +184,6 @@ def patch_admin_supplier_v1(
     db.refresh(sup)
     return ok(request, _serialize_supplier(sup))
 
-
-# ==============================================================================
-# 3. Purchase Orders & Receiving into Batches / Stock / Expenses
-# ==============================================================================
 class PurchaseOrderLineV1In(BaseModel):
     menuItemId: int | None = Field(default=None, gt=0)
     ingredientId: int | None = Field(default=None, gt=0)
@@ -209,13 +191,11 @@ class PurchaseOrderLineV1In(BaseModel):
     unitCostPaise: int = Field(ge=0, le=10_000_000)
     expiryDate: date | None = None
 
-
 class PurchaseOrderCreateV1In(BaseModel):
     supplierId: int = Field(gt=0)
     lines: list[PurchaseOrderLineV1In] = Field(min_length=1, max_length=50)
     notes: str | None = Field(default=None, max_length=500)
     markOrdered: bool = True
-
 
 def _serialize_po(po: PurchaseOrder) -> dict[str, Any]:
     lines = parse_json_safe(po.lines_json, [])
@@ -235,7 +215,6 @@ def _serialize_po(po: PurchaseOrder) -> dict[str, Any]:
         "receivedAt": as_utc(po.received_at),
     }
 
-
 @router.get("/purchase-orders")
 def list_admin_purchase_orders_v1(
     request: Request,
@@ -248,7 +227,6 @@ def list_admin_purchase_orders_v1(
         stmt = stmt.where(func.lower(PurchaseOrder.status) == status.strip().lower())
     rows = db.scalars(stmt.limit(200)).all()
     return ok(request, {"items": [_serialize_po(po) for po in rows]})
-
 
 @router.post("/purchase-orders", status_code=201)
 def create_admin_purchase_order_v1(
@@ -318,7 +296,6 @@ def create_admin_purchase_order_v1(
     db.commit()
     po = db.scalar(select(PurchaseOrder).options(joinedload(PurchaseOrder.supplier)).where(PurchaseOrder.id == po.id))
     return ok(request, _serialize_po(po), status_code=201)
-
 
 @router.post("/purchase-orders/{po_id}/receive")
 def receive_admin_purchase_order_v1(
@@ -443,10 +420,6 @@ def receive_admin_purchase_order_v1(
     db.refresh(po)
     return ok(request, {"purchaseOrder": _serialize_po(po), "batchesCreated": created_batches})
 
-
-# ==============================================================================
-# 4. Operational Expenses CRUD (Utilities, Wages, Packaging, Rent, Procurement)
-# ==============================================================================
 class ExpenseCreateIn(BaseModel):
     expenseDate: date | None = None
     category: str = Field(default="operations", pattern="^(ingredients|procurement|wages|utilities|packaging|maintenance|operations|other)$")
@@ -454,7 +427,6 @@ class ExpenseCreateIn(BaseModel):
     title: str = Field(min_length=2, max_length=160)
     amountPaise: int = Field(gt=0, le=100_000_000)
     notes: str | None = Field(default=None, max_length=500)
-
 
 @router.get("/expenses")
 def list_admin_expenses_v1(
@@ -493,7 +465,6 @@ def list_admin_expenses_v1(
         },
     )
 
-
 @router.post("/expenses", status_code=201)
 def create_admin_expense_v1(
     payload: ExpenseCreateIn,
@@ -530,7 +501,6 @@ def create_admin_expense_v1(
         status_code=201,
     )
 
-
 @router.delete("/expenses/{expense_id}")
 def delete_admin_expense_v1(
     expense_id: int,
@@ -546,14 +516,9 @@ def delete_admin_expense_v1(
     db.commit()
     return ok(request, {"deletedId": expense_id})
 
-
-# ==============================================================================
-# 5. Complete Admin Order Management
-# ==============================================================================
 class AdminOrderStatusOverrideIn(BaseModel):
     status: str = Field(pattern="^(accepted|preparing|ready|collected|cancelled)$")
     reason: str = Field(default="Administrator order override", min_length=3, max_length=255)
-
 
 @router.get("/orders")
 def list_all_admin_orders_v1(
@@ -593,7 +558,6 @@ def list_all_admin_orders_v1(
             "items": [serialize_order_v1(o, include_customer=True) for o in rows],
         },
     )
-
 
 @router.post("/orders/{order_id}/status")
 def admin_override_order_status_v1(
@@ -657,10 +621,6 @@ def admin_override_order_status_v1(
     db.refresh(order)
     return ok(request, {"order": serialize_order_v1(order, include_customer=True, include_history=True), "refund": refund_info})
 
-
-# ==============================================================================
-# 6. Customer Feedback & Ratings Management
-# ==============================================================================
 @router.get("/feedback")
 def list_admin_customer_feedback_v1(
     request: Request,
@@ -708,10 +668,6 @@ def list_admin_customer_feedback_v1(
         },
     )
 
-
-# ==============================================================================
-# 7. Database Administration & Diagnostics Console
-# ==============================================================================
 EPHEMERAL_TABLES_SET = {
     "refresh_sessions",
     "pickup_tokens",
@@ -720,7 +676,6 @@ EPHEMERAL_TABLES_SET = {
     "ai_interactions",
     "temporary_api_logs",
 }
-
 
 @router.get("/database/overview")
 def get_admin_database_overview_v1(
@@ -790,7 +745,6 @@ def get_admin_database_overview_v1(
         },
     )
 
-
 @router.post("/database/analyze")
 def run_admin_database_analyze_v1(
     request: Request,
@@ -810,10 +764,6 @@ def run_admin_database_analyze_v1(
     db.commit()
     return ok(request, {"dialect": dialect, "integrityStatus": integrity_status, "analyzedAt": datetime.now(timezone.utc).isoformat()})
 
-
-# ==============================================================================
-# 8. Security Monitoring & Emergency Session Revocation
-# ==============================================================================
 @router.get("/security/overview")
 def get_admin_security_overview_v1(
     request: Request,
@@ -865,7 +815,6 @@ def get_admin_security_overview_v1(
             ],
         },
     )
-
 
 @router.post("/security/users/{user_id}/revoke-sessions")
 def revoke_user_all_sessions_v1(

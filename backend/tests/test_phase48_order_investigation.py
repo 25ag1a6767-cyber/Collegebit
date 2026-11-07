@@ -7,7 +7,6 @@ from app.database import SessionLocal, Base, engine
 from app.models import User, UserRole, Order, OrderItem, OrderStatus, PaymentStatus, AuditEvent, InventoryMovement, InventoryMovementType, Product
 from app.security import hash_password
 
-
 def _login(role='admin'):
     email = f'phase48-{role}-{uuid.uuid4().hex[:10]}@example.edu'
     password = 'Phase48-test-password!'
@@ -17,7 +16,6 @@ def _login(role='admin'):
     response = TestClient(app).post('/api/auth/login', json={'email': email, 'password': password})
     assert response.status_code == 200, response.text
     return {'Authorization': f"Bearer {response.json()['access_token']}"}
-
 
 def _make_order():
     Base.metadata.create_all(bind=engine)
@@ -40,7 +38,6 @@ def _make_order():
         db.add(InventoryMovement(product_id=product.id, order_id=order.id, movement_type=InventoryMovementType.RESERVATION, quantity_delta=-1, quantity_before=10, quantity_after=9, reason='Phase 48 test reservation'))
         db.commit(); return order.id
 
-
 def test_admin_investigation_includes_order_snapshot_and_timeline():
     order_id = _make_order()
     with TestClient(app) as client:
@@ -56,19 +53,16 @@ def test_admin_investigation_includes_order_snapshot_and_timeline():
         assert any(event['kind'] == 'inventory' for event in body['investigation']['timeline'])
         assert 'independently verified' in body['investigation']['payment_evidence']['note']
 
-
 def test_staff_and_students_cannot_access_investigation():
     order_id = _make_order()
     with TestClient(app) as client:
         assert client.get(f'/api/admin/orders/{order_id}/investigation', headers=_login('staff')).status_code == 403
         assert client.get(f'/api/admin/orders/{order_id}/investigation', headers=_login('student')).status_code == 403
 
-
 def test_investigation_returns_404_for_unknown_order():
     with TestClient(app) as client:
         response = client.get('/api/admin/orders/987654321/investigation', headers=_login('admin'))
         assert response.status_code == 404
-
 
 def test_investigation_requires_authentication():
     with TestClient(app) as client:

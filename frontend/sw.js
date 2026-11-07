@@ -45,7 +45,7 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || PRIVATE_OR_API_PATH(url)) return;
-  // Never cache API responses. Only cache the known app shell, not arbitrary pages, auth data, or dynamic assets.
+
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {

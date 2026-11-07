@@ -1,4 +1,4 @@
-/* CampusBite AI v2.0 — Dedicated Staff Kitchen & Counter Portal Controller */
+
 (function () {
   "use strict";
 
@@ -165,7 +165,6 @@
       badge.textContent = `${me.fullName} (${role})`;
       badge.hidden = false;
 
-      // Apply permission gating to stock movement form
       const perms = me.staffPermissions || {};
       $("stock-submit-btn").disabled = perms.canManageInventory === false;
 
@@ -201,7 +200,6 @@
     return state.selectedCounterId ? `${prefix}counterId=${encodeURIComponent(state.selectedCounterId)}` : "";
   }
 
-  // --- TAB 1: Live Orders & KDS ---
   async function loadQueue() {
     try {
       const statusVal = $("kds-status-filter").value;
@@ -331,7 +329,6 @@
     $("reason-text-input").focus();
   }
 
-  // --- TAB 2: Dedicated QR & Token Inspection and Collection Screen (Part 5 & Part 6) ---
   let activeInspectedOrder = null;
 
   async function inspectPickupPayload(body) {
@@ -365,7 +362,6 @@
 
     const frag = document.createDocumentFragment();
 
-    // 1. Top Token & Order Banner
     const head = el("div", "inspect-head", "");
     head.style.display = "flex";
     head.style.justifyContent = "space-between";
@@ -383,7 +379,6 @@
     head.appendChild(rightBadge);
     frag.appendChild(head);
 
-    // 2. Customer Information (Part 5A)
     const custBox = el("div", "inspect-subcard", "");
     custBox.style.background = "#0f172a";
     custBox.style.border = "1px solid #334155";
@@ -396,7 +391,6 @@
     `;
     frag.appendChild(custBox);
 
-    // 3. Complete Food Order Breakdown (Part 5C)
     const itemsHead = el("h4", "", "Ordered Food Items:");
     itemsHead.style.margin = "0 0 8px 0";
     itemsHead.style.fontSize = "14px";
@@ -426,7 +420,6 @@
     table.appendChild(tbody);
     frag.appendChild(table);
 
-    // 4. Payment Verification (Part 5D)
     const payBox = el("div", "", "");
     payBox.style.display = "flex";
     payBox.style.justifyContent = "space-between";
@@ -443,7 +436,6 @@
     `;
     frag.appendChild(payBox);
 
-    // 5. Decision & Handover Action (Part 6)
     const actBox = el("div", "handover-actions", "");
     actBox.style.textAlign = "center";
 
@@ -491,7 +483,6 @@
       $("manual-code-input").value = "";
       $("manual-order-id").value = "";
 
-      // Re-inspect to update card with collected stamp
       await inspectPickupPayload({ orderId: res.order.id });
       await loadQueue();
     } catch (err) {
@@ -501,7 +492,6 @@
     }
   }
 
-  // --- Smart Token Management Dashboard (Part 3) ---
   async function loadTokenManagement() {
     const tbody = $("token-table-body");
     try {
@@ -600,7 +590,6 @@
     }
   }
 
-  // --- TAB 3: Availability, Inventory & Low-Stock Alerts ---
   async function loadInventory() {
     try {
       const [inv, alerts] = await Promise.all([
@@ -685,7 +674,6 @@
     tbody.replaceChildren(frag);
   }
 
-  // --- TAB 4: Completed Order History ---
   async function loadHistory() {
     try {
       const dt = $("history-date-input").value;
@@ -712,7 +700,6 @@
     }
   }
 
-  // --- TAB 5: Daily Staff Performance & Processing Stats ---
   async function loadPerformance() {
     try {
       const d = await api("/staff/performance" + counterQuery("?"));
@@ -753,7 +740,6 @@
     if (tabName === "performance") loadPerformance();
   }
 
-  // --- Wire Events ---
   document.addEventListener("DOMContentLoaded", () => {
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();

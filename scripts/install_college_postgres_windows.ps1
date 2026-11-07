@@ -4,7 +4,7 @@ CampusBite AI v2.0 — Windows College Server Self-Hosted PostgreSQL & Scheduled
 Configures environment verification, firewall isolation (port 5432 loopback-only),
 Alembic schema migration, daily encrypted GFS backup task, and 4-day hybrid retention task.
 Zero paid cloud database subscription required.
-#>
+
 param(
     [string]$PostgresBinDir = "C:\Program Files\PostgreSQL\16\bin",
     [string]$SecondaryBackupShare = "D:\CampusBiteBackupsOffDisk",
@@ -27,7 +27,6 @@ if (Test-Path "$PostgresBinDir\psql.exe") {
 New-Item -ItemType Directory -Force -Path "$ProjectRoot\backups\primary" | Out-Null
 New-Item -ItemType Directory -Force -Path $SecondaryBackupShare -ErrorAction SilentlyContinue | Out-Null
 
-# Block external inbound traffic to port 5432 so only the backend API / PgBouncer on the college server accesses PostgreSQL
 if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     New-NetFirewallRule -DisplayName "CampusBite Block External Postgres 5432" -Direction Inbound -LocalPort 5432 -Protocol TCP -Action Block -Profile Public,Domain,Private -ErrorAction SilentlyContinue | Out-Null
     Write-Host "[OK] Windows Firewall rule verified: PostgreSQL port 5432 blocked from external clients." -ForegroundColor Green

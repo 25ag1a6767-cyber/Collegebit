@@ -1,7 +1,4 @@
-/**
- * Pure TypeScript ISO/IEC 18004 QR Code Boolean Matrix Generator (Versions 1-5, ECC-L, Byte Mode).
- * Enables zero-dependency native scannable QR rendering inside React Native View grids.
- */
+
 interface QrVersionSpec {
   size: number;
   dataBytes: number;
