@@ -1,4 +1,4 @@
-# CampusBite AI v2.0 — Complete College Canteen Ecosystem (ACE Canteen)
+# CollegeBits — Complete College Canteen Ecosystem (ACE Canteen)
 
 Production-ready pre-order, verified Razorpay UPI payment, single-use QR pickup, live kitchen queue, and AI business intelligence platform for college canteens — connected to **one centralized FastAPI backend and PostgreSQL database**.
 

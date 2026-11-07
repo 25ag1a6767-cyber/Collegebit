@@ -308,7 +308,7 @@ def _call_gemini_grounded(menu_catalog: list[dict[str, Any]], user_question: str
         return None
 
     system_instruction = (
-        "You are the CampusBite Canteen Menu Concierge. "
+        "You are the CollegeBits Canteen Menu Concierge. "
         "STRICT SAFETY & GROUNDING RULES:\n"
         "1. Recommend ONLY items present in the VERIFIED_MENU_JSON below. Never invent food names, prices, ingredients, or dietary claims.\n"
         "2. Always quote exact prices in ₹ from priceRupees.\n"
@@ -1011,7 +1011,7 @@ def get_admin_ai_metrics_v1(
 
 
 # ==============================================================================
-# AI 6 — CampusBite AI v2.0 Complete Business Intelligence Suite (12 Modules)
+# AI 6 — CollegeBits Complete Business Intelligence Suite (12 Modules)
 # Explicitly separates ACTUAL relational statistics from statistical PREDICTIONS.
 # ==============================================================================
 def _generate_executive_summary_narrative(actuals_payload: dict[str, Any], predictions_payload: dict[str, Any]) -> tuple[str, str]:

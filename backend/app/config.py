@@ -5,7 +5,7 @@ from pydantic import model_validator
 
 class Settings(BaseSettings):
     app_name: str = "ACE Canteen"
-    brand_name: str = "CampusBite AI v2.0"
+    brand_name: str = "CollegeBits"
     app_version: str = "2.0.0"
     environment: str = "development"
     log_level: str = "INFO"

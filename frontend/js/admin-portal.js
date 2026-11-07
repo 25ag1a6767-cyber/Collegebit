@@ -1,4 +1,4 @@
-/* CampusBite AI v2.0 — Dedicated Enterprise Admin & Business Intelligence Portal Controller.
+/* CollegeBits — Dedicated Enterprise Admin & Business Intelligence Portal Controller.
  * Strictly enforces ADMIN RBAC, CSP (zero inline styles/scripts), real PostgreSQL/SQLAlchemy metrics,
  * 10 KPI cards, 16 interactive SVG charts, 14 PDF/XLSX/CSV reports, 12 AI BI modules, and full operations.
  */
@@ -362,7 +362,7 @@
     }
 
     // Render All 16 Interactive Charts
-    const Ch = window.CampusBiteCharts;
+    const Ch = window.CollegeBitsCharts;
     const g = d.graphs || {};
     if (!Ch) return;
 
@@ -591,7 +591,7 @@
       q.set("format", fmt);
       const fname = await downloadAuthenticatedFile(
         "/api/v1/admin/reports/download?" + q.toString(),
-        "campusbite-report." + fmt
+        "collegebits-report." + fmt
       );
       showAlert("Downloaded " + fname, "success");
       await loadReportsStudio();
@@ -617,7 +617,7 @@
 
       const fname = await downloadAuthenticatedFile(
         "/api/v1/admin/reports/download?" + q.toString(),
-        `campusbite-analytics-${preset}.${fmt}`
+        `collegebits-analytics-${preset}.${fmt}`
       );
       showAlert("Downloaded analytics report: " + fname, "success");
     } catch (err) {
@@ -634,7 +634,7 @@
     $("aibi-transparency").textContent = d.transparencyNotice || "";
     $("aibi-narrative").textContent = (d.dailyBusinessSummary && d.dailyBusinessSummary.narrative) || "";
 
-    const Ch = window.CampusBiteCharts;
+    const Ch = window.CollegeBitsCharts;
     if (Ch) {
       const f7 = d.salesForecast7Day || [];
       Ch.renderLineChart($("chart-aibi-forecast7d"), {

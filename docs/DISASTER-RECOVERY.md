@@ -1,8 +1,8 @@
-# CampusBite AI v2.0 — Backup, 4-Day Hybrid Retention & Disaster Recovery Runbook
+# CollegeBits — Backup, 4-Day Hybrid Retention & Disaster Recovery Runbook
 
 ## 1. Backup Architecture (7 Daily · 4 Weekly · 3 Monthly Encrypted GFS)
 
-CampusBite AI v2.0 protects all financial, inventory, user, and audit data through [`backend/app/modules/retention_backup.py`](../backend/app/modules/retention_backup.py) and [`scripts/backup_manager.py`](../scripts/backup_manager.py):
+CollegeBits protects all financial, inventory, user, and audit data through [`backend/app/modules/retention_backup.py`](../backend/app/modules/retention_backup.py) and [`scripts/backup_manager.py`](../scripts/backup_manager.py):
 
 - **Schedule & GFS Rotation:**
   - **Daily (`backups/gfs/daily/`):** Retains the most recent **7 daily** encrypted snapshots.

@@ -1,4 +1,4 @@
-/* CampusBite AI v2.0 — Dedicated Staff Kitchen & Counter Portal Controller */
+/* CollegeBits — Dedicated Staff Kitchen & Counter Portal Controller */
 (function () {
   "use strict";
 
@@ -785,8 +785,8 @@
       $("perf-sla-pct").textContent = (cs.onTimeSlaPct !== undefined ? cs.onTimeSlaPct : 100) + "%";
 
       const tp = cs.hourlyThroughput || [];
-      if (window.CampusBiteCharts) {
-        window.CampusBiteCharts.renderBarChart($("staff-throughput-chart"), {
+      if (window.CollegeBitsCharts) {
+        window.CollegeBitsCharts.renderBarChart($("staff-throughput-chart"), {
           title: "Hourly Order Throughput",
           labels: tp.map((x) => x.hour),
           series: [{ name: "Paid Orders", values: tp.map((x) => x.orders), color: "#0f766e" }]

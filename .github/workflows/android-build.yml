@@ -1,4 +1,7 @@
-name: CampusBite AI v2.0 — Android APK & AAB Build
+name: CollegeBits Customer Android APK
+
+permissions:
+  contents: write
 
 on:
   workflow_dispatch:
@@ -11,6 +14,9 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_URL: https://app-sai-e3e1.vercel.app
+      NODE_ENV: production
     defaults:
       run:
         working-directory: mobile
@@ -42,22 +48,36 @@ jobs:
 
       - name: Install dependencies & typecheck
         run: |
-          npm install
+          npm ci
           npm run typecheck
 
       - name: Prebuild native Android project
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build Release APK & Play Store AAB
+      - name: Build standalone Android release APK
         working-directory: mobile/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease bundleRelease
+          ./gradlew assembleRelease
 
-      - name: Upload APK & AAB Artifacts
+      - name: Publish latest Android APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          cp "$APK" /tmp/CollegeBits-Customer.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          TAG="customer-app-latest"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "CollegeBits Customer Android APK" --notes "Latest standalone sideload APK for Android. It is debug-signed, not a Play Store release. A new APK may require uninstalling the previous build before installing." --prerelease --latest=false
+          fi
+          gh release upload "$TAG" /tmp/CollegeBits-Customer.apk --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload APK as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: campusbite-ai-v2-android-releases
+          name: collegebits-customer-android-apk
           path: |
-            mobile/android/app/build/outputs/apk/release/*.apk
-            mobile/android/app/build/outputs/bundle/release/*.aab
+            mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

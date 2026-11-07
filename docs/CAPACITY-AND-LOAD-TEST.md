@@ -1,4 +1,4 @@
-# CampusBite AI v2.0 — Concurrency Verification, Load Benchmark & College Server Capacity Guide
+# CollegeBits — Concurrency Verification, Load Benchmark & College Server Capacity Guide
 
 ## 1. Empirical Stock-Contention & Burst Benchmark (Measured)
 
@@ -46,7 +46,7 @@ On a single standard college server (**8 vCPU, 16 GB RAM, NVMe SSD, Ubuntu 24.04
 | **Redis 7** | Menu/counter read cache + WebSocket pub/sub + distributed rate limiting | Sub-millisecond hot-path lookups |
 
 ### Scaling Beyond One Campus (Multi-College / Regional Scale)
-Because CampusBite AI v2.0 uses stateless JWT access tokens, `public_uuid` external identifiers, `NullPool` PgBouncer transaction compatibility, and externalizable object storage (`OBJECT_STORAGE_PUBLIC_URL`), scaling beyond a single college server requires zero code rewrites:
+Because CollegeBits uses stateless JWT access tokens, `public_uuid` external identifiers, `NullPool` PgBouncer transaction compatibility, and externalizable object storage (`OBJECT_STORAGE_PUBLIC_URL`), scaling beyond a single college server requires zero code rewrites:
 1. Add horizontal FastAPI container replicas behind Nginx / HAProxy.
 2. Point BI & Report read queries (`analytics_bi.py`, `reporting_engine.py`) to a PostgreSQL streaming read replica.
 3. Offload static assets and menu images to campus CDN / S3-compatible MinIO.

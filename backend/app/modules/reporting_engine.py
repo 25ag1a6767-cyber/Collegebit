@@ -1,4 +1,4 @@
-"""CampusBite AI v2.0 — Automated 14-Report Business Intelligence & Export Engine (PDF, Excel .xlsx, CSV).
+"""CollegeBits — Automated 14-Report Business Intelligence & Export Engine (PDF, Excel .xlsx, CSV).
 
 Implements all 14 required reports over real relational records:
  1. daily_sales             — Daily sales report
@@ -141,7 +141,7 @@ def render_pdf_document(
         cmds.append("0.08 0.14 0.26 rg")
         cmds.append(f"{margin_x} {page_h - 62} {usable_w} 38 re f")
         cmds.append("1 1 1 rg")
-        cmds.append(f"BT /F2 13 Tf {margin_x + 10} {page_h - 42} Td ({_pdf_safe_text('CampusBite AI v2.0 - ' + title)}) Tj ET")
+        cmds.append(f"BT /F2 13 Tf {margin_x + 10} {page_h - 42} Td ({_pdf_safe_text('CollegeBits - ' + title)}) Tj ET")
         cmds.append(f"BT /F1 8.5 Tf {margin_x + 10} {page_h - 55} Td ({_pdf_safe_text(subtitle)}) Tj ET")
         cmds.append(f"BT /F1 8.5 Tf {page_w - margin_x - 95} {page_h - 47} Td (Page {page_idx} of {total_pages}) Tj ET")
 
@@ -191,7 +191,7 @@ def render_pdf_document(
         cmds.append("0.45 0.5 0.56 rg")
         cmds.append(
             f"BT /F1 7.5 Tf {margin_x} 18 Td "
-            f"({_pdf_safe_text('Generated from authoritative CampusBite AI v2.0 database records. Zero fabricated figures.')}) Tj ET"
+            f"({_pdf_safe_text('Generated from authoritative CollegeBits database records. Zero fabricated figures.')}) Tj ET"
         )
         page_streams.append("\n".join(cmds).encode("ascii"))
 
@@ -270,7 +270,7 @@ def render_xlsx_workbook(
 
     xml_rows: list[str] = []
     cur_r = 1
-    xml_rows.append(f'<row r="{cur_r}">{_cell_xml(cur_r, 1, "CampusBite AI v2.0 — " + report_title, 1)}</row>')
+    xml_rows.append(f'<row r="{cur_r}">{_cell_xml(cur_r, 1, "CollegeBits — " + report_title, 1)}</row>')
     cur_r += 1
     xml_rows.append(f'<row r="{cur_r}">{_cell_xml(cur_r, 1, subtitle, 0)}</row>')
     cur_r += 2
@@ -877,7 +877,7 @@ def generate_daily_reports_job(
     daily_bundle = ("daily_sales", "daily_orders", "daily_payments", "inventory", "profit_expense")
     generated_items = []
     email_lines = [
-        f"CampusBite AI v2.0 — Automated Daily Executive Summary ({day.isoformat()})",
+        f"CollegeBits — Automated Daily Executive Summary ({day.isoformat()})",
         "=" * 68,
         "",
     ]
@@ -924,7 +924,7 @@ def generate_daily_reports_job(
         body = "\n".join(email_lines) + "\nLog in to the Admin Portal (/admin) to download full PDF, Excel (.xlsx), or CSV files.\n"
         for addr in recipients:
             try:
-                send_email(addr, f"CampusBite AI v2.0 Daily Reports — {day.isoformat()}", body)
+                send_email(addr, f"CollegeBits Daily Reports — {day.isoformat()}", body)
                 email_sent = True
             except Exception:
                 pass
@@ -1055,7 +1055,7 @@ def download_report_v1(
     db.add(rec)
     db.commit()
 
-    filename_base = f"campusbite-{ds['reportType']}-{ds['startDate']}-to-{ds['endDate']}"
+    filename_base = f"collegebits-{ds['reportType']}-{ds['startDate']}-to-{ds['endDate']}"
 
     if fmt == "pdf":
         body = render_pdf_document(ds["title"], ds["subtitle"], ds["summaryPairs"], ds["columns"], ds["rows"])

@@ -1,7 +1,7 @@
 {
   "id": "/customer/",
-  "name": "CampusBite Customer",
-  "short_name": "CampusBite",
+  "name": "CollegeBits Customer",
+  "short_name": "CollegeBits",
   "description": "Installable campus canteen ordering app for ACE Engineering College students.",
   "start_url": "/customer/",
   "scope": "/customer/",

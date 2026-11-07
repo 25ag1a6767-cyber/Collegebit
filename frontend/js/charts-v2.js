@@ -1,4 +1,4 @@
-/* CampusBite AI v2.0 — Self-Hosted CSP-Safe Interactive SVG Chart Studio.
+/* CollegeBits — Self-Hosted CSP-Safe Interactive SVG Chart Studio.
  * Zero external CDN dependencies; zero inline style="" attributes (strictly adheres to style-src 'self').
  */
 (function () {
@@ -381,7 +381,7 @@
     container.replaceChildren(layout);
   }
 
-  window.CampusBiteCharts = {
+  window.CollegeBitsCharts = {
     PALETTE,
     renderLineChart,
     renderBarChart,

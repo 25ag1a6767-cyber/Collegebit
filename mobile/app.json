@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CampusBite AI",
+    "name": "CollegeBits",
     "slug": "campusbite-ai",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -22,6 +22,16 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Camera is used to scan QR tokens for order pickups."
       }
-    }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ]
   }
 }

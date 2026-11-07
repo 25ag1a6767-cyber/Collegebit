@@ -1,6 +1,6 @@
-# CampusBite AI v2.0 — Complete Installation & Deployment Guide
+# CollegeBits — Complete Installation & Deployment Guide
 
-CampusBite AI v2.0 is a centralized college canteen platform connecting **three dedicated client applications** to **one shared FastAPI backend and PostgreSQL database**:
+CollegeBits is a centralized college canteen platform connecting **three dedicated client applications** to **one shared FastAPI backend and PostgreSQL database**:
 
 1. **Customer Android Application (`mobile/`)** + **Optional Installable Customer PWA (`GET /`)**
 2. **Dedicated Staff Operations Website (`GET /staff`)**
@@ -10,7 +10,7 @@ CampusBite AI v2.0 is a centralized college canteen platform connecting **three 
 
 ## 1. Zero-Cost Self-Hosted College PostgreSQL Setup (Primary Recommended)
 
-CampusBite AI v2.0 is architected to run **100% free on college-owned hardware** (Ubuntu Linux server or Windows Server/PC) with zero recurring cloud database fees.
+CollegeBits is architected to run **100% free on college-owned hardware** (Ubuntu Linux server or Windows Server/PC) with zero recurring cloud database fees.
 
 ### Option A — Ubuntu Linux College Server (PostgreSQL 16 + PgBouncer + WAL Archiving)
 
@@ -51,7 +51,7 @@ Services launched:
 
 ## 2. Optional Free Cloud Portability — Neon Free PostgreSQL
 
-CampusBite AI v2.0 is 100% standard SQLAlchemy 2.0 + Psycopg 3 + Alembic. To run against **Neon Free PostgreSQL** (for cloud demos or off-campus hosting) without changing a single line of application code:
+CollegeBits uses standard SQLAlchemy 2.0 + Psycopg 3 + Alembic. To run against **Neon Free PostgreSQL** (for cloud demos or off-campus hosting) without changing application code:
 
 1. Copy `.env.neon.example` to `.env`.
 2. Paste your Neon pooled connection string (`-pooler` hostname with `?sslmode=require`) into `DATABASE_URL` and set `DB_USE_PGBOUNCER_TRANSACTION_POOL=true`.

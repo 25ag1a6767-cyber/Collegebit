@@ -1,13 +1,13 @@
 import * as SecureStore from "expo-secure-store";
 import { ApiEnvelope, AuthTokenResponse } from "../types/api";
 
-declare const process: { env?: Record<string, string | undefined> };
+declare const process: { env: Record<string, string | undefined> };
 
 const ACCESS_TOKEN_KEY = "ace_canteen_access_token_v1";
 const REFRESH_TOKEN_KEY = "ace_canteen_refresh_token_v1";
 
 export const API_BASE_URL = (
-  process?.env?.EXPO_PUBLIC_API_URL || "http://10.0.2.2:8000"
+  process.env.EXPO_PUBLIC_API_URL || "http://10.0.2.2:8000"
 ).replace(/\/+$/, "");
 
 let memoryAccessToken: string | null = null;

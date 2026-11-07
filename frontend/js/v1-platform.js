@@ -786,7 +786,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `campusbite-receipt-order-${orderId}.pdf`;
+      a.download = `collegebits-receipt-order-${orderId}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();

@@ -7,7 +7,7 @@ def test_manifest_is_scoped_to_customer_app():
         response = client.get("/manifest.webmanifest")
         assert response.status_code == 200
         payload = response.json()
-        assert payload["name"] == "CampusBite Customer"
+        assert payload["name"] == "CollegeBits Customer"
         assert payload["start_url"] == "/customer/"
         assert payload["scope"] == "/customer/"
         assert payload["display"] == "standalone"

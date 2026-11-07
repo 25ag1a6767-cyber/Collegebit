@@ -1,7 +1,7 @@
-# CampusBite AI v2.0 — Mobile Application for Android & iPhone (iOS)
+# CollegeBits — Mobile Application for Android & iPhone (iOS)
 *(Expo + React Native + TypeScript)*
 
-This mobile client is dedicated for students and customers, connecting to the shared CampusBite backend (`/api/v1` REST API and `/api/v1/ws` WebSocket hub). Menus, real-time stock reservations, UPI payments, formatted pickup tokens, and live order tracking stay 100% synchronized with the kitchen displays.
+This mobile client is dedicated for students and customers, connecting to the shared CollegeBits backend (`/api/v1` REST API and `/api/v1/ws` WebSocket hub). Menus, real-time stock reservations, UPI payments, formatted pickup tokens, and live order tracking stay 100% synchronized with the kitchen displays.
 
 ## 1. Running on Android & iPhone
 
@@ -35,6 +35,13 @@ Students can install the customer web app from its dedicated customer URL:
   Open `https://app-sai-e3e1.vercel.app/customer/` in Safari, tap the **Share** button (box with upward arrow), and select **"Add to Home Screen"**.
 
 The staff/admin website is at the domain root, `/staff`, and `/admin`. The customer app is at `/customer/`; it can also be built as a standalone Android or iOS app with EAS. The native build profiles use the production HTTPS API. A native install link is available after an EAS build and distribution; no app-store listing is configured in this repository.
+
+### Option D: Direct Android APK
+After the **CollegeBits Customer Android APK** GitHub Actions workflow completes successfully, install the Android APK from:
+
+`https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk`
+
+On Android, open the link, download the file, then open it and allow your browser to install unknown apps if prompted. This is a sideloaded debug-signed APK, not a Play Store release. Installing a later build with a different signing key may require uninstalling the previous APK first.
 
 For local development, set `EXPO_PUBLIC_API_URL` to the backend URL before starting Expo. The default development fallback is Android emulator localhost.
 
