@@ -17,7 +17,7 @@ from threading import Lock
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Header, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response, Header, WebSocket, WebSocketDisconnect, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -433,22 +433,47 @@ async def public_token_display_board_page() -> FileResponse:
 
 @app.get("/download/CampusBite-AI-v3.0.zip", include_in_schema=False)
 @app.get("/download/CampusBite-AI-v2.0.zip", include_in_schema=False)
+@app.get("/CampusBite-AI-v3.0.zip", include_in_schema=False)
+@app.get("/CampusBite-AI-v2.0.zip", include_in_schema=False)
 @app.get("/download-zip", include_in_schema=False)
-async def download_project_archive() -> FileResponse:
+async def download_project_archive() -> Response:
     """Direct HTTP browser download of the complete CampusBite AI v3.0 project archive."""
-    zip_path = PROJECT_DIR / "CampusBite-AI-v3.0.zip"
-    if not zip_path.exists():
-        zip_path = Path("C:/Users/HP/Desktop/CampusBite-AI-v3.0.zip")
-    if not zip_path.exists():
-        zip_path = PROJECT_DIR / "CampusBite-AI-v2.0.zip"
-    if not zip_path.exists():
-        zip_path = Path("C:/Users/HP/Desktop/CampusBite-AI-v2.0.zip")
-    fn = zip_path.name if zip_path.exists() else "CampusBite-AI-v3.0.zip"
-    return FileResponse(
-        zip_path,
+    candidates = [
+        PROJECT_DIR / "CampusBite-AI-v3.0.zip",
+        Path("C:/Users/HP/Desktop/CampusBite-AI-v3.0.zip"),
+        Path.home() / "Downloads" / "CampusBite-AI-v3.0.zip",
+        PROJECT_DIR / "CampusBite-AI-v2.0.zip",
+        Path("C:/Users/HP/Desktop/CampusBite-AI-v2.0.zip"),
+    ]
+    for c in candidates:
+        if c.exists() and c.is_file():
+            return FileResponse(
+                c,
+                media_type="application/zip",
+                filename="CampusBite-AI-v3.0.zip",
+                headers={"Content-Disposition": 'attachment; filename="CampusBite-AI-v3.0.zip"'}
+            )
+
+    # Dynamic generation in memory if file is not on disk
+    import io, zipfile
+    buf = io.BytesIO()
+    exclude_dirs = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "playwright-report", "test-results"}
+    exclude_exts = {".pyc", ".pyo", ".pyd", ".tmp", ".db", ".sqlite", ".log"}
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(PROJECT_DIR):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                if ext in exclude_exts or (file.startswith(".env") and not file.endswith(".example")):
+                    continue
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, PROJECT_DIR)
+                zf.write(full_path, rel_path)
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
         media_type="application/zip",
-        filename=fn,
-        headers={"Content-Disposition": f'attachment; filename="{fn}"'}
+        headers={"Content-Disposition": 'attachment; filename="CampusBite-AI-v3.0.zip"'}
     )
 
 @app.get("/manifest.webmanifest", include_in_schema=False)

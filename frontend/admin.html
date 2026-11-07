@@ -18,6 +18,7 @@
       </div>
     </div>
     <div class="admin-header-actions">
+      <a class="download-zip-button" href="/download-zip" download="CampusBite-AI-v3.0.zip" title="Download CampusBite AI v3.0 Project ZIP">⬇️ Download ZIP</a>
       <a class="btn btn-header" href="/">Customer App</a>
       <a class="btn btn-header" href="/staff">Staff Portal</a>
       <button type="button" id="btn-admin-refresh" class="btn btn-header" hidden>Refresh Active Module</button>
@@ -42,8 +43,11 @@
             <button type="button" id="btn-toggle-admin-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
           </div>
         </label>
-        <div class="login-hint-box">
-          <strong>Default Login:</strong> <code>25ag1a6767@aceec.ac.in</code> &bull; Password: <code>ace@25ag1a67676</code> (or <code>ace12345</code>)
+        <div class="login-hint-box" style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <strong>Default Login:</strong> <code>25ag1a6767@aceec.ac.in</code> &bull; Password: <code>ace@25ag1a67676</code> (or <code>ace12345</code>)
+          </div>
+          <button type="button" id="btn-autofill-admin" class="btn btn-header" style="margin-left:8px; padding:3px 10px; font-size:0.8rem; cursor:pointer;">⚡ Autofill</button>
         </div>
         <button type="submit" id="btn-admin-login" class="btn btn-primary">Authenticate to Admin Console</button>
       </form>

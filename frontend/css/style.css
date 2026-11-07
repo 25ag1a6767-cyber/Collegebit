@@ -24,6 +24,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid #e89c4d; outline-offs
 .header-account { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .header-account-link { display: inline-flex; align-items: center; justify-content: center; padding: 11px 17px; border-radius: 999px; background: var(--green-950); color: white; font-weight: 800; font-size: 13px; text-decoration: none; white-space: nowrap; }
 .header-account-link:hover { background: var(--green-800, #176b4d); }
+.download-zip-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 999px; background: #0f3d2e; color: #ffffff !important; font-weight: 800; font-size: 13px; text-decoration: none; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.18); transition: background-color 0.15s ease, transform 0.1s ease; border: 1px solid rgba(255,255,255,0.2); }
+.download-zip-button:hover { background: #165b44; transform: translateY(-1px); }
 .header-account-user { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--green-950); font-size: 12px; font-weight: 800; }
 .order-live-tracker { flex-basis: 100%; margin-top: 10px; padding: 11px 13px; border-radius: 12px; background: #eef6f0; color: #163d2d; font-size: 13px; line-height: 1.5; }
 .order-live-tracker strong { display: block; margin-bottom: 2px; }

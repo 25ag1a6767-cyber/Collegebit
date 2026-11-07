@@ -828,6 +828,14 @@
       });
     }
 
+    const autofillStaffBtn = $("btn-autofill-staff");
+    if (autofillStaffBtn) {
+      autofillStaffBtn.addEventListener("click", () => {
+        $("staff-login-id").value = "25ag1a6767@gmail.com";
+        $("staff-login-pw").value = "ace@25ag1a67676staff";
+      });
+    }
+
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       showBanner("", "");
