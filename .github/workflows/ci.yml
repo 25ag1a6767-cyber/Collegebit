@@ -42,7 +42,9 @@ jobs:
       - name: Validate Docker Compose configuration
         env:
           POSTGRES_PASSWORD: ci-only-compose-validation-password
-        run: docker compose config --quiet
+        run: |
+          touch .env
+          docker compose config --quiet
 
   browser:
     name: Chromium browser smoke tests
