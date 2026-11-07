@@ -4,7 +4,7 @@ test('homepage loads branded app and live catalogue', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
 
-  await page.goto('/');
+  await page.goto('/customer/');
   await expect(page).toHaveTitle(/ACE Canteen/);
   await expect(page.getByRole('heading', { name: /Good food/i })).toBeVisible();
   await expect(page.locator('#catalogue-grid .product-card').first()).toBeVisible();
@@ -14,7 +14,7 @@ test('homepage loads branded app and live catalogue', async ({ page }) => {
 });
 
 test('search and item-type filter update catalogue', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/customer/');
   await expect(page.locator('#catalogue-grid .product-card').first()).toBeVisible();
 
   await page.locator('#product-type').selectOption('stationery');
@@ -29,7 +29,7 @@ test('search and item-type filter update catalogue', async ({ page }) => {
 });
 
 test('guest is prompted to sign in before adding an item to cart', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/customer/');
   const firstCard = page.locator('#catalogue-grid .product-card').first();
   await expect(firstCard).toBeVisible();
   await firstCard.getByRole('button', { name: 'Add to cart' }).click();
@@ -39,11 +39,19 @@ test('guest is prompted to sign in before adding an item to cart', async ({ page
 });
 
 test('account form exposes accessible sign-in and registration modes', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/customer/');
   const account = page.getByRole('region', { name: 'Account sign in' });
   await expect(account.getByLabel('Email address')).toBeVisible();
   await expect(account.getByLabel('Password', { exact: true })).toBeVisible();
   await account.getByRole('button', { name: 'Create account' }).click();
   await expect(account.getByLabel('Full name')).toBeVisible();
   await expect(page.locator('#auth-submit')).toHaveText(/Create student account/i);
+});
+
+test('staff and admin website is separate from the customer app', async ({ page }) => {
+  await page.goto('/');
+  await expect(page).toHaveTitle(/Staff & Administration/);
+  await expect(page.getByRole('link', { name: /Staff Portal/ })).toHaveAttribute('href', '/staff');
+  await expect(page.getByRole('link', { name: /Administration Portal/ })).toHaveAttribute('href', '/admin');
+  await expect(page.locator('#catalogue-grid')).toHaveCount(0);
 });

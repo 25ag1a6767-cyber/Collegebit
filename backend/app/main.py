@@ -445,8 +445,7 @@ async def web_app_manifest() -> FileResponse:
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker() -> FileResponse:
-    # Serve from the origin root so the worker can control the entire app shell.
-    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/customer/"})
 
 @app.get("/api/health", tags=["system"])
 async def health() -> dict[str, Any]:
