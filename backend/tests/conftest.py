@@ -4,51 +4,38 @@ Ensures tests run on an isolated, disposable database copy and NEVER touch the d
 real database (backend/ace_canteen.db).
 """
 import os
-import shutil
 import sys
+import uuid
 from pathlib import Path
+from tempfile import gettempdir
 import pytest
 
-# Configure paths
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-BACKEND_DIR = ROOT_DIR / "backend"
-REAL_DB = BACKEND_DIR / "ace_canteen.db"
-TEST_DB = BACKEND_DIR / "test_isolated.db"
-
-# 1. Point DATABASE_URL to isolated test database BEFORE any application imports
-if TEST_DB.exists():
-    try:
-        TEST_DB.unlink()
-    except Exception:
-        pass
-
-if REAL_DB.exists():
-    shutil.copy2(REAL_DB, TEST_DB)
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+TEST_DB = Path(gettempdir()) / f"collegebits-test-{uuid.uuid4().hex}.db"
 
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB.as_posix()}"
 os.environ["ENVIRONMENT"] = "test"
 os.environ["APP_ENV"] = "test"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
+os.environ["AUTO_CREATE_TABLES"] = "true"
+os.environ["SEED_DEMO_DATA"] = "true"
 
-# Add backend to sys.path
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 
 @pytest.fixture(scope="session", autouse=True)
 def isolated_test_database_lifecycle():
-    """Session fixture ensuring complete test isolation."""
-    yield
+    from app.database import Base, SessionLocal, engine
+    import app.models
+    from app.seed import seed_demo_data
 
-    # Teardown: close any open engine connections and remove test_isolated.db
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        seed_demo_data(db)
     try:
-        from app.database import engine
+        yield
+    finally:
         engine.dispose()
-    except Exception:
-        pass
-
-    if TEST_DB.exists():
-        try:
+        if TEST_DB.exists():
             TEST_DB.unlink()
-        except Exception:
-            pass

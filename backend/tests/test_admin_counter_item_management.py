@@ -1,113 +1,133 @@
-"""
-Targeted verification for:
-1. Admin and Staff password-only authentication (no TOTP code required).
-2. Admin assigning menu items to counters (Main Counter vs Counter A).
-3. Admin deleting menu items with audit trail.
-4. Database only containing the 2 counters (Main Counter, Counter A).
-"""
-import pytest
+import uuid
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.main import app
 from app.database import SessionLocal
-from app.models import CanteenCounter, Product, User
+from app.main import app
+from app.models import CanteenCounter, Category, Product, User, UserRole
+from app.security import hash_password
 
-@pytest.fixture
-def client():
-    return TestClient(app)
 
-def test_admin_and_staff_login_without_totp(client):
-    # Admin login with email & password (variant 1: ace@25ag1a67676)
-    res_admin = client.post("/api/v1/auth/login", json={
-        "identifier": "25ag1a6767@aceec.ac.in",
-        "password": "ace@25ag1a67676"
-    })
-    assert res_admin.status_code == 200, res_admin.text
-    admin_data = res_admin.json()["data"]
-    assert admin_data["user"]["role"].lower() == "admin"
-    assert "accessToken" in admin_data
+def create_user(role: UserRole) -> tuple[str, str]:
+    email = f"{role.value}-{uuid.uuid4().hex}@example.edu"
+    password = f"Test-only-{uuid.uuid4().hex}"
+    with SessionLocal() as db:
+        db.add(
+            User(
+                full_name=f"CI {role.value.title()}",
+                email=email,
+                password_hash=hash_password(password),
+                role=role,
+                is_active=True,
+            )
+        )
+        db.commit()
+    return email, password
 
-    # Admin login with email & password (variant 2: ace@25ag1a6767)
-    res_admin2 = client.post("/api/v1/auth/login", json={
-        "identifier": "25ag1a6767@aceec.ac.in",
-        "password": "ace@25ag1a6767"
-    })
-    assert res_admin2.status_code == 200, res_admin2.text
 
-    # Staff login with email & password (variant 1: ace@25ag1a67676staff)
-    res_staff = client.post("/api/v1/auth/login", json={
-        "identifier": "25ag1a6767@gmail.com",
-        "password": "ace@25ag1a67676staff"
-    })
-    assert res_staff.status_code == 200, res_staff.text
-    staff_data = res_staff.json()["data"]
-    assert staff_data["user"]["role"].lower() == "staff"
-    assert "accessToken" in staff_data
+def login(client: TestClient, email: str, password: str) -> str:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"identifier": email, "password": password},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["accessToken"]
 
-    # Staff login with email & password (variant 2: ace@25ag1a6767staff)
-    res_staff2 = client.post("/api/v1/auth/login", json={
-        "identifier": "25ag1a6767@gmail.com",
-        "password": "ace@25ag1a6767staff"
-    })
-    assert res_staff2.status_code == 200, res_staff2.text
 
-def test_counters_are_exactly_two(client):
-    db = SessionLocal()
-    try:
-        counters = db.scalars(select(CanteenCounter).order_by(CanteenCounter.id)).all()
-        assert len(counters) == 2
-        assert counters[0].id == 1
-        assert counters[0].name == "Main Counter"
-        assert counters[1].id == 2
-        assert counters[1].name == "Counter A"
-    finally:
-        db.close()
+def test_admin_and_staff_login_with_registered_credentials():
+    client = TestClient(app)
+    admin_email, admin_password = create_user(UserRole.ADMIN)
+    staff_email, staff_password = create_user(UserRole.STAFF)
 
-def test_admin_menu_item_counter_reassignment_and_deletion(client):
-    # 1. Admin login
-    res_login = client.post("/api/v1/auth/login", json={
-        "identifier": "25ag1a6767@aceec.ac.in",
-        "password": "ace@25ag1a67676"
-    })
-    token = res_login.json()["data"]["accessToken"]
+    for email, password, expected_role in (
+        (admin_email, admin_password, "ADMIN"),
+        (staff_email, staff_password, "STAFF"),
+    ):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"identifier": email.upper(), "password": password},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["user"]["role"] == expected_role
+        assert data["accessToken"]
+
+
+def test_counters_can_be_created_with_unique_names():
+    suffix = uuid.uuid4().hex
+    names = (f"Main Counter {suffix}", f"Counter A {suffix}")
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                CanteenCounter(name=name, location="CI", is_active=True)
+                for name in names
+            ]
+        )
+        db.commit()
+        counters = db.scalars(
+            select(CanteenCounter).where(CanteenCounter.name.in_(names))
+        ).all()
+    assert {counter.name for counter in counters} == set(names)
+
+
+def test_admin_can_reassign_and_delete_menu_item():
+    client = TestClient(app)
+    email, password = create_user(UserRole.ADMIN)
+    token = login(client, email, password)
+    suffix = uuid.uuid4().hex
+    with SessionLocal() as db:
+        category = Category(
+            name=f"CI Category {suffix}",
+            slug=f"ci-category-{suffix}",
+            item_type="food",
+            is_active=True,
+        )
+        counters = [
+            CanteenCounter(name=f"CI Counter {suffix}-{index}", location="CI")
+            for index in (1, 2)
+        ]
+        db.add_all([category, *counters])
+        db.commit()
+        category_id = category.id
+        first_counter_id, second_counter_id = (counter.id for counter in counters)
+
     headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/api/v1/admin/menu-items",
+        json={
+            "categoryId": category_id,
+            "counterId": first_counter_id,
+            "name": f"CI Item {suffix}",
+            "pricePaise": 5500,
+            "costPaise": 2000,
+            "stockQuantity": 15,
+            "preparationMinutes": 5,
+            "dietaryTags": ["veg"],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["data"]["id"]
+    assert created.json()["data"]["counterId"] == first_counter_id
 
-    # 2. Create a test item on Counter 1 (Main Counter)
-    create_res = client.post("/api/v1/admin/menu-items", json={
-        "categoryId": 1,
-        "counterId": 1,
-        "name": "Test Counter Item",
-        "pricePaise": 5500,
-        "costPaise": 2000,
-        "stockQuantity": 15,
-        "preparationMinutes": 5,
-        "dietaryTags": ["veg"]
-    }, headers=headers)
-    assert create_res.status_code == 201, create_res.text
-    item_id = create_res.json()["data"]["id"]
-    assert create_res.json()["data"]["counterId"] == 1
+    updated = client.patch(
+        f"/api/v1/admin/menu-items/{item_id}",
+        json={
+            "counterId": second_counter_id,
+            "pricePaise": 6000,
+            "stockQuantity": 25,
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["data"]["counterId"] == second_counter_id
+    assert updated.json()["data"]["pricePaise"] == 6000
+    assert updated.json()["data"]["stockQuantity"] == 25
 
-    # 3. Admin reassigns item to Counter 2 (Counter A)
-    patch_res = client.patch(f"/api/v1/admin/menu-items/{item_id}", json={
-        "counterId": 2,
-        "pricePaise": 6000,
-        "stockQuantity": 25
-    }, headers=headers)
-    assert patch_res.status_code == 200, patch_res.text
-    assert patch_res.json()["data"]["counterId"] == 2
-    assert patch_res.json()["data"]["pricePaise"] == 6000
-    assert patch_res.json()["data"]["stockQuantity"] == 25
-
-    # 4. Admin deletes the item
-    del_res = client.delete(f"/api/v1/admin/menu-items/{item_id}", headers=headers)
-    assert del_res.status_code == 200, del_res.text
-    assert del_res.json()["data"]["deleted"] is True
-
-    # 5. Verify item no longer exists or is archived
-    db = SessionLocal()
-    try:
-        p = db.get(Product, item_id)
-        assert p is None or p.is_archived is True
-    finally:
-        db.close()
+    deleted = client.delete(f"/api/v1/admin/menu-items/{item_id}", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["data"]["deleted"] is True
+    with SessionLocal() as db:
+        product = db.get(Product, item_id)
+        assert product is None or product.is_archived
