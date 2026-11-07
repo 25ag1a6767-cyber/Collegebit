@@ -19,7 +19,7 @@
       </div>
     </div>
     <div class="staff-topbar-right">
-      <span class="ws-pill offline" id="staff-ws-pill"><span class="ws-dot"></span><span id="staff-ws-label">Offline</span></span>
+      <span class="ws-pill unknown" id="staff-ws-pill" role="status" aria-live="polite"><span class="ws-dot"></span><span id="staff-ws-label">Checking service…</span></span>
       <select id="staff-counter-select" aria-label="Select counter" hidden>
         <option value="">All Assigned Counters</option>
       </select>
@@ -43,6 +43,40 @@
           <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
         </label>
         <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
+        <button type="button" class="btn btn-outline" id="staff-forgot-btn">Forgot password?</button>
+      </form>
+      <form id="staff-reset-form" hidden>
+        <label>Staff Email
+          <input id="staff-reset-email" type="email" required autocomplete="email" placeholder="staff@college.edu">
+        </label>
+        <button type="submit" class="btn btn-primary">Email reset link</button>
+        <button type="button" class="btn btn-outline" id="staff-reset-cancel">Back to sign in</button>
+      </form>
+    </section>
+
+    <section id="staff-mfa-section" class="login-card" aria-labelledby="staff-mfa-heading" hidden>
+      <h1 id="staff-mfa-heading">Verify your sign in</h1>
+      <p>Enter your authenticator code or a recovery code.</p>
+      <form id="staff-mfa-form">
+        <label>Authenticator or recovery code
+          <input id="staff-mfa-code" type="text" required inputmode="numeric" autocomplete="one-time-code" maxlength="20">
+        </label>
+        <button type="submit" class="btn btn-primary">Verify and continue</button>
+        <button type="button" class="btn btn-outline" id="staff-mfa-cancel">Cancel</button>
+      </form>
+    </section>
+
+    <section id="staff-change-password-section" class="login-card" aria-labelledby="staff-change-password-heading" hidden>
+      <h1 id="staff-change-password-heading">Set your staff password</h1>
+      <p>Your administrator issued a temporary password. Choose a new password of at least 12 characters to continue.</p>
+      <form id="staff-change-password-form">
+        <label>Temporary or current password
+          <input id="staff-current-password" type="password" required autocomplete="current-password">
+        </label>
+        <label>New password
+          <input id="staff-new-password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
+        </label>
+        <button type="submit" class="btn btn-primary">Save new password</button>
       </form>
     </section>
 
@@ -94,7 +128,6 @@
               <button type="button" class="btn btn-outline" id="qr-camera-btn">Toggle Camera Scanner</button>
             </div>
             <video id="qr-video" class="camera-video" playsinline muted hidden></video>
-
             <form id="qr-verify-form" class="staff-form-group">
               <label>QR Token or URL (from student pickup pass)
                 <input id="qr-token-input" type="text" placeholder="pk_... or https://.../pickup?code=pk_..." autocomplete="off">
@@ -134,7 +167,6 @@
               Scan a student's QR pass or enter a token number above to inspect complete customer details, ordered items, payment verification, and confirm collection.
             </div>
             <div id="inspection-card" hidden>
-
             </div>
           </div>
         </div>

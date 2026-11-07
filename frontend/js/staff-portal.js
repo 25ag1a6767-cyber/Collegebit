@@ -1,4 +1,4 @@
-
+/* CampusBite AI v2.0 — Dedicated Staff Kitchen & Counter Portal Controller */
 (function () {
   "use strict";
 
@@ -39,6 +39,73 @@
     b.hidden = false;
   }
 
+  function setBackendStatus(status, detail) {
+    const pill = $("staff-ws-pill");
+    const label = $("staff-ws-label");
+    if (!pill || !label) return;
+    const labels = {
+      checking: "Checking service…",
+      online: "Service online",
+      unavailable: "Backend unavailable",
+      serverError: "Server error",
+      notReady: "Service not ready",
+      offline: "Network disconnected"
+    };
+    pill.className = "ws-pill " + (status === "online" ? "live" : status === "checking" ? "unknown" : "offline");
+    label.textContent = labels[status] || labels.unavailable;
+    pill.title = detail || label.textContent;
+  }
+
+  async function fetchBackend(url, options) {
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch (error) {
+      if (!navigator.onLine) {
+        setBackendStatus("offline");
+        throw new Error("Network disconnected. Check your internet connection and try again.");
+      }
+      setBackendStatus("unavailable");
+      throw new Error("Backend unavailable. Check your connection or try again shortly.");
+    }
+    if (response.status === 503) setBackendStatus("unavailable");
+    else if (response.status >= 500) setBackendStatus("serverError");
+    else setBackendStatus("online");
+    return response;
+  }
+
+  async function checkBackendConnectivity() {
+    if (!navigator.onLine) {
+      setBackendStatus("offline");
+      return false;
+    }
+    setBackendStatus("checking");
+    try {
+      const response = await fetchBackend("/api/ready", { headers: { Accept: "application/json" }, cache: "no-store" });
+      const health = await response.json().catch(() => ({}));
+      if (response.ok && health.status === "ready") {
+        setBackendStatus("online");
+        return true;
+      }
+      const checks = health.checks || {};
+      const failed = Object.keys(checks).filter((key) => checks[key] !== "ok");
+      setBackendStatus("notReady", failed.length ? `Service not ready: ${failed.join(", ")}.` : "Service is not ready.");
+    } catch (_) {}
+    return false;
+  }
+
+  function apiErrorMessage(response, payload) {
+    const error = payload.error || {};
+    const code = error.code || "";
+    if (code === "INVALID_CREDENTIALS") return "Invalid email or password.";
+    if (code === "ACCOUNT_DISABLED") return "Staff account inactive. Contact an administrator.";
+    if (code === "STAFF_PORTAL_FORBIDDEN") return "This account is not authorized for the staff portal.";
+    if (response.status === 503) return "Backend unavailable. Try again shortly.";
+    if (response.status >= 500) return "Server error. Try again later.";
+    if (response.status === 401) return "Your session expired. Sign in again.";
+    return error.message || (typeof payload.detail === "string" ? payload.detail : "") || `Request failed (${response.status}).`;
+  }
+
   async function api(path, opts) {
     const options = opts || {};
     const headers = Object.assign({ "Accept": "application/json" }, options.headers || {});
@@ -49,35 +116,33 @@
     }
     options.headers = headers;
 
-    let res = await fetch("/api/v1" + path, options);
-    if (res.status === 401 && state.refreshToken && path !== "/auth/login" && path !== "/auth/refresh") {
+    let res = await fetchBackend("/api/v1" + path, options);
+    if (res.status === 401 && state.refreshToken && !path.startsWith("/auth/")) {
       const refreshed = await tryRefresh();
       if (refreshed) {
         options.headers["Authorization"] = "Bearer " + state.accessToken;
-        res = await fetch("/api/v1" + path, options);
+        res = await fetchBackend("/api/v1" + path, options);
       }
     }
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload.ok === false) {
-      const errMsg = (payload.error && payload.error.message) || payload.detail || ("Request failed (" + res.status + ")");
-      throw new Error(errMsg);
+    if (!res.ok || payload.success === false || payload.ok === false) {
+      if (res.status === 401 && !path.startsWith("/auth/")) clearSession();
+      throw new Error(apiErrorMessage(res, payload));
     }
     return payload.data !== undefined ? payload.data : payload;
   }
 
   async function tryRefresh() {
-    try {
-      const r = await fetch("/api/v1/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: state.refreshToken })
-      });
-      const j = await r.json();
-      if (r.ok && j.ok && j.data && j.data.accessToken) {
-        saveTokens(j.data.accessToken, j.data.refreshToken);
-        return true;
-      }
-    } catch (_) {}
+    const response = await fetchBackend("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: state.refreshToken })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload.success && payload.data && payload.data.accessToken) {
+      saveTokens(payload.data.accessToken, payload.data.refreshToken);
+      return true;
+    }
     clearSession();
     return false;
   }
@@ -102,18 +167,14 @@
     stopCamera();
     $("staff-workspace").hidden = true;
     $("staff-login-section").hidden = false;
+    $("staff-login-form").hidden = false;
+    $("staff-reset-form").hidden = true;
+    $("staff-mfa-section").hidden = true;
+    $("staff-change-password-section").hidden = true;
     $("staff-logout-btn").hidden = true;
     $("staff-user-badge").hidden = true;
     $("staff-counter-select").hidden = true;
-    setWsStatus(false);
-  }
-
-  function setWsStatus(live) {
-    const pill = $("staff-ws-pill");
-    const lbl = $("staff-ws-label");
-    if (!pill || !lbl) return;
-    pill.className = "ws-pill " + (live ? "live" : "offline");
-    lbl.textContent = live ? "Live Stream" : "Offline";
+    checkBackendConnectivity();
   }
 
   function connectWebSocket() {
@@ -126,9 +187,8 @@
     const sock = new WebSocket(wsUrl);
     state.ws = sock;
 
-    sock.addEventListener("open", () => setWsStatus(true));
     sock.addEventListener("close", () => {
-      setWsStatus(false);
+      checkBackendConnectivity();
       if (state.accessToken) {
         setTimeout(() => {
           if (state.accessToken && state.ws === sock) connectWebSocket();
@@ -154,10 +214,21 @@
       const role = String(me.role || "").toUpperCase();
       if (role !== "STAFF" && role !== "ADMIN") {
         clearSession();
-        showBanner("Access denied: Student accounts cannot sign in to the Kitchen Staff Portal.", "error");
+        showBanner("This account is not authorized for the staff portal.", "error");
         return;
       }
       state.user = me;
+      if (me.mustChangePassword) {
+        $("staff-login-section").hidden = true;
+        $("staff-workspace").hidden = true;
+        $("staff-change-password-section").hidden = false;
+        $("staff-logout-btn").hidden = false;
+        $("staff-user-badge").textContent = `${me.fullName} (${role})`;
+        $("staff-user-badge").hidden = false;
+        showBanner("Change your temporary password to continue.", "error");
+        return;
+      }
+      $("staff-change-password-section").hidden = true;
       $("staff-login-section").hidden = true;
       $("staff-workspace").hidden = false;
       $("staff-logout-btn").hidden = false;
@@ -165,6 +236,7 @@
       badge.textContent = `${me.fullName} (${role})`;
       badge.hidden = false;
 
+      // Apply permission gating to stock movement form
       const perms = me.staffPermissions || {};
       $("stock-submit-btn").disabled = perms.canManageInventory === false;
 
@@ -200,6 +272,7 @@
     return state.selectedCounterId ? `${prefix}counterId=${encodeURIComponent(state.selectedCounterId)}` : "";
   }
 
+  // --- TAB 1: Live Orders & KDS ---
   async function loadQueue() {
     try {
       const statusVal = $("kds-status-filter").value;
@@ -329,6 +402,7 @@
     $("reason-text-input").focus();
   }
 
+  // --- TAB 2: Dedicated QR & Token Inspection and Collection Screen (Part 5 & Part 6) ---
   let activeInspectedOrder = null;
 
   async function inspectPickupPayload(body) {
@@ -362,52 +436,18 @@
 
     const frag = document.createDocumentFragment();
 
-<<<<<<< HEAD
-    const head = el("div", "inspect-head", "");
-    head.style.display = "flex";
-    head.style.justifyContent = "space-between";
-    head.style.alignItems = "center";
-    head.style.marginBottom = "14px";
-    head.style.padding = "12px 14px";
-    head.style.background = "#1e293b";
-    head.style.borderRadius = "8px";
-
-    const leftTok = el("div", "", "");
-    leftTok.innerHTML = `<span style="font-size: 26px; font-weight: 900; color: #38bdf8; letter-spacing: 0.5px;">${t.tokenDisplay || ("#" + t.tokenNumber)}</span> <small style="color:#94a3b8; margin-left: 8px;">Order ${t.orderNumber}</small>`;
-=======
     // 1. Top Token & Order Banner (XSS Safe DOM)
     const head = el("div", "inspect-head");
     const leftTok = el("div");
     const tokSpan = el("span", "token-hero-num", t.tokenDisplay || ("#" + t.tokenNumber));
     const ordSmall = el("small", "token-hero-sub", `Order ${t.orderNumber}`);
     leftTok.append(tokSpan, ordSmall);
->>>>>>> a7aeea7 (3)
     head.appendChild(leftTok);
 
     const rightBadge = el("span", "state-pill", prep.status);
     head.appendChild(rightBadge);
     frag.appendChild(head);
 
-<<<<<<< HEAD
-    const custBox = el("div", "inspect-subcard", "");
-    custBox.style.background = "#0f172a";
-    custBox.style.border = "1px solid #334155";
-    custBox.style.borderRadius = "8px";
-    custBox.style.padding = "10px 14px";
-    custBox.style.marginBottom = "14px";
-    custBox.innerHTML = `
-      <div style="font-weight: 700; color: #f1f5f9; font-size: 15px;">Student: ${c.fullName}</div>
-      <div style="font-size: 13px; color: #94a3b8; margin-top: 4px;">College ID: <strong>${c.studentId}</strong> · Phone: <strong>${c.phoneMasked || "N/A"}</strong> · Counter: <strong>${t.counterName || "Main Counter"}</strong></div>
-    `;
-    frag.appendChild(custBox);
-
-    const itemsHead = el("h4", "", "Ordered Food Items:");
-    itemsHead.style.margin = "0 0 8px 0";
-    itemsHead.style.fontSize = "14px";
-    itemsHead.style.color = "#94a3b8";
-    itemsHead.style.textTransform = "uppercase";
-    itemsHead.style.letterSpacing = "0.5px";
-=======
     // 2. Customer Information (Part 5A) (XSS Safe DOM)
     const custBox = el("div", "inspect-subcard");
     const studentLine = el("div", "student-name-line", `Student: ${c.fullName || ""}`);
@@ -425,7 +465,6 @@
 
     // 3. Complete Food Order Breakdown (Part 5C) (XSS Safe DOM)
     const itemsHead = el("h4", "items-inspect-head", "Ordered Food Items:");
->>>>>>> a7aeea7 (3)
     frag.appendChild(itemsHead);
 
     const table = el("table", "items-inspect-table data-table");
@@ -464,25 +503,6 @@
     table.appendChild(tbody);
     frag.appendChild(table);
 
-<<<<<<< HEAD
-    const payBox = el("div", "", "");
-    payBox.style.display = "flex";
-    payBox.style.justifyContent = "space-between";
-    payBox.style.alignItems = "center";
-    payBox.style.padding = "8px 12px";
-    payBox.style.background = p.status === "PAID" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)";
-    payBox.style.border = "1px solid " + (p.status === "PAID" ? "#10b981" : "#ef4444");
-    payBox.style.borderRadius = "8px";
-    payBox.style.marginBottom = "16px";
-    payBox.style.fontSize = "13px";
-    payBox.innerHTML = `
-      <div><strong>Payment: ${p.status}</strong> · ${p.method} · Ref: <code>${p.referenceMasked}</code></div>
-      <div style="font-size: 16px; font-weight: 800; color: #f8fafc;">Total: ₹${p.totalRupees}</div>
-    `;
-    frag.appendChild(payBox);
-
-    const actBox = el("div", "handover-actions", "");
-=======
     // 4. Payment Verification (Part 5D) (XSS Safe DOM)
     const payBox = el("div", `pay-box-inspect ${p.status === "PAID" ? "pay-box-paid" : "pay-box-pending"}`);
     const payInfo = el("div");
@@ -497,7 +517,6 @@
 
     // 5. Decision & Handover Action (Part 6)
     const actBox = el("div", "handover-actions");
->>>>>>> a7aeea7 (3)
     actBox.style.textAlign = "center";
 
     if (data.eligibleForCollection) {
@@ -546,6 +565,7 @@
       $("manual-code-input").value = "";
       $("manual-order-id").value = "";
 
+      // Re-inspect to update card with collected stamp
       await inspectPickupPayload({ orderId: res.order.id });
       await loadQueue();
     } catch (err) {
@@ -555,6 +575,7 @@
     }
   }
 
+  // --- Smart Token Management Dashboard (Part 3) ---
   async function loadTokenManagement() {
     const tbody = $("token-table-body");
     try {
@@ -663,6 +684,7 @@
     }
   }
 
+  // --- TAB 3: Availability, Inventory & Low-Stock Alerts ---
   async function loadInventory() {
     try {
       const [inv, alerts] = await Promise.all([
@@ -747,6 +769,7 @@
     tbody.replaceChildren(frag);
   }
 
+  // --- TAB 4: Completed Order History ---
   async function loadHistory() {
     try {
       const dt = $("history-date-input").value;
@@ -773,6 +796,7 @@
     }
   }
 
+  // --- TAB 5: Daily Staff Performance & Processing Stats ---
   async function loadPerformance() {
     try {
       const d = await api("/staff/performance" + counterQuery("?"));
@@ -813,6 +837,7 @@
     if (tabName === "performance") loadPerformance();
   }
 
+  // --- Wire Events ---
   document.addEventListener("DOMContentLoaded", () => {
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -820,10 +845,17 @@
       try {
         const identifier = $("staff-login-id").value.trim();
         const password = $("staff-login-pw").value;
-        const res = await api("/auth/login", {
+        const res = await api("/auth/staff/login", {
           method: "POST",
           body: { identifier, password }
         });
+        if (res.mfaRequired) {
+          state.mfaChallengeToken = res.mfaChallengeToken;
+          $("staff-login-section").hidden = true;
+          $("staff-mfa-section").hidden = false;
+          $("staff-mfa-code").focus();
+          return;
+        }
         saveTokens(res.accessToken, res.refreshToken);
         await bootstrapAuthenticated();
       } catch (err) {
@@ -831,11 +863,94 @@
       }
     });
 
+    $("staff-forgot-btn").addEventListener("click", () => {
+      $("staff-login-form").hidden = true;
+      $("staff-reset-form").hidden = false;
+      $("staff-reset-email").value = $("staff-login-id").value.includes("@") ? $("staff-login-id").value.trim() : "";
+      $("staff-reset-email").focus();
+      showBanner("", "");
+    });
+
+    $("staff-reset-cancel").addEventListener("click", () => {
+      $("staff-reset-form").hidden = true;
+      $("staff-login-form").hidden = false;
+      showBanner("", "");
+    });
+
+    $("staff-reset-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const response = await fetchBackend("/api/auth/forgot-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ email: $("staff-reset-email").value.trim().toLowerCase() })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(response.status === 503 ? "Backend unavailable. Try again shortly." : "Could not request a reset link. Try again later.");
+        }
+        $("staff-reset-form").hidden = true;
+        $("staff-login-form").hidden = false;
+        showBanner(payload.message || "If an account exists for that email, a reset link has been sent.", "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
+    $("staff-mfa-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const result = await api("/auth/mfa/verify-login", {
+          method: "POST",
+          body: {
+            mfaChallengeToken: state.mfaChallengeToken,
+            code: $("staff-mfa-code").value.trim()
+          }
+        });
+        saveTokens(result.accessToken, result.refreshToken);
+        state.mfaChallengeToken = "";
+        $("staff-mfa-code").value = "";
+        $("staff-mfa-section").hidden = true;
+        await bootstrapAuthenticated();
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
+    $("staff-mfa-cancel").addEventListener("click", () => {
+      clearSession();
+      showBanner("Sign in was cancelled.", "");
+    });
+
+    $("staff-change-password-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const result = await api("/users/me/change-password", {
+          method: "POST",
+          body: {
+            currentPassword: $("staff-current-password").value,
+            newPassword: $("staff-new-password").value
+          }
+        });
+        saveTokens(result.accessToken, result.refreshToken);
+        $("staff-change-password-form").reset();
+        await bootstrapAuthenticated();
+        showBanner("Password updated.", "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
     $("staff-logout-btn").addEventListener("click", async () => {
+      let logoutError = "";
       try {
         await api("/auth/logout", { method: "POST", body: { refreshToken: state.refreshToken } });
-      } catch (_) {}
+      } catch (err) {
+        logoutError = err.message;
+      }
       clearSession();
+      if (logoutError) showBanner(`Signed out on this device. The server session could not be revoked: ${logoutError}`, "error");
+      else showBanner("Signed out.", "success");
     });
 
     $("staff-counter-select").addEventListener("change", (e) => {
@@ -935,6 +1050,11 @@
         showBanner(err.message, "error");
       }
     });
+
+    window.addEventListener("offline", () => setBackendStatus("offline"));
+    window.addEventListener("online", checkBackendConnectivity);
+    checkBackendConnectivity();
+    window.setInterval(checkBackendConnectivity, 30000);
 
     if (state.accessToken) {
       bootstrapAuthenticated();

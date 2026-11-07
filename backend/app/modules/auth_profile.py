@@ -41,6 +41,7 @@ router = APIRouter(tags=["v1-auth-profile"])
 
 _PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
 
+
 def _clean_phone(raw: str | None) -> str | None:
     if raw is None:
         return None
@@ -51,6 +52,7 @@ def _clean_phone(raw: str | None) -> str | None:
         raise ApiError(422, "INVALID_PHONE", "Phone number must contain 10 to 15 digits.")
     return cleaned
 
+
 class RegisterV1In(BaseModel):
     fullName: str = Field(min_length=2, max_length=120)
     email: EmailStr
@@ -58,41 +60,51 @@ class RegisterV1In(BaseModel):
     password: str = Field(min_length=12, max_length=128)
     dietaryPreference: str | None = Field(default=None, max_length=50)
 
+
 class LoginV1In(BaseModel):
     identifier: str | None = Field(default=None, max_length=255, description="Email or phone")
     email: EmailStr | None = None
     password: str = Field(min_length=1, max_length=128)
     totpCode: str | None = Field(default=None, max_length=20)
 
+
 class MfaVerifyLoginIn(BaseModel):
     mfaChallengeToken: str = Field(min_length=16, max_length=600)
     code: str = Field(min_length=6, max_length=20)
 
+
 class MfaEnableIn(BaseModel):
     code: str = Field(min_length=6, max_length=10)
+
 
 class MfaDisableIn(BaseModel):
     password: str = Field(min_length=1, max_length=128)
     code: str = Field(min_length=6, max_length=20)
 
+
 class RefreshIn(BaseModel):
     refreshToken: str = Field(min_length=20, max_length=300)
+
 
 class LogoutIn(BaseModel):
     refreshToken: str | None = Field(default=None, max_length=300)
     allSessions: bool = False
 
+
 class VerifyEmailIn(BaseModel):
     token: str = Field(min_length=16, max_length=600)
+
 
 class ProfilePatchIn(BaseModel):
     fullName: str | None = Field(default=None, min_length=2, max_length=120)
     phone: str | None = Field(default=None, max_length=30)
     dietaryPreference: str | None = Field(default=None, max_length=50)
 
+
 class PushSubscribeIn(BaseModel):
     endpoint: str = Field(min_length=12, max_length=600)
     keys: dict[str, str]
+
 
 @router.post("/auth/register", status_code=201)
 def register_v1(
@@ -141,8 +153,14 @@ def register_v1(
     )
     return ok(request, {"user": serialize_user_v1(db, user)}, status_code=201)
 
-@router.post("/auth/login")
-def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)):
+
+def _login_v1(
+    payload: LoginV1In,
+    request: Request,
+    db: Session,
+    *,
+    staff_portal_only: bool = False,
+):
     from app.main import _check_login_rate, _clear_login_failures, _login_rate_key, _record_failed_login
 
     raw_ident = (payload.identifier or (str(payload.email) if payload.email else "")).strip()
@@ -172,7 +190,11 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
         raise ApiError(401, "INVALID_CREDENTIALS", "Invalid credentials.")
     if not user.is_active:
         _record_failed_login(rate_key)
-        raise ApiError(403, "ACCOUNT_DISABLED", "This account has been suspended.")
+        raise ApiError(403, "ACCOUNT_DISABLED", "This account is inactive. Contact an administrator.")
+    if staff_portal_only and user.role not in {UserRole.STAFF, UserRole.ADMIN}:
+        db.add(SecurityEvent(event_type="auth.staff_portal_denied", severity="warning", ip_address=request.client.host if request.client else None, identifier=raw_ident[:120], user_id=user.id, path=request.url.path))
+        db.commit()
+        raise ApiError(403, "STAFF_PORTAL_FORBIDDEN", "This account is not authorized for the staff portal.")
     cfg = get_settings()
     if cfg.email_verification_required and user.role == UserRole.STUDENT and user.email_verified_at is None:
         raise ApiError(403, "EMAIL_NOT_VERIFIED", "Please verify your email address before signing in.")
@@ -211,6 +233,14 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
         },
     )
 
+@router.post("/auth/login")
+def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)):
+    return _login_v1(payload, request, db)
+
+@router.post("/auth/staff/login")
+def staff_login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)):
+    return _login_v1(payload, request, db, staff_portal_only=True)
+
 @router.post("/auth/mfa/verify-login")
 def mfa_verify_login_v1(payload: MfaVerifyLoginIn, request: Request, db: Session = Depends(get_db)):
     from app.main import _check_login_rate, _clear_login_failures, _login_rate_key, _record_failed_login
@@ -248,6 +278,7 @@ def mfa_verify_login_v1(payload: MfaVerifyLoginIn, request: Request, db: Session
         },
     )
 
+
 @router.post("/auth/mfa/setup")
 def mfa_setup_v1(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if user.mfa_enabled:
@@ -263,6 +294,7 @@ def mfa_setup_v1(request: Request, user: User = Depends(get_current_user), db: S
             "issuer": get_settings().app_name,
         },
     )
+
 
 @router.post("/auth/mfa/enable")
 def mfa_enable_v1(payload: MfaEnableIn, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -289,6 +321,7 @@ def mfa_enable_v1(payload: MfaEnableIn, request: Request, user: User = Depends(g
         },
     )
 
+
 @router.post("/auth/mfa/disable")
 def mfa_disable_v1(payload: MfaDisableIn, request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if not user.mfa_enabled:
@@ -306,6 +339,7 @@ def mfa_disable_v1(payload: MfaDisableIn, request: Request, user: User = Depends
     db.commit()
     return ok(request, {"mfaEnabled": False})
 
+
 @router.post("/auth/refresh")
 def refresh_credentials_v1(payload: RefreshIn, request: Request, db: Session = Depends(get_db)):
     user, new_refresh = rotate_refresh_session(db, payload.refreshToken, request)
@@ -321,6 +355,7 @@ def refresh_credentials_v1(payload: RefreshIn, request: Request, db: Session = D
             "user": serialize_user_v1(db, user),
         },
     )
+
 
 @router.post("/auth/logout")
 def logout_v1(
@@ -341,6 +376,7 @@ def logout_v1(
     db.commit()
     return ok(request, {"revokedSessions": revoked})
 
+
 @router.post("/auth/send-verification")
 def send_verification_v1(
     request: Request,
@@ -360,6 +396,7 @@ def send_verification_v1(
     )
     return ok(request, {"sent": True})
 
+
 @router.post("/auth/verify-email")
 def verify_email_v1(payload: VerifyEmailIn, request: Request, db: Session = Depends(get_db)):
     user = read_email_verification_token(payload.token, db)
@@ -371,9 +408,12 @@ def verify_email_v1(payload: VerifyEmailIn, request: Request, db: Session = Depe
         db.commit()
     return ok(request, {"emailVerified": True})
 
+
 @router.get("/users/me")
+@router.get("/me")
 def get_me_v1(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(request, serialize_user_v1(db, user))
+
 
 @router.patch("/users/me")
 def update_me_v1(
@@ -401,9 +441,11 @@ def update_me_v1(
     db.refresh(user)
     return ok(request, serialize_user_v1(db, user))
 
+
 class ChangePasswordV1In(BaseModel):
     currentPassword: str = Field(min_length=1, max_length=128)
     newPassword: str = Field(min_length=12, max_length=128)
+
 
 @router.post("/users/me/change-password")
 def change_password_v1(
@@ -433,6 +475,7 @@ def change_password_v1(
         },
     )
 
+
 @router.get("/users/me/orders")
 def my_orders_v1(
     request: Request,
@@ -452,6 +495,7 @@ def my_orders_v1(
         .limit(lim)
     ).unique().all()
     return ok(request, {"items": [serialize_order_v1(o, include_history=True) for o in rows], "limit": lim, "offset": off})
+
 
 @router.get("/users/me/notifications")
 def my_notifications_v1(
@@ -489,6 +533,7 @@ def my_notifications_v1(
         },
     )
 
+
 @router.patch("/users/me/notifications/{notification_id}/read")
 def mark_notification_read_v1(
     notification_id: int,
@@ -505,6 +550,7 @@ def mark_notification_read_v1(
         db.commit()
     return ok(request, {"id": notif.id, "isRead": True})
 
+
 @router.post("/users/me/notifications/read-all")
 def mark_all_notifications_read_v1(
     request: Request,
@@ -519,10 +565,12 @@ def mark_all_notifications_read_v1(
     db.commit()
     return ok(request, {"markedRead": len(rows)})
 
+
 @router.get("/push/vapid-public-key")
 def vapid_public_key_v1(request: Request):
     cfg = get_settings()
     return ok(request, {"enabled": bool(cfg.vapid_public_key and cfg.vapid_private_key), "publicKey": cfg.vapid_public_key or None})
+
 
 @router.post("/push/subscribe", status_code=201)
 def push_subscribe_v1(
@@ -553,6 +601,7 @@ def push_subscribe_v1(
         )
     db.commit()
     return ok(request, {"subscribed": True}, status_code=201)
+
 
 @router.delete("/push/subscribe")
 def push_unsubscribe_v1(

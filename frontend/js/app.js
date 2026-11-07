@@ -1,4 +1,5 @@
 
+// Phase 21: installable app shell. Offline mode never submits orders or caches API/private data.
 (() => {
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
     window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(error => console.warn("ACE Canteen offline shell unavailable:", error)));
@@ -20,10 +21,11 @@
 
 "use strict";
 
+// Phase 5 cart: persisted locally for convenience; prices and stock are always revalidated by the server.
 const CART_STORAGE_KEY = 'ace-canteen-cart-v1';
 let cart = (() => { try { const raw = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } })();
 const money = value => `₹${Number(value || 0).toFixed(2)}`;
-function saveCart() { try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart)); } catch {  } }
+function saveCart() { try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart)); } catch { /* private browsing/storage disabled: cart remains in memory */ } }
 function cartLines() { return Object.entries(cart).map(([id, quantity]) => ({ product_id: Number(id), quantity: Number(quantity) })).filter(line => Number.isInteger(line.product_id) && line.product_id > 0 && Number.isInteger(line.quantity) && line.quantity > 0); }
 function renderCart(message = '') {
   const list = document.querySelector('#cart-items'); const status = document.querySelector('#cart-message'); const subtotal = document.querySelector('#cart-subtotal');
@@ -48,7 +50,7 @@ function renderCart(message = '') {
     const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary-button'; remove.textContent = 'Remove'; remove.addEventListener('click', () => { delete cart[line.product_id]; saveCart(); renderCart(); });
     controls.append(minus, qty, plus, remove); row.append(details, controls); list.append(row);
   }
-
+  // Display cached prices only as an estimate; review obtains authoritative prices from the API.
   const cached = window.aceCatalogueProducts || {};
   for (const line of lines) estimated += Number(cached[line.product_id]?.price || 0) * line.quantity;
   subtotal.textContent = money(estimated);
@@ -221,16 +223,19 @@ if (productSearch && productType) {
   })();
 }
 
+// Phase 3/48 account UI: sign in, register, forgot/reset password, persistent session.
+// The bearer token is kept in localStorage so a page refresh (or switching to a UPI app and back on a phone)
+// does not sign the student out. It is validated with /api/auth/me on every page load and removed on sign-out.
 (() => {
   const form = document.querySelector('#auth-form');
   if (!form) return;
   const SESSION_KEY = 'ace-canteen-session-v1';
   const store = {
-    save(value) { try { localStorage.setItem(SESSION_KEY, value); } catch {  } },
+    save(value) { try { localStorage.setItem(SESSION_KEY, value); } catch { /* storage disabled: session lasts until refresh */ } },
     load() { try { return localStorage.getItem(SESSION_KEY) || ''; } catch { return ''; } },
-    clear() { try { localStorage.removeItem(SESSION_KEY); } catch {  } }
+    clear() { try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } }
   };
-  let mode = 'login';
+  let mode = 'login'; // login | register | forgot | reset
   let resetToken = '';
   const nameWrap = document.querySelector('#auth-name-wrap');
   const nameInput = document.querySelector('#auth-name');
@@ -352,7 +357,8 @@ if (productSearch && productType) {
   });
 
   setMode('login');
-
+  // Password-reset link: /#reset=<token>. The token stays in the URL fragment (never sent to the server or in
+  // Referer headers) and is removed from the address bar immediately.
   if (location.hash.startsWith('#reset=')) {
     resetToken = decodeURIComponent(location.hash.slice('#reset='.length));
     history.replaceState(null, '', location.pathname + location.search);
@@ -364,13 +370,15 @@ if (productSearch && productType) {
       fetch('/api/auth/me', { headers: { Authorization: `Bearer ${saved}` } })
         .then(async response => {
           if (response.ok) applySession(saved, await response.json());
-          else if (response.status === 401) store.clear();
+          else if (response.status === 401) store.clear(); // expired or invalidated session
         })
-        .catch(() => {  });
+        .catch(() => { /* offline or server restarting: keep the stored token and let the user retry */ });
     }
   }
 })();
 
+
+// Phase 4: staff/admin catalogue management UI. The API remains the authority for permissions.
 (() => {
   const panel = document.querySelector('#catalogue-management');
   if (!panel) return;
@@ -585,6 +593,8 @@ if (productSearch && productType) {
   if (window.aceCanteenUser) syncRole(window.aceCanteenUser);
 })();
 
+
+// Phase 8: privacy-preserving public pickup board and daily token queue.
 async function loadPublicQueue() {
   const list = document.querySelector('#public-queue-list');
   const message = document.querySelector('#public-queue-message');
@@ -613,6 +623,7 @@ async function loadPublicQueue() {
   } catch (error) { message.textContent = error.message; }
 }
 
+// Student order history and staff/admin order queue. Status transitions are enforced server-side.
 async function orderApi(url, options = {}) {
   if (!window.aceCanteenToken) throw new Error('Please sign in first.');
   const response = await fetch(url, { ...options, headers: { Accept: 'application/json', ...(options.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${window.aceCanteenToken}`, ...(options.headers || {}) } });
@@ -693,7 +704,7 @@ async function loadOrderQueue() {
     else orders.forEach(order => list.append(orderRow(order, true)));
   } catch (error) { message.textContent = error.message; }
 }
-
+// Phase 10: dedicated kitchen and pickup-counter work queues.
 async function loadStaffWorkflow() {
   if (!['admin', 'staff'].includes(window.aceCanteenUser?.role)) return;
   const status = document.querySelector('#workflow-kitchen-waiting');
@@ -720,7 +731,7 @@ async function loadStaffWorkflow() {
     for (const id of ['kitchen-board-message', 'counter-board-message']) { const el = document.getElementById(id); if (el) el.textContent = error.message; }
   }
 }
-
+// Staff-only pickup QR scanning. The server verifies the signed code and payment before showing order details.
 let pickupQrScanner = null;
 let scannedPickupOrder = null;
 async function verifyPickupQr(rawCode) {
@@ -792,12 +803,15 @@ document.addEventListener('ace-auth-changed', event => {
   if (user?.role === 'student') loadMyOrders(); if (['admin', 'staff'].includes(user?.role)) { loadOrderQueue(); loadStaffWorkflow(); }
 });
 
+
+// Phase 7: refresh the staff queue periodically while a staff/admin session is active.
 window.setInterval(() => {
   loadPublicQueue();
   if (['admin', 'staff'].includes(window.aceCanteenUser?.role)) { loadOrderQueue(); loadStaffWorkflow(); }
   if (window.aceCanteenUser?.role === 'student') loadMyOrders();
 }, 15000);
 
+// Phase 11: inventory ledger, low-stock alerts and controlled stock adjustments.
 (() => {
   const root = document.querySelector('#inventory-management');
   if (!root) return;
@@ -901,6 +915,8 @@ window.setInterval(() => {
   window.setInterval(() => { if (canManage() && !document.hidden) refreshAll(); }, 30000);
 })();
 
+
+// Phase 12: administrator-only reports, CSV export and audit trail.
 (() => {
   const panel = document.querySelector('#admin-reporting');
   if (!panel) return;
@@ -968,6 +984,8 @@ window.setInterval(() => {
   document.addEventListener('ace-auth-changed', event => sync(event.detail)); if (window.aceCanteenUser) sync(window.aceCanteenUser);
 })();
 
+
+// Phase 13: durable in-app notifications for students and staff, with owner-scoped read actions.
 (() => {
   const panel = document.querySelector('#notification-center');
   if (!panel) return;
@@ -1006,6 +1024,8 @@ window.setInterval(() => {
   if (window.aceCanteenUser) loadNotifications();
 })();
 
+
+// Phase 45: visual admin control centre backed by the admin-only register APIs.
 (() => {
   const $ = id => document.getElementById(id);
   const panel = $('admin-control-centre');
@@ -1107,6 +1127,7 @@ window.setInterval(() => {
   adminVisible();
 })();
 
+
 // Phase 49: canteen open/closed banner, pickup-time slots, and the staff ordering switch.
 (() => {
   const $ = id => document.querySelector(id);
@@ -1154,6 +1175,8 @@ window.setInterval(() => {
   refresh();
 })();
 
+
+
 // Phase 50-58: Procurement, Traceable Batches, Expiry, Demand Analytics & Reconciliation UI
 (() => {
   const $ = id => document.querySelector(id);
@@ -1179,6 +1202,7 @@ window.setInterval(() => {
     return data;
   }
 
+  // Populate product dropdowns for PO and Batch forms
   async function populateProductDropdowns() {
     try {
       const res = await fetch('/api/products?limit=100');
@@ -1197,6 +1221,7 @@ window.setInterval(() => {
     }
   }
 
+  // Suppliers
   async function loadSuppliers() {
     const msg = $('#suppliers-message'), tbody = $('#suppliers-table-body');
     const poSupplier = $('#po-supplier'), batchSupplier = $('#batch-supplier');
@@ -1242,6 +1267,7 @@ window.setInterval(() => {
     }
   }
 
+  // Add Supplier Form
   $('#supplier-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = $('#supplier-form-message');
@@ -1265,6 +1291,7 @@ window.setInterval(() => {
     }
   });
 
+  // Purchase Orders
   async function loadPurchaseOrders() {
     const msg = $('#purchase-orders-message'), tbody = $('#purchase-orders-table-body');
     if (!tbody) return;
@@ -1282,7 +1309,7 @@ window.setInterval(() => {
           const lines = JSON.parse(po.lines_json || '[]');
           linesSummary = lines.map(l => `${l.quantity} units (PID #${l.product_id})`).join(', ');
           totalCost = lines.reduce((sum, l) => sum + (l.quantity * Number(l.unit_cost || 0)), 0);
-        } catch {  }
+        } catch { /* parse error */ }
 
         const tr = document.createElement('tr');
         const tdId = document.createElement('td');
@@ -1323,6 +1350,7 @@ window.setInterval(() => {
     }
   }
 
+  // Create Purchase Order Form
   $('#purchase-order-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = $('#po-form-message');
@@ -1347,6 +1375,7 @@ window.setInterval(() => {
     }
   });
 
+  // Receive Purchase Order Click
   $('#purchase-orders-table-body')?.addEventListener('click', async e => {
     const btn = e.target.closest('[data-receive-po]');
     if (!btn) return;
@@ -1364,6 +1393,7 @@ window.setInterval(() => {
     }
   });
 
+  // Direct Batch Receipt
   $('#batch-receipt-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = $('#batch-form-message');
@@ -1388,6 +1418,7 @@ window.setInterval(() => {
     }
   });
 
+  // Expiry Monitoring
   async function loadExpiryBatches(days = 30) {
     const msg = $('#expiry-message'), tbody = $('#expiry-table-body');
     if (!tbody) return;
@@ -1437,6 +1468,7 @@ window.setInterval(() => {
     }
   }
 
+  // Stock Reconciliation
   async function loadReconciliation() {
     const msg = $('#reconciliation-message'), tbody = $('#reconciliation-table-body');
     if (!tbody) return;
@@ -1484,6 +1516,7 @@ window.setInterval(() => {
     }
   }
 
+  // Demand Analytics
   async function loadDemandAnalytics(days = 30) {
     const msg = $('#demand-message'), tbody = $('#demand-table-body');
     if (!tbody) return;
@@ -1543,6 +1576,7 @@ window.setInterval(() => {
     }
   }
 
+  // Payment Reconciliation Exceptions
   async function loadPaymentReconciliation() {
     const msg = $('#admin-reconciliation-payments-message'), tbody = $('#admin-reconciliation-payments-body');
     if (!tbody) return;
@@ -1589,6 +1623,7 @@ window.setInterval(() => {
     }
   }
 
+  // Station Filter on Kitchen Board
   $('#kitchen-station-filter')?.addEventListener('change', () => {
     const filter = $('#kitchen-station-filter').value;
     const items = document.querySelectorAll('#kitchen-board-list .order-row, #kitchen-board-list .management-card');
@@ -1608,6 +1643,7 @@ window.setInterval(() => {
     });
   });
 
+  // Buttons & Event listeners
   $('#refresh-suppliers')?.addEventListener('click', loadSuppliers);
   $('#refresh-purchase-orders')?.addEventListener('click', loadPurchaseOrders);
   $('#refresh-expiry')?.addEventListener('click', () => loadExpiryBatches($('#expiry-days-filter')?.value || 30));
@@ -1617,6 +1653,7 @@ window.setInterval(() => {
   $('#demand-days-filter')?.addEventListener('change', e => loadDemandAnalytics(e.target.value));
   $('#admin-refresh-reconciliation-payments')?.addEventListener('click', loadPaymentReconciliation);
 
+  // Auth changed event hook
   function checkAdminView() {
     const isStaffOrAdmin = window.aceCanteenUser && ['staff', 'admin'].includes(window.aceCanteenUser.role);
     const isAdmin = window.aceCanteenUser && window.aceCanteenUser.role === 'admin';

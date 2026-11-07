@@ -28,6 +28,7 @@
   <main class="admin-shell">
     <div id="admin-alert" class="alert-bar" role="status" aria-live="polite" hidden></div>
 
+    <!-- Dedicated Administrator Sign-In Gate -->
     <section id="admin-login-view" class="login-panel" aria-labelledby="admin-login-heading">
       <h1 id="admin-login-heading">Administrator Sign In</h1>
       <p>Restricted to authorized college canteen administrators (`ADMIN` role). All administrative actions are recorded in immutable audit logs.</p>
@@ -42,6 +43,7 @@
       </form>
     </section>
 
+    <!-- Authenticated Enterprise Admin Workspace -->
     <div id="admin-workspace" hidden>
       <nav class="admin-nav" aria-label="Administrator modules">
         <button type="button" class="nav-tab active" data-tab="bi">1. BI &amp; 16 Analytics Graphs</button>
@@ -55,6 +57,9 @@
         <button type="button" class="nav-tab" data-tab="governance">9. DB Admin, Backups, 4-Day Retention &amp; Security</button>
       </nav>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 1: ADVANCED BI ANALYTICS (10 KPI CARDS, 11 FILTERS, 4 COMPARISONS, 16 GRAPHS) -->
+      <!-- ===================================================================== -->
       <section id="tab-bi" class="admin-tab-pane">
         <form id="bi-filter-form" class="filter-ribbon">
           <label for="bi-preset">Date Window
@@ -100,10 +105,13 @@
           </div>
         </form>
 
+        <!-- 10 Required KPI Dashboard Cards -->
         <div id="bi-kpi-cards" class="kpi-grid-10" aria-label="Key business metrics"></div>
 
+        <!-- Period Comparison Banner -->
         <div id="bi-comparison-banner" class="comparison-banner"></div>
 
+        <!-- 16 Required Interactive SVG Graphs -->
         <div class="charts-grid">
           <article class="chart-card"><div class="card-head"><h3>1. Daily Sales Line Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-daily-sales"></div></article>
           <article class="chart-card"><div class="card-head"><h3>2. Weekly Sales Graph</h3><span class="pill pill-actual">ACTUAL DB</span></div><div id="chart-weekly-sales"></div></article>
@@ -124,6 +132,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 2: 14 AUTOMATED REPORTS & EXPORT STUDIO (PDF, EXCEL .XLSX, CSV) -->
+      <!-- ===================================================================== -->
       <section id="tab-reports" class="admin-tab-pane" hidden>
         <div class="split-2">
           <div class="section-card">
@@ -208,6 +219,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 3: AI BUSINESS INTELLIGENCE SUITE (12 MODULES) -->
+      <!-- ===================================================================== -->
       <section id="tab-aibi" class="admin-tab-pane" hidden>
         <div class="section-card">
           <div class="card-head">
@@ -262,6 +276,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 4: USERS, STAFF ACCOUNTS & GRANULAR PERMISSIONS -->
+      <!-- ===================================================================== -->
       <section id="tab-users" class="admin-tab-pane" hidden>
         <div class="split-2">
           <div class="section-card">
@@ -270,7 +287,7 @@
               <label>Full Name<input id="usr-name" type="text" required minlength="2" placeholder="Aarav Nair" /></label>
               <label>Email<input id="usr-email" type="email" required placeholder="staff2@acecanteen.local" /></label>
               <label>Phone (optional)<input id="usr-phone" type="text" placeholder="9876543210" /></label>
-              <label>Temporary Password<input id="usr-pass" type="password" required minlength="8" placeholder="Min 8 chars" /></label>
+              <label>Temporary Password<input id="usr-pass" type="password" required minlength="12" maxlength="128" autocomplete="new-password" placeholder="Min 12 chars" /></label>
               <label>Role
                 <select id="usr-role">
                   <option value="student">STUDENT (Customer)</option>
@@ -327,6 +344,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 5: MENU, CATEGORIES, PRICING, COSTS & DISCOUNTS -->
+      <!-- ===================================================================== -->
       <section id="tab-menu" class="admin-tab-pane" hidden>
         <div class="split-3">
           <div class="section-card">
@@ -393,6 +413,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 6: INVENTORY, SUPPLIERS, PURCHASE ORDERS & EXPENSES -->
+      <!-- ===================================================================== -->
       <section id="tab-procurement" class="admin-tab-pane" hidden>
         <div class="split-2">
           <div class="section-card">
@@ -491,6 +514,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 7: ORDERS, PAYMENTS, REFUNDS & CUSTOMER FEEDBACK -->
+      <!-- ===================================================================== -->
       <section id="tab-operations" class="admin-tab-pane" hidden>
         <div class="section-card">
           <div class="card-head">
@@ -551,6 +577,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 8: COUNTERS, CANTEEN OPERATING HOURS & GLOBAL SETTINGS -->
+      <!-- ===================================================================== -->
       <section id="tab-settings" class="admin-tab-pane" hidden>
         <div class="split-2">
           <div class="section-card">
@@ -588,6 +617,9 @@
         </div>
       </section>
 
+      <!-- ===================================================================== -->
+      <!-- TAB 9: DATABASE ADMIN, ENCRYPTED GFS BACKUPS, 4-DAY RETENTION, SECURITY & AUDIT -->
+      <!-- ===================================================================== -->
       <section id="tab-governance" class="admin-tab-pane" hidden>
         <div class="split-2">
           <div class="section-card">

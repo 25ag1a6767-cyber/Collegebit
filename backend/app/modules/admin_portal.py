@@ -15,14 +15,16 @@ from typing import Any
 import uuid
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.database import get_db
+from app.emailer import send_email
 from app.envelope import ApiError, ok
 from app.models import (
     AuditEvent,
@@ -63,12 +65,13 @@ from app.modules.common import (
     serialize_user_v1,
     set_app_setting,
 )
-from app.security import hash_password, require_roles, revoke_refresh_sessions
+from app.security import create_password_reset_token, hash_password, require_roles, revoke_refresh_sessions
 
 router = APIRouter(prefix="/admin", tags=["v1-admin"])
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 UPLOADS_DIR = PROJECT_DIR / "frontend" / "assets" / "uploads"
+
 
 def _detect_image_extension(raw: bytes) -> str | None:
     if raw.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -79,6 +82,8 @@ def _detect_image_extension(raw: bytes) -> str | None:
         return "webp"
     return None
 
+
+# --- A01 Overview ---
 @router.get("/overview")
 def get_admin_overview_v1(
     request: Request,
@@ -166,12 +171,15 @@ def get_admin_overview_v1(
         },
     )
 
+
+# --- Counters Management ---
 class CounterCreateIn(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     location: str = Field(default="Main Building", min_length=2, max_length=150)
     capacityPerSlot: int = Field(default=20, ge=1, le=500)
     openingHours: str = Field(default="08:30-17:30", max_length=500)
     isActive: bool = True
+
 
 class CounterPatchIn(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=100)
@@ -180,12 +188,14 @@ class CounterPatchIn(BaseModel):
     openingHours: str | None = Field(default=None, max_length=500)
     isActive: bool | None = None
 
+
 @router.get("/counters")
 def list_admin_counters_v1(request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     ensure_default_counter(db)
     db.commit()
     rows = db.scalars(select(CanteenCounter).order_by(CanteenCounter.id.asc())).all()
     return ok(request, {"items": [serialize_counter_v1(db, c) for c in rows]})
+
 
 @router.post("/counters", status_code=201)
 def create_admin_counter_v1(payload: CounterCreateIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -205,6 +215,7 @@ def create_admin_counter_v1(payload: CounterCreateIn, request: Request, admin: U
     db.commit()
     db.refresh(c)
     return ok(request, serialize_counter_v1(db, c), status_code=201)
+
 
 @router.patch("/counters/{counter_id}")
 def patch_admin_counter_v1(counter_id: int, payload: CounterPatchIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -227,23 +238,29 @@ def patch_admin_counter_v1(counter_id: int, payload: CounterPatchIn, request: Re
     db.refresh(c)
     return ok(request, serialize_counter_v1(db, c))
 
+
+# --- A02 Users, Roles, Account Suspension & Staff Counter Assignments ---
 class AdminInviteUserIn(BaseModel):
     fullName: str = Field(min_length=2, max_length=120)
     email: EmailStr
     phone: str | None = Field(default=None, max_length=30)
-    temporaryPassword: str = Field(min_length=8, max_length=128)
+    temporaryPassword: str = Field(min_length=12, max_length=128)
     role: str = Field(pattern="^(student|staff|admin|STUDENT|STAFF|ADMIN)$")
     counterIds: list[int] = Field(default_factory=list)
 
+
 class AdminRoleUpdateIn(BaseModel):
     role: str = Field(pattern="^(student|staff|admin|STUDENT|STAFF|ADMIN)$")
+
 
 class AdminStatusUpdateIn(BaseModel):
     isActive: bool | None = None
     status: str | None = Field(default=None, pattern="^(ACTIVE|SUSPENDED)$")
 
+
 class AdminCounterAssignIn(BaseModel):
     counterIds: list[int] = Field(default_factory=list)
+
 
 @router.get("/users")
 def list_admin_users_v1(
@@ -266,6 +283,7 @@ def list_admin_users_v1(
         stmt = stmt.where(or_(User.full_name.ilike(term), User.email.ilike(term), User.phone.ilike(term)))
     users = db.scalars(stmt.offset(offset).limit(limit)).all()
     return ok(request, {"items": [serialize_user_v1(db, u) for u in users], "limit": limit, "offset": offset})
+
 
 @router.post("/users", status_code=201)
 def create_admin_user_v1(
@@ -292,14 +310,45 @@ def create_admin_user_v1(
         email_verified_at=datetime.now(timezone.utc),
     )
     db.add(user)
-    db.flush()
-    for cid in set(payload.counterIds):
-        if db.get(CanteenCounter, cid):
-            db.add(UserCounterAssignment(user_id=user.id, counter_id=cid))
-    record_audit(db, "admin.user_created", "user", user.id, admin.id, {"role": role_enum.value, "counters": payload.counterIds})
-    db.commit()
+    try:
+        db.flush()
+        for cid in set(payload.counterIds):
+            if db.get(CanteenCounter, cid):
+                db.add(UserCounterAssignment(user_id=user.id, counter_id=cid))
+        record_audit(db, "admin.user_created", "user", user.id, admin.id, {"role": role_enum.value, "counters": payload.counterIds})
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "ACCOUNT_ALREADY_EXISTS", "An account with this email or phone already exists.")
     db.refresh(user)
     return ok(request, serialize_user_v1(db, user), status_code=201)
+
+@router.post("/users/{user_id}/reset-password")
+def request_staff_password_reset_v1(
+    user_id: int,
+    request: Request,
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    target = db.get(User, user_id)
+    if target is None or target.role != UserRole.STAFF:
+        raise ApiError(404, "STAFF_ACCOUNT_NOT_FOUND", "Staff account not found.")
+    if target.is_active:
+        cfg = get_settings()
+        if cfg.environment.lower() in {"production", "prod"} and not cfg.smtp_host:
+            raise ApiError(503, "EMAIL_UNAVAILABLE", "Staff password reset email is not configured. Contact the system administrator.")
+        reset_url = f"{cfg.public_base_url.rstrip('/')}/#reset={create_password_reset_token(target)}"
+        body = (
+            f"Hello {target.full_name},\n\n"
+            f"An administrator requested a password reset for your {cfg.app_name} account. "
+            f"Use this one-time link within {cfg.password_reset_minutes} minutes:\n{reset_url}\n\n"
+            "If you did not expect this message, contact your canteen administrator.\n"
+        )
+        if not send_email(target.email, "Reset your staff account password", body):
+            raise ApiError(503, "EMAIL_UNAVAILABLE", "The password reset email could not be sent. Check the email service configuration and try again.")
+        record_audit(db, "admin.staff_password_reset_requested", "user", target.id, admin.id, {})
+        db.commit()
+    return ok(request, {"message": "If an active staff account is eligible, a password reset link has been sent."})
 
 @router.post("/users/{user_id}/role")
 def update_user_role_v1(
@@ -322,10 +371,12 @@ def update_user_role_v1(
     old_role = target.role.value
     target.role = new_role
     target.token_version += 1
+    revoke_refresh_sessions(db, user_id=target.id)
     record_audit(db, "admin.user_role_changed", "user", target.id, admin.id, {"old_role": old_role, "new_role": new_role.value})
     db.commit()
     db.refresh(target)
     return ok(request, serialize_user_v1(db, target))
+
 
 @router.patch("/users/{user_id}/status")
 def update_user_status_v1(
@@ -349,6 +400,7 @@ def update_user_status_v1(
     db.commit()
     db.refresh(target)
     return ok(request, serialize_user_v1(db, target))
+
 
 @router.put("/users/{user_id}/counters")
 def assign_user_counters_v1(
@@ -376,6 +428,8 @@ def assign_user_counters_v1(
     db.commit()
     return ok(request, serialize_user_v1(db, target))
 
+
+# --- A03 Categories, Menu Items, Image Upload, Recipes & Availability Windows ---
 class CategoryUpsertIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     slug: str | None = Field(default=None, max_length=90)
@@ -383,6 +437,7 @@ class CategoryUpsertIn(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     sortOrder: int = Field(default=0, ge=0, le=1000)
     isActive: bool = True
+
 
 class MenuItemCreateV1In(BaseModel):
     categoryId: int = Field(gt=0)
@@ -402,6 +457,7 @@ class MenuItemCreateV1In(BaseModel):
     ingredientsSummary: str | None = Field(default=None, max_length=1000)
     customizations: list[dict[str, Any]] = Field(default_factory=list)
 
+
 class MenuItemPatchV1In(BaseModel):
     categoryId: int | None = Field(default=None, gt=0)
     counterId: int | None = Field(default=None, gt=0)
@@ -420,12 +476,15 @@ class MenuItemPatchV1In(BaseModel):
     ingredientsSummary: str | None = Field(default=None, max_length=1000)
     customizations: list[dict[str, Any]] | None = None
 
+
 class RecipeLineIn(BaseModel):
     ingredientId: int = Field(gt=0)
     quantityPerServing: Decimal = Field(gt=Decimal("0"))
 
+
 class RecipeReplaceIn(BaseModel):
     items: list[RecipeLineIn] = Field(default_factory=list, max_length=50)
+
 
 class AvailabilityWindowIn(BaseModel):
     serviceDate: date | None = None
@@ -433,8 +492,10 @@ class AvailabilityWindowIn(BaseModel):
     endTime: str = Field(pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     availableQuantity: int | None = Field(default=None, ge=0, le=100_000)
 
+
 class AvailabilityWindowsReplaceIn(BaseModel):
     windows: list[AvailabilityWindowIn] = Field(default_factory=list, max_length=20)
+
 
 @router.post("/categories", status_code=201)
 def create_admin_category_v1(payload: CategoryUpsertIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -455,6 +516,7 @@ def create_admin_category_v1(payload: CategoryUpsertIn, request: Request, admin:
     db.commit()
     db.refresh(cat)
     return ok(request, {"id": cat.id, "name": cat.name, "slug": cat.slug, "itemType": cat.item_type, "sortOrder": cat.sort_order, "isActive": cat.is_active}, status_code=201)
+
 
 @router.get("/menu-items")
 def list_admin_menu_items_v1(
@@ -477,6 +539,7 @@ def list_admin_menu_items_v1(
         ]
         items_out.append(d)
     return ok(request, {"items": items_out})
+
 
 @router.post("/menu-items", status_code=201)
 def create_admin_menu_item_v1(
@@ -523,6 +586,7 @@ def create_admin_menu_item_v1(
     db.commit()
     db.refresh(p)
     return ok(request, serialize_product_v1(p), status_code=201)
+
 
 @router.patch("/menu-items/{item_id}")
 def patch_admin_menu_item_v1(
@@ -591,6 +655,7 @@ def patch_admin_menu_item_v1(
     db.refresh(p)
     return ok(request, serialize_product_v1(p))
 
+
 @router.delete("/menu-items/{item_id}")
 def delete_admin_menu_item_v1(
     item_id: int,
@@ -620,6 +685,7 @@ def delete_admin_menu_item_v1(
             commit_and_flush_outbox(db)
             return ok(request, {"deleted": True, "archived": True, "id": item_id})
         raise ApiError(500, "DELETE_FAILED", "Failed to delete menu item.")
+
 
 @router.post("/menu-items/{item_id}/image")
 async def upload_admin_menu_item_image_v1(
@@ -680,6 +746,7 @@ async def upload_admin_menu_item_image_v1(
     db.commit()
     return ok(request, {"menuItemId": p.id, "imageUrl": public_url})
 
+
 @router.put("/menu-items/{item_id}/recipe")
 def replace_menu_item_recipe_v1(
     item_id: int,
@@ -708,6 +775,7 @@ def replace_menu_item_recipe_v1(
     record_audit(db, "menu_item.recipe_updated", "product", p.id, admin.id, {"ingredient_count": len(payload.items)})
     db.commit()
     return ok(request, {"menuItemId": p.id, "recipeCount": len(payload.items)})
+
 
 @router.put("/menu-items/{item_id}/availability-windows")
 def replace_menu_item_windows_v1(
@@ -741,6 +809,8 @@ def replace_menu_item_windows_v1(
     db.commit()
     return ok(request, {"menuItemId": p.id, "windowCount": len(payload.windows)})
 
+
+# --- Discounts & Promotional Policies ---
 class DiscountCreateIn(BaseModel):
     code: str = Field(min_length=3, max_length=50)
     description: str | None = Field(default=None, max_length=255)
@@ -754,6 +824,7 @@ class DiscountCreateIn(BaseModel):
     endsAt: datetime | None = None
     isActive: bool = True
 
+
 class DiscountPatchIn(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     discountPercent: Decimal | None = Field(default=None, ge=Decimal("0"), le=Decimal("100"))
@@ -763,6 +834,7 @@ class DiscountPatchIn(BaseModel):
     usageLimit: int | None = Field(default=None, gt=0)
     staffApprovable: bool | None = None
     isActive: bool | None = None
+
 
 def _serialize_discount(d: Discount) -> dict[str, Any]:
     return {
@@ -781,10 +853,12 @@ def _serialize_discount(d: Discount) -> dict[str, Any]:
         "isActive": d.is_active,
     }
 
+
 @router.get("/discounts")
 def list_admin_discounts_v1(request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     rows = db.scalars(select(Discount).order_by(Discount.created_at.desc())).all()
     return ok(request, {"items": [_serialize_discount(d) for d in rows]})
+
 
 @router.post("/discounts", status_code=201)
 def create_admin_discount_v1(payload: DiscountCreateIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -813,6 +887,7 @@ def create_admin_discount_v1(payload: DiscountCreateIn, request: Request, admin:
     db.refresh(d)
     return ok(request, _serialize_discount(d), status_code=201)
 
+
 @router.patch("/discounts/{discount_id}")
 def patch_admin_discount_v1(discount_id: int, payload: DiscountPatchIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     d = db.get(Discount, discount_id)
@@ -840,6 +915,8 @@ def patch_admin_discount_v1(discount_id: int, payload: DiscountPatchIn, request:
     db.refresh(d)
     return ok(request, _serialize_discount(d))
 
+
+# --- A04 Payment Management & Reconciliation ---
 @router.get("/payments/reconciliation")
 def get_admin_payment_reconciliation_v1(
     request: Request,
@@ -917,6 +994,8 @@ def get_admin_payment_reconciliation_v1(
         },
     )
 
+
+# --- A05 Raw Ingredients Management ---
 class IngredientCreateIn(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     unit: str = Field(default="g", min_length=1, max_length=20)
@@ -924,12 +1003,14 @@ class IngredientCreateIn(BaseModel):
     currentQuantity: Decimal = Field(default=Decimal("0.00"), ge=Decimal("0"))
     costPerUnit: Decimal | None = Field(default=None, ge=Decimal("0"))
 
+
 class IngredientPatchIn(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     unit: str | None = Field(default=None, min_length=1, max_length=20)
     reorderLevel: Decimal | None = Field(default=None, ge=Decimal("0"))
     costPerUnit: Decimal | None = Field(default=None, ge=Decimal("0"))
     isActive: bool | None = None
+
 
 @router.get("/ingredients")
 def list_admin_ingredients_v1(request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -952,6 +1033,7 @@ def list_admin_ingredients_v1(request: Request, _: User = Depends(require_roles(
             ]
         },
     )
+
 
 @router.post("/ingredients", status_code=201)
 def create_admin_ingredient_v1(payload: IngredientCreateIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -985,6 +1067,7 @@ def create_admin_ingredient_v1(payload: IngredientCreateIn, request: Request, ad
     db.refresh(ing)
     return ok(request, {"id": ing.id, "name": ing.name, "unit": ing.unit, "currentQuantity": str(ing.current_quantity), "reorderLevel": str(ing.reorder_level)}, status_code=201)
 
+
 @router.patch("/ingredients/{ingredient_id}")
 def patch_admin_ingredient_v1(ingredient_id: int, payload: IngredientPatchIn, request: Request, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     ing = db.get(Ingredient, ingredient_id)
@@ -1006,6 +1089,8 @@ def patch_admin_ingredient_v1(ingredient_id: int, payload: IngredientPatchIn, re
     db.refresh(ing)
     return ok(request, {"id": ing.id, "name": ing.name, "unit": ing.unit, "currentQuantity": str(ing.current_quantity), "reorderLevel": str(ing.reorder_level), "isActive": ing.is_active})
 
+
+# --- A07 Reports (Sales, Orders, Waste & CSV Export) ---
 def _parse_date_window(start_date: date | None, end_date: date | None) -> tuple[datetime, datetime, date, date]:
     end_d = end_date or date.today()
     start_d = start_date or (end_d - timedelta(days=30))
@@ -1014,6 +1099,7 @@ def _parse_date_window(start_date: date | None, end_date: date | None) -> tuple[
     start_dt = datetime(start_d.year, start_d.month, start_d.day, tzinfo=timezone.utc)
     end_dt = datetime(end_d.year, end_d.month, end_d.day, 23, 59, 59, tzinfo=timezone.utc)
     return start_dt, end_dt, start_d, end_d
+
 
 @router.get("/reports/sales")
 def get_admin_sales_report_v1(
@@ -1060,6 +1146,7 @@ def get_admin_sales_report_v1(
         },
     )
 
+
 @router.get("/reports/orders")
 def get_admin_orders_kpi_report_v1(
     request: Request,
@@ -1095,6 +1182,7 @@ def get_admin_orders_kpi_report_v1(
             "medianPrepMinutes": median_prep,
         },
     )
+
 
 @router.get("/reports/waste")
 def get_admin_waste_report_v1(
@@ -1165,6 +1253,7 @@ def get_admin_waste_report_v1(
         },
     )
 
+
 @router.get("/reports/export.csv")
 def export_admin_reports_csv_v1(
     reportType: str = Query(default="sales", pattern="^(sales|orders|waste)$"),
@@ -1214,6 +1303,8 @@ def export_admin_reports_csv_v1(
         },
     )
 
+
+# --- A08 Audit Logs & System Settings ---
 @router.get("/audit-logs")
 def list_admin_audit_logs_v1(
     request: Request,
@@ -1251,6 +1342,7 @@ def list_admin_audit_logs_v1(
         },
     )
 
+
 class AdminSettingsPatchIn(BaseModel):
     taxRateBps: int | None = Field(default=None, ge=0, le=2800)
     orderingPaused: bool | None = None
@@ -1258,6 +1350,7 @@ class AdminSettingsPatchIn(BaseModel):
     auditRetentionDays: int | None = Field(default=None, ge=30, le=3650)
     canteenOpenTime: str | None = Field(default=None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
     canteenCloseTime: str | None = Field(default=None, pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$")
+
 
 @router.get("/settings")
 def get_admin_settings_v1(request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -1286,6 +1379,7 @@ def get_admin_settings_v1(request: Request, _: User = Depends(require_roles("adm
             "paymentGatewayConfigured": bool(cfg.razorpay_key_id and cfg.razorpay_key_secret),
         },
     )
+
 
 @router.patch("/settings")
 def patch_admin_settings_v1(

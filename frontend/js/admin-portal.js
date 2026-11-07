@@ -1,4 +1,7 @@
-
+/* CampusBite AI v2.0 — Dedicated Enterprise Admin & Business Intelligence Portal Controller.
+ * Strictly enforces ADMIN RBAC, CSP (zero inline styles/scripts), real PostgreSQL/SQLAlchemy metrics,
+ * 10 KPI cards, 16 interactive SVG charts, 14 PDF/XLSX/CSV reports, 12 AI BI modules, and full operations.
+ */
 (function () {
   "use strict";
 
@@ -79,6 +82,9 @@
   }
 
   async function apiFetch(path, opts) {
+    if (!navigator.onLine) {
+      throw new Error("Network disconnected. Please check your internet connection.");
+    }
     const options = Object.assign({ method: "GET", headers: {} }, opts || {});
     options.headers = Object.assign({}, options.headers);
     if (state.accessToken) {
@@ -89,7 +95,12 @@
       options.body = JSON.stringify(options.body);
     }
 
-    let res = await fetch(path, options);
+    let res;
+    try {
+      res = await fetch(path, options);
+    } catch (err) {
+      throw new Error("Backend server is offline or unreachable at http://127.0.0.1:8000. Please start the server.");
+    }
     if (res.status === 401 && state.refreshToken && path !== "/api/v1/auth/refresh" && path !== "/api/v1/auth/login") {
       const refRes = await fetch("/api/v1/auth/refresh", {
         method: "POST",
@@ -101,7 +112,11 @@
         if (refJson && refJson.data && refJson.data.accessToken) {
           saveTokens(refJson.data.accessToken, refJson.data.refreshToken || state.refreshToken);
           options.headers.Authorization = "Bearer " + state.accessToken;
-          res = await fetch(path, options);
+          try {
+            res = await fetch(path, options);
+          } catch (err) {
+            throw new Error("Backend server is offline or unreachable at http://127.0.0.1:8000. Please start the server.");
+          }
         }
       }
     }
@@ -109,6 +124,19 @@
     const ctype = res.headers.get("content-type") || "";
     const payload = ctype.includes("application/json") ? await res.json() : null;
     if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error("Invalid email/phone or password. Please verify your administrator credentials.");
+      }
+      if (res.status === 403) {
+        const code = (payload && payload.error && payload.error.code) || "";
+        if (code === "ACCOUNT_DISABLED") {
+          throw new Error("This administrator account has been deactivated.");
+        }
+        throw new Error("Access denied: Administrator role is required.");
+      }
+      if (res.status >= 500) {
+        throw new Error("Server error (" + res.status + "). Please try again in a moment.");
+      }
       const errMsg = (payload && payload.error && payload.error.message) || ("Request failed (" + res.status + ")");
       throw new Error(errMsg);
     }
@@ -747,6 +775,21 @@
         }
       });
       actTd.appendChild(toggleBtn);
+      if (String(u.role).toUpperCase() === "STAFF") {
+        const resetBtn = el("button", "btn btn-outline", "Email Reset Link");
+        resetBtn.type = "button";
+        resetBtn.disabled = !u.isActive;
+        resetBtn.title = u.isActive ? "Send a one-time password reset link to the staff member" : "Activate this account before sending a reset link";
+        resetBtn.addEventListener("click", async () => {
+          try {
+            const result = await apiFetch("/api/v1/admin/users/" + u.id + "/reset-password", { method: "POST", body: {} });
+            showAlert(result.message, "success");
+          } catch (err) {
+            showAlert(err.message, "error");
+          }
+        });
+        actTd.appendChild(resetBtn);
+      }
       tr.appendChild(actTd);
       frag.appendChild(tr);
     });
