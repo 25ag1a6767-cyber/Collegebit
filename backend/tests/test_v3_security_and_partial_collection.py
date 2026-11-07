@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.config import get_settings
 from app.main import app
 from app.models import (
     CanteenCounter,
@@ -24,8 +25,9 @@ from app.models import (
 from app.security import create_access_token, hash_password
 
 
-def test_stored_xss_sanitization_and_injection_immunity():
+def test_stored_xss_sanitization_and_injection_immunity(monkeypatch):
     """Verify that malicious script tags stored in names or customizations cannot cause injection."""
+    monkeypatch.setattr(get_settings(), "canteen_open_days", "0,1,2,3,4,5,6")
     client = TestClient(app)
     db = SessionLocal()
     try:
