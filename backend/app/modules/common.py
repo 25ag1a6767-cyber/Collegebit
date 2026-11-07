@@ -9,7 +9,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -135,14 +134,8 @@ def ensure_default_counter(db: Session) -> CanteenCounter:
             capacity_per_slot=max(10, cfg.pickup_slot_capacity),
             opening_hours=hours,
         )
-        try:
-            with db.begin_nested():
-                db.add(counter)
-                db.flush()
-        except IntegrityError:
-            counter = db.scalar(select(CanteenCounter).order_by(CanteenCounter.id.asc()).limit(1))
-            if counter is None:
-                raise
+        db.add(counter)
+        db.flush()
     return counter
 
 

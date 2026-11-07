@@ -212,6 +212,9 @@
   async function onAdminLoginSubmit(ev) {
     ev.preventDefault();
     showAlert("", "");
+    saveTokens("", "");
+    localStorage.removeItem("ace_v1_access_token");
+    localStorage.removeItem("ace_v1_refresh_token");
     const identifier = $("admin-identifier").value.trim();
     const password = $("admin-password").value;
     try {
@@ -414,7 +417,7 @@
 
     // 7. Category-Wise Sales Pie Chart
     const catPie = g.categorySalesPie || [];
-    Ch.renderPieChart($("chart-category-pie"), {
+    (Ch.renderDonutChart || Ch.renderPieChart)($("chart-category-pie"), {
       centerTitle: "Category ₹",
       slices: catPie.map((r) => ({ label: r.categoryName, value: formatRupeesNum(r.revenuePaise) })),
       formatValue: fmtCurrencyShort
@@ -439,7 +442,7 @@
 
     // 10. Payment Success/Failure Graph
     const payTotals = (g.paymentSuccessFailure && g.paymentSuccessFailure.totals) || [];
-    Ch.renderPieChart($("chart-payment-status"), {
+    (Ch.renderDonutChart || Ch.renderPieChart)($("chart-payment-status"), {
       centerTitle: "Payments",
       slices: payTotals.map((r) => ({ label: r.status, value: r.count }))
     });

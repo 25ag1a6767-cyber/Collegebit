@@ -831,6 +831,7 @@
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       showBanner("", "");
+      clearSession();
       try {
         const identifier = $("staff-login-id").value.trim();
         const password = $("staff-login-pw").value;

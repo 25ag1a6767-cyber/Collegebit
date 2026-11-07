@@ -385,6 +385,7 @@
     PALETTE,
     renderLineChart,
     renderBarChart,
-    renderDonutChart
+    renderDonutChart,
+    renderPieChart: renderDonutChart
   };
 })();
