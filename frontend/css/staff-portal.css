@@ -379,3 +379,114 @@ input:focus, select:focus, textarea:focus {
   gap: 10px;
   align-items: flex-end;
 }
+
+/* XSS remediation safe display classes */
+.inspect-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: #1e293b;
+  border-radius: 8px;
+}
+.token-hero-num {
+  font-size: 26px;
+  font-weight: 900;
+  color: #38bdf8;
+  letter-spacing: 0.5px;
+}
+.token-hero-sub {
+  color: #94a3b8;
+  margin-left: 8px;
+  font-size: 13px;
+}
+.inspect-subcard {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+.student-name-line {
+  font-weight: 700;
+  color: #f1f5f9;
+  font-size: 15px;
+}
+.student-meta-line {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+.items-inspect-head {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.items-inspect-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.item-inspect-row {
+  border-bottom: 1px solid #1e293b;
+}
+.item-name-cell {
+  padding: 8px 4px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+.item-counter-cell {
+  padding: 8px 4px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+.item-total-cell {
+  padding: 8px 4px;
+  text-align: right;
+  color: #cbd5e1;
+}
+.item-check-cell {
+  padding: 8px 4px;
+  width: 32px;
+  text-align: center;
+}
+.pay-box-inspect {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.pay-box-paid {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid #10b981;
+}
+.pay-box-pending {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+}
+.pay-total-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+.btn-handover-full {
+  width: 100%;
+  padding: 14px;
+  font-size: 16px;
+}
+.tok-display-cell {
+  font-weight: 800;
+  color: #38bdf8;
+}
+.empty-tokens-cell {
+  text-align: center;
+  padding: 20px;
+  color: #94a3b8;
+}

@@ -397,6 +397,7 @@ class VerifyPickupIn(BaseModel):
     manualCode: str | None = Field(default=None, max_length=20)
     tokenNumber: int | None = Field(default=None, gt=0)
     tokenString: str | None = Field(default=None, max_length=60)
+    itemIds: list[int] | None = None
 
 class InspectPickupIn(BaseModel):
     pickupToken: str | None = Field(default=None, max_length=400)
@@ -1673,8 +1674,9 @@ def inspect_pickup_order_v1(
 
     now = datetime.now(timezone.utc)
     is_paid = (order.payment_status == PaymentStatus.PAID)
-    is_ready = (order.status == OrderStatus.READY)
-    is_collected = (order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or order.collected_at is not None)
+    is_ready = (order.status in {OrderStatus.READY, OrderStatus.PARTIALLY_COLLECTED})
+    is_partially_collected = (order.status == OrderStatus.PARTIALLY_COLLECTED)
+    is_collected = (order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or (order.collected_at is not None and not is_partially_collected))
     is_cancelled = bool(order.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING} or order.payment_status in {PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED})
 
     eligible = bool(is_paid and is_ready and not is_collected and not is_cancelled)
@@ -1734,6 +1736,9 @@ def inspect_pickup_order_v1(
             "customizations": parse_json_safe(it.customizations_json, {}),
             "counterId": it_counter_id,
             "counterName": it_counter_name,
+            "isCollected": bool(getattr(it, "is_collected", False)),
+            "collectedQuantity": getattr(it, "collected_quantity", 0) or 0,
+            "collectedAt": as_utc(getattr(it, "collected_at", None)).isoformat() if getattr(it, "collected_at", None) else None,
         })
 
     gw_masked = (order.gateway_payment_id[:6] + "..." + order.gateway_payment_id[-4:]) if order.gateway_payment_id else "UPI-VERIFIED"
@@ -1751,7 +1756,7 @@ def inspect_pickup_order_v1(
         "readyAt": as_utc(order.ready_at),
         "isOverdue": bool(order.status != OrderStatus.READY and (now - (as_utc(order.created_at) or now)).total_seconds() > 900),
     }
-    col_status = "already_collected" if is_collected else ("ready_for_pickup" if is_ready else ("cancelled" if is_cancelled else ("payment_pending" if not is_paid else order.status.value)))
+    col_status = "already_collected" if is_collected else ("partially_collected" if is_partially_collected else ("ready_for_pickup" if is_ready else ("cancelled" if is_cancelled else ("payment_pending" if not is_paid else order.status.value))))
     collection_info = {
         "status": col_status,
         "eligibleForCollection": eligible,
@@ -1804,50 +1809,94 @@ def verify_and_collect_pickup_v1(
     if order.payment_status != PaymentStatus.PAID:
         raise ApiError(409, "PAYMENT_PENDING", "Order payment is not verified. Do not hand over food.")
 
-    existing_pickup = db.scalar(select(Pickup).where(Pickup.order_id == order.id))
-    if existing_pickup is not None or order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or order.collected_at is not None:
-        raise ApiError(409, "ORDER_ALREADY_COLLECTED", "This order has already been collected.")
+    if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or (order.collected_at is not None and order.status != OrderStatus.PARTIALLY_COLLECTED):
+        raise ApiError(409, "ORDER_ALREADY_COLLECTED", "This order has already been fully collected.")
 
-    if order.status != OrderStatus.READY:
+    if order.status not in {OrderStatus.READY, OrderStatus.PARTIALLY_COLLECTED}:
         raise ApiError(409, "ORDER_NOT_READY", f"Order is currently '{order.status.value}' and must be marked READY before handover.")
 
-    if pt_row is not None:
-        pt_row.used_at = now
+    # Determine which items are being handed over
+    target_items = []
+    if payload.itemIds:
+        selected_set = set(payload.itemIds)
+        target_items = [it for it in order.items if it.id in selected_set and not getattr(it, "is_collected", False)]
+        if not target_items:
+            raise ApiError(400, "NO_ITEMS_TO_COLLECT", "Selected item(s) are already collected or invalid.")
+    else:
+        target_items = [it for it in order.items if not getattr(it, "is_collected", False)]
+        if not target_items:
+            raise ApiError(409, "ORDER_ALREADY_COLLECTED", "All items for this order have already been collected.")
 
-    pickup_rec = Pickup(
-        order_id=order.id,
-        pickup_token_hash=used_hash or hash_opaque_token(f"pickup:{order.id}:{now.isoformat()}"),
-        collected_by=staff.id,
-        collected_at=now,
-    )
-    db.add(pickup_rec)
+    # Hand over the items
+    for it in target_items:
+        it.is_collected = True
+        it.collected_quantity = it.quantity
+        it.collected_at = now
+        it.collected_by_staff_id = staff.id
+
+    all_done = all(getattr(it, "is_collected", False) for it in order.items)
     prev_status = order.status.value
-    order.status = OrderStatus.COLLECTED
-    order.collected_at = now
-    record_order_status_change(db, order, prev_status, "COLLECTED", staff.id, "Collected via verified QR/manual handover")
-    notify_user(
-        db,
-        order.user_id,
-        "order_status",
-        "Order collected",
-        f"Order #{order.order_number or order.id} was collected. Enjoy your meal!",
-        entity_type="order",
-        entity_id=order.id,
-    )
-    stage_outbox_event(
-        db,
-        "order.collected",
-        {"orderId": order.id, "tokenNumber": order.token_number, "collectedAt": now.isoformat(), "counterId": order.counter_id},
-        counter_id=order.counter_id,
-        target_user_id=order.user_id,
-    )
-    stage_outbox_event(
-        db,
-        "queue.public",
-        {"tokenNumber": order.token_number, "status": "collected", "counterId": order.counter_id},
-        counter_id=order.counter_id,
-    )
-    record_audit(db, "order.pickup_verified", "order", order.id, staff.id, {"collector_staff_id": staff.id})
+
+    if all_done:
+        if pt_row is not None:
+            pt_row.used_at = now
+
+        existing_pickup = db.scalar(select(Pickup).where(Pickup.order_id == order.id))
+        if existing_pickup is None:
+            pickup_rec = Pickup(
+                order_id=order.id,
+                pickup_token_hash=used_hash or hash_opaque_token(f"pickup:{order.id}:{now.isoformat()}"),
+                collected_by=staff.id,
+                collected_at=now,
+            )
+            db.add(pickup_rec)
+
+        order.status = OrderStatus.COLLECTED
+        order.collected_at = now
+        record_order_status_change(db, order, prev_status, "COLLECTED", staff.id, "All items collected via verified handover")
+        notify_user(
+            db,
+            order.user_id,
+            "order_status",
+            "Order collected",
+            f"All items for Order #{order.order_number or order.id} were collected. Enjoy your meal!",
+            entity_type="order",
+            entity_id=order.id,
+        )
+        stage_outbox_event(
+            db,
+            "order.collected",
+            {"orderId": order.id, "tokenNumber": order.token_number, "collectedAt": now.isoformat(), "counterId": order.counter_id, "fullyCollected": True},
+            counter_id=order.counter_id,
+            target_user_id=order.user_id,
+        )
+        stage_outbox_event(
+            db,
+            "queue.public",
+            {"tokenNumber": order.token_number, "status": "collected", "counterId": order.counter_id},
+            counter_id=order.counter_id,
+        )
+    else:
+        order.status = OrderStatus.PARTIALLY_COLLECTED
+        record_order_status_change(db, order, prev_status, "PARTIALLY_COLLECTED", staff.id, f"Handed over {len(target_items)} of {len(order.items)} item(s)")
+        notify_user(
+            db,
+            order.user_id,
+            "order_status",
+            "Order partially collected",
+            f"{len(target_items)} item(s) for Order #{order.order_number or order.id} were collected. Remaining items can be picked up when ready.",
+            entity_type="order",
+            entity_id=order.id,
+        )
+        stage_outbox_event(
+            db,
+            "order.partially_collected",
+            {"orderId": order.id, "tokenNumber": order.token_number, "collectedAt": now.isoformat(), "counterId": order.counter_id, "itemsCollected": [it.id for it in target_items]},
+            counter_id=order.counter_id,
+            target_user_id=order.user_id,
+        )
+
+    record_audit(db, "order.pickup_verified", "order", order.id, staff.id, {"collector_staff_id": staff.id, "all_done": all_done, "items": [it.id for it in target_items]})
     try:
         commit_and_flush_outbox(db)
     except IntegrityError:

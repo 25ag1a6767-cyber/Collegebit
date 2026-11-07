@@ -29,7 +29,14 @@ $env:PYTHONPATH = "backend"
 - **Admin & BI Website:** http://127.0.0.1:8000/admin
 - **Live TV Token Board:** http://127.0.0.1:8000/display
 
-For local testing, run `START_LOCAL_DEV.bat`. It seeds local-only demo accounts with randomly generated passwords and prints the credentials when creating each account.
+### Default Demo Credentials (Local Testing)
+| Portal | Role | Email / Login ID | Password |
+|---|---|---|---|
+| **Admin Portal** (`/admin`) | Administrator | `25ag1a6767@aceec.ac.in` | `ace@25ag1a67676` |
+| **Staff Portal** (`/staff`) | Kitchen Staff | `25ag1a6767@gmail.com` | `ace@25ag1a67676staff` |
+| **Customer App / PWA** (`/`) | Student | `student.dev@example.edu` | `Student#2026!` |
+
+*(Or run `START_LOCAL_DEV.bat` for local SQLite development with auto-seeded local-only demo accounts.)*
 
 ---
 

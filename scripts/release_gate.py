@@ -30,8 +30,7 @@ def main() -> int:
     args = parser.parse_args()
     py = sys.executable
     results = []
-    results.append(run("Backend regression suite", [py, "-m", "pytest", "-q", "backend/tests"]))
-    results.append(run("Clean database counters and discounts", [py, "scripts/cleanup_counters_and_discounts.py"]))
+    results.append(run("Backend regression suite (isolated DB)", [py, "-m", "pytest", "-q", "backend/tests"]))
     results.append(run("Python compilation", [py, "-m", "compileall", "-q", "backend/app", "backend/tests", "scripts"]))
     results.append(run("Frontend JavaScript syntax (app.js)", ["node", "--check", "frontend/js/app.js"], required=True))
     results.append(run("Frontend JavaScript syntax (v1-platform.js)", ["node", "--check", "frontend/js/v1-platform.js"], required=True))

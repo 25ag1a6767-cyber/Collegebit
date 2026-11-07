@@ -1219,7 +1219,21 @@ window.setInterval(() => {
       }
       for (const s of suppliers) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td><strong>${escape(s.name)}</strong></td><td>${escape(s.contact_name || '—')}</td><td>${escape(s.phone || '—')}</td><td>${escape(s.email || '—')}</td><td><small>${escape(s.notes || '—')}</small></td>`;
+        const tdName = document.createElement('td');
+        const strongName = document.createElement('strong');
+        strongName.textContent = s.name || '';
+        tdName.appendChild(strongName);
+        const tdContact = document.createElement('td');
+        tdContact.textContent = s.contact_name || '—';
+        const tdPhone = document.createElement('td');
+        tdPhone.textContent = s.phone || '—';
+        const tdEmail = document.createElement('td');
+        tdEmail.textContent = s.email || '—';
+        const tdNotes = document.createElement('td');
+        const smallNotes = document.createElement('small');
+        smallNotes.textContent = s.notes || '—';
+        tdNotes.appendChild(smallNotes);
+        tr.append(tdName, tdContact, tdPhone, tdEmail, tdNotes);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `${suppliers.length} active suppliers loaded.`;
@@ -1271,15 +1285,36 @@ window.setInterval(() => {
         } catch {  }
 
         const tr = document.createElement('tr');
-        const statusBadge = po.status === 'received'
-          ? '<span style="color:#187044;font-weight:700;">● Received</span>'
-          : '<span style="color:#b54708;font-weight:700;">○ Draft / Pending</span>';
-
-        const actionBtn = po.status === 'received'
-          ? '<button class="secondary-button" disabled style="opacity:0.6;">Received</button>'
-          : `<button class="primary-button" style="padding:6px 12px;font-size:0.82rem;" data-receive-po="${po.id}">Receive Stock</button>`;
-
-        tr.innerHTML = `<td>#PO-${po.id}</td><td>Supplier #${po.supplier_id}</td><td>${escape(linesSummary)}</td><td>${money(totalCost)}</td><td><small>${new Date(po.created_at).toLocaleDateString()}</small></td><td>${statusBadge}</td><td>${actionBtn}</td>`;
+        const tdId = document.createElement('td');
+        tdId.textContent = `#PO-${po.id}`;
+        const tdSup = document.createElement('td');
+        tdSup.textContent = `Supplier #${po.supplier_id}`;
+        const tdLines = document.createElement('td');
+        tdLines.textContent = linesSummary;
+        const tdCost = document.createElement('td');
+        tdCost.textContent = money(totalCost);
+        const tdDate = document.createElement('td');
+        const smallDate = document.createElement('small');
+        smallDate.textContent = new Date(po.created_at).toLocaleDateString();
+        tdDate.appendChild(smallDate);
+        const tdStatus = document.createElement('td');
+        const statusSpan = document.createElement('span');
+        statusSpan.className = po.status === 'received' ? 'status-received' : 'status-pending';
+        statusSpan.textContent = po.status === 'received' ? '● Received' : '○ Draft / Pending';
+        tdStatus.appendChild(statusSpan);
+        const tdAction = document.createElement('td');
+        const actionBtn = document.createElement('button');
+        if (po.status === 'received') {
+          actionBtn.className = 'secondary-button btn-received-disabled';
+          actionBtn.disabled = true;
+          actionBtn.textContent = 'Received';
+        } else {
+          actionBtn.className = 'primary-button btn-receive-action';
+          actionBtn.dataset.receivePo = String(po.id);
+          actionBtn.textContent = 'Receive Stock';
+        }
+        tdAction.appendChild(actionBtn);
+        tr.append(tdId, tdSup, tdLines, tdCost, tdDate, tdStatus, tdAction);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `${orders.length} purchase orders loaded.`;
@@ -1367,17 +1402,33 @@ window.setInterval(() => {
       }
       for (const item of items) {
         const tr = document.createElement('tr');
+        const tdCode = document.createElement('td');
+        const codeEl = document.createElement('code');
+        codeEl.textContent = item.batch_code || '';
+        tdCode.appendChild(codeEl);
+        const tdName = document.createElement('td');
+        tdName.textContent = item.product_name || '';
+        const tdQty = document.createElement('td');
+        const strongQty = document.createElement('strong');
+        strongQty.textContent = item.quantity_remaining || 0;
+        tdQty.append(strongQty, ' units');
+        const tdExp = document.createElement('td');
+        tdExp.textContent = item.expiry_date || 'None';
+        const tdBadge = document.createElement('td');
+        const badgeSpan = document.createElement('span');
         const daysLeft = item.days_until_expiry;
-        let badge = '<span style="color:#187044;font-weight:600;">Valid</span>';
         if (daysLeft < 0) {
-          badge = '<span style="color:#b42318;font-weight:750;background:#fee4e2;padding:2px 8px;border-radius:6px;">EXPIRED</span>';
+          badgeSpan.className = 'batch-badge-expired';
+          badgeSpan.textContent = 'EXPIRED';
         } else if (daysLeft <= 7) {
-          badge = `<span style="color:#b54708;font-weight:750;background:#fef0c7;padding:2px 8px;border-radius:6px;">Expires in ${daysLeft}d</span>`;
+          badgeSpan.className = 'batch-badge-warning';
+          badgeSpan.textContent = `Expires in ${daysLeft}d`;
         } else {
-          badge = `<span style="color:#187044;font-weight:600;">${daysLeft} days left</span>`;
+          badgeSpan.className = 'batch-badge-valid';
+          badgeSpan.textContent = `${daysLeft} days left`;
         }
-
-        tr.innerHTML = `<td><code>${escape(item.batch_code)}</code></td><td>${escape(item.product_name)}</td><td><strong>${item.quantity_remaining}</strong> units</td><td>${item.expiry_date || 'None'}</td><td>${badge}</td>`;
+        tdBadge.appendChild(badgeSpan);
+        tr.append(tdCode, tdName, tdQty, tdExp, tdBadge);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `${items.length} batches found.`;
@@ -1400,19 +1451,31 @@ window.setInterval(() => {
       }
       for (const item of items) {
         const tr = document.createElement('tr');
-        let statusTag = '';
-        if (item.status === 'matched') {
-          statusTag = '<span style="color:#187044;font-weight:700;">✓ Matched</span>';
-        } else if (item.status === 'mismatch') {
-          statusTag = '<span style="color:#b42318;font-weight:750;background:#fee4e2;padding:2px 8px;border-radius:6px;">⚠️ Mismatch</span>';
-        } else {
-          statusTag = '<span style="color:#475467;font-size:0.85rem;background:#f2f4f7;padding:2px 8px;border-radius:6px;">Untracked Legacy</span>';
-        }
-
+        const tdName = document.createElement('td');
+        const strongName = document.createElement('strong');
+        strongName.textContent = item.product_name || '';
+        tdName.appendChild(strongName);
+        const tdAgg = document.createElement('td');
+        tdAgg.textContent = item.aggregate_stock;
+        const tdBatch = document.createElement('td');
+        tdBatch.textContent = item.batch_stock_sum;
         const diff = item.aggregate_stock - item.batch_stock_sum;
-        const diffDisplay = diff === 0 ? '0' : (diff > 0 ? `+${diff}` : `${diff}`);
-
-        tr.innerHTML = `<td><strong>${escape(item.product_name)}</strong></td><td>${item.aggregate_stock}</td><td>${item.batch_stock_sum}</td><td>${diffDisplay}</td><td>${statusTag}</td>`;
+        const tdDiff = document.createElement('td');
+        tdDiff.textContent = diff === 0 ? '0' : (diff > 0 ? `+${diff}` : `${diff}`);
+        const tdStatus = document.createElement('td');
+        const statusSpan = document.createElement('span');
+        if (item.status === 'matched') {
+          statusSpan.className = 'recon-matched';
+          statusSpan.textContent = '✓ Matched';
+        } else if (item.status === 'mismatch') {
+          statusSpan.className = 'recon-mismatch';
+          statusSpan.textContent = '⚠️ Mismatch';
+        } else {
+          statusSpan.className = 'recon-legacy';
+          statusSpan.textContent = 'Untracked Legacy';
+        }
+        tdStatus.appendChild(statusSpan);
+        tr.append(tdName, tdAgg, tdBatch, tdDiff, tdStatus);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `Reconciliation complete: ${data.total_products} products audited (${data.mismatches} mismatches, ${data.untracked} legacy).`;
@@ -1437,21 +1500,41 @@ window.setInterval(() => {
         const tr = document.createElement('tr');
         const dailyRate = Number(item.daily_demand_rate || 0);
         const currentStock = Number(item.current_stock || 0);
-        let runoutDays = '—', advice = 'Stock adequate';
-
+        let runoutDays = '—';
+        const tdName = document.createElement('td');
+        const strongName = document.createElement('strong');
+        strongName.textContent = item.product_name || '';
+        tdName.appendChild(strongName);
+        const tdQty = document.createElement('td');
+        tdQty.textContent = item.quantity_ordered;
+        const tdRate = document.createElement('td');
+        tdRate.textContent = `${dailyRate.toFixed(2)} units/day`;
+        const tdStock = document.createElement('td');
+        tdStock.textContent = currentStock;
+        const tdAdvice = document.createElement('td');
+        const adviceSpan = document.createElement('span');
         if (dailyRate > 0) {
           const daysRemain = Math.round(currentStock / dailyRate);
           runoutDays = `~${daysRemain} days`;
           if (daysRemain <= 2) {
-            advice = '<span style="color:#b42318;font-weight:750;">Reorder Urgently</span>';
+            adviceSpan.className = 'demand-urgent';
+            adviceSpan.textContent = 'Reorder Urgently';
           } else if (daysRemain <= 5) {
-            advice = '<span style="color:#b54708;font-weight:700;">Reorder Soon</span>';
+            adviceSpan.className = 'demand-soon';
+            adviceSpan.textContent = 'Reorder Soon';
+          } else {
+            adviceSpan.textContent = 'Stock adequate';
           }
         } else if (currentStock === 0) {
-          advice = '<span style="color:#b42318;font-weight:700;">Out of Stock</span>';
+          adviceSpan.className = 'demand-out';
+          adviceSpan.textContent = 'Out of Stock';
+        } else {
+          adviceSpan.textContent = 'Stock adequate';
         }
-
-        tr.innerHTML = `<td><strong>${escape(item.product_name)}</strong></td><td>${item.quantity_ordered}</td><td>${dailyRate.toFixed(2)} units/day</td><td>${currentStock}</td><td>${runoutDays}</td><td>${advice}</td>`;
+        tdAdvice.appendChild(adviceSpan);
+        const tdRunout = document.createElement('td');
+        tdRunout.textContent = runoutDays;
+        tr.append(tdName, tdQty, tdRate, tdStock, tdRunout, tdAdvice);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `${items.length} demand records calculated over ${days} days.`;
@@ -1474,7 +1557,30 @@ window.setInterval(() => {
       }
       for (const p of items) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>#${p.order_id}</td><td><small>${p.created_at ? new Date(p.created_at).toLocaleString() : '—'}</small></td><td>${escape(p.order_status)}</td><td><span style="color:#b42318;font-weight:700;">${escape(p.payment_status)}</span></td><td>${money(p.amount)}</td><td><code>${escape(p.gateway_order_id || '—')}</code></td><td><small>${escape(p.diagnostic)}</small></td>`;
+        const tdOrd = document.createElement('td');
+        tdOrd.textContent = `#${p.order_id}`;
+        const tdDate = document.createElement('td');
+        const smallDate = document.createElement('small');
+        smallDate.textContent = p.created_at ? new Date(p.created_at).toLocaleString() : '—';
+        tdDate.appendChild(smallDate);
+        const tdOrdStatus = document.createElement('td');
+        tdOrdStatus.textContent = p.order_status || '';
+        const tdPayStatus = document.createElement('td');
+        const paySpan = document.createElement('span');
+        paySpan.className = 'payment-exception-status';
+        paySpan.textContent = p.payment_status || '';
+        tdPayStatus.appendChild(paySpan);
+        const tdAmt = document.createElement('td');
+        tdAmt.textContent = money(p.amount);
+        const tdGw = document.createElement('td');
+        const codeGw = document.createElement('code');
+        codeGw.textContent = p.gateway_order_id || '—';
+        tdGw.appendChild(codeGw);
+        const tdDiag = document.createElement('td');
+        const smallDiag = document.createElement('small');
+        smallDiag.textContent = p.diagnostic || '';
+        tdDiag.appendChild(smallDiag);
+        tr.append(tdOrd, tdDate, tdOrdStatus, tdPayStatus, tdAmt, tdGw, tdDiag);
         tbody.append(tr);
       }
       if (msg) msg.textContent = `${items.length} payment exceptions need review against the Razorpay dashboard.`;

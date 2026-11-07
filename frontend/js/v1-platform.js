@@ -805,9 +805,14 @@
       wrap.className = "v1-qr-panel";
 
       const tokBadge = document.createElement("div");
-      tokBadge.style.textAlign = "center";
-      tokBadge.style.marginBottom = "10px";
-      tokBadge.innerHTML = `<div style="font-size:26px; font-weight:900; color:#10b981; letter-spacing:0.5px;">${tok.tokenDisplay || ("Token #" + tok.tokenNumber)}</div><div class="muted" style="font-size:13px; font-weight:600;">Assigned: ${tok.counterName || "Main Counter"} · Order ${tok.orderNumber}</div>`;
+      tokBadge.className = "tok-badge-center";
+      const tokNum = document.createElement("div");
+      tokNum.className = "tok-num-green";
+      tokNum.textContent = tok.tokenDisplay || ("Token #" + tok.tokenNumber);
+      const tokMeta = document.createElement("div");
+      tokMeta.className = "muted tok-meta-sub";
+      tokMeta.textContent = `Assigned: ${tok.counterName || "Main Counter"} · Order ${tok.orderNumber}`;
+      tokBadge.append(tokNum, tokMeta);
       wrap.append(tokBadge);
 
       const svgBox = document.createElement("div");

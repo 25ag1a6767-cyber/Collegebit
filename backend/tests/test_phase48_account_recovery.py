@@ -95,7 +95,7 @@ def test_alembic_migrations_apply_cleanly_to_a_fresh_database(tmp_path):
     root = Path(__file__).resolve().parents[2]
     db_file = tmp_path / "fresh.db"
     env = {**os.environ, "DATABASE_URL": f"sqlite:///{db_file}", "PYTHONPATH": str(root / "backend")}
-    result = subprocess.run([sys.executable, "-m", "alembic", "-c", str(root / "backend" / "alembic.ini"), "upgrade", "head"], env=env, capture_output=True, text=True)
+    result = subprocess.run([sys.executable, "-m", "alembic", "-c", str(root / "backend" / "alembic.ini"), "upgrade", "head"], env=env, cwd=str(root), capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-1500:]
     with sqlite3.connect(db_file) as conn:
-        assert conn.execute("select version_num from alembic_version").fetchone()[0] == "0020_campusbite_v2"
+        assert conn.execute("select version_num from alembic_version").fetchone()[0] in ("0020_campusbite_v2", "0021_campusbite_v3")

@@ -396,3 +396,19 @@ footer { width: min(1160px, calc(100% - 48px)); margin: auto; padding: 24px 0 30
   align-items: flex-end;
   flex-wrap: wrap;
 }
+
+/* XSS remediation safe display classes */
+.status-received { color: #187044; font-weight: 700; }
+.status-pending { color: #b54708; font-weight: 700; }
+.btn-received-disabled { opacity: 0.6; }
+.btn-receive-action { padding: 6px 12px; font-size: 0.82rem; }
+.batch-badge-valid { color: #187044; font-weight: 600; }
+.batch-badge-warning { color: #b54708; font-weight: 750; background: #fef0c7; padding: 2px 8px; border-radius: 6px; }
+.batch-badge-expired { color: #b42318; font-weight: 750; background: #fee4e2; padding: 2px 8px; border-radius: 6px; }
+.recon-matched { color: #187044; font-weight: 700; }
+.recon-mismatch { color: #b42318; font-weight: 750; background: #fee4e2; padding: 2px 8px; border-radius: 6px; }
+.recon-legacy { color: #475467; font-size: 0.85rem; background: #f2f4f7; padding: 2px 8px; border-radius: 6px; }
+.demand-urgent { color: #b42318; font-weight: 750; }
+.demand-soon { color: #b54708; font-weight: 700; }
+.demand-out { color: #b42318; font-weight: 700; }
+.payment-exception-status { color: #b42318; font-weight: 700; }

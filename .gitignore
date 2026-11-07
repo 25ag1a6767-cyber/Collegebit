@@ -5,6 +5,9 @@ __pycache__/
 .env
 .env.production
 *.db
+*.sqlite
+*.sqlite3
+backend/test_isolated.db*
 *.zip
 node_modules/
 backend/.env

@@ -50,6 +50,7 @@ V1_ORDER_STATUS_OUT = {
     OrderStatus.READY: "READY",
     OrderStatus.COMPLETED: "COLLECTED",
     OrderStatus.COLLECTED: "COLLECTED",
+    OrderStatus.PARTIALLY_COLLECTED: "PARTIALLY_COLLECTED",
     OrderStatus.CANCELLED: "CANCELLED",
     OrderStatus.REFUND_PENDING: "REFUND_PENDING",
 }
@@ -675,6 +676,9 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
                 "lineTotalPaise": item.line_total_paise if item.line_total_paise is not None else rupees_to_paise(item.line_total),
                 "counterId": item.product.counter_id if getattr(item, "product", None) else None,
                 "counterName": item.product.counter.name if (getattr(item, "product", None) and item.product.counter) else None,
+                "isCollected": bool(getattr(item, "is_collected", False)),
+                "collectedQuantity": getattr(item, "collected_quantity", 0) or 0,
+                "collectedAt": as_utc(getattr(item, "collected_at", None)),
             }
             for item in order.items
         ],

@@ -50,6 +50,7 @@ class OrderStatus(str, enum.Enum):
     ACCEPTED = "accepted"
     PREPARING = "preparing"
     READY = "ready"
+    PARTIALLY_COLLECTED = "partially_collected"
     COMPLETED = "completed"
     COLLECTED = "collected"
     CANCELLED = "cancelled"
@@ -327,6 +328,10 @@ class OrderItem(Base):
     customizations_json: Mapped[str | None] = mapped_column(Text, default="{}")
     line_total: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     line_total_paise: Mapped[int | None] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=True)
+    collected_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_collected: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    collected_by_staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     order: Mapped[Order] = relationship(back_populates="items")
     product: Mapped[Product] = relationship(back_populates="order_items")
 

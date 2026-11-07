@@ -29,7 +29,7 @@ def run_checks(env: dict[str, str] | None = None, *, require_payment: bool = Fal
     add("secret_key", secret_ok,
         "A non-default secret of at least 32 characters is configured." if secret_ok else "Set a unique SECRET_KEY of at least 32 characters; value is never displayed.",
         "error" if production else "warning")
-    add("environment", e.get("ENVIRONMENT", "development").lower() in {"development", "test", "staging", "production", "prod"}, "Environment value is recognised." if e.get("ENVIRONMENT", "development").lower() in {"development", "test", "staging", "production", "prod"} else "Use development, test, staging, or production.")
+    add("environment", e.get("ENVIRONMENT", "development").lower() in {"development", "test", "testing", "staging", "production", "prod"}, "Environment value is recognised." if e.get("ENVIRONMENT", "development").lower() in {"development", "test", "testing", "staging", "production", "prod"} else "Use development, test, staging, or production.")
     if production:
         add("production_migrations", not _truthy(e.get("AUTO_CREATE_TABLES", "true")), "Automatic table creation is disabled for production." if not _truthy(e.get("AUTO_CREATE_TABLES", "true")) else "Set AUTO_CREATE_TABLES=false and run Alembic migrations explicitly.")
         add("production_demo_seed", not _truthy(e.get("SEED_DEMO_DATA", "true")), "Demo seeding is disabled for production." if not _truthy(e.get("SEED_DEMO_DATA", "true")) else "Set SEED_DEMO_DATA=false in production.")

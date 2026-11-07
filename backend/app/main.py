@@ -416,18 +416,24 @@ async def public_token_display_board_page() -> FileResponse:
     """Public real-time TV token display board for cafeteria monitors (CampusBite AI v2.0)."""
     return FileResponse(FRONTEND_DIR / "display.html")
 
+@app.get("/download/CampusBite-AI-v3.0.zip", include_in_schema=False)
 @app.get("/download/CampusBite-AI-v2.0.zip", include_in_schema=False)
 @app.get("/download-zip", include_in_schema=False)
 async def download_project_archive() -> FileResponse:
-    """Direct HTTP browser download of the complete CampusBite AI v2.0 project archive."""
-    zip_path = PROJECT_DIR / "CampusBite-AI-v2.0.zip"
+    """Direct HTTP browser download of the complete CampusBite AI v3.0 project archive."""
+    zip_path = PROJECT_DIR / "CampusBite-AI-v3.0.zip"
+    if not zip_path.exists():
+        zip_path = Path("C:/Users/HP/Desktop/CampusBite-AI-v3.0.zip")
+    if not zip_path.exists():
+        zip_path = PROJECT_DIR / "CampusBite-AI-v2.0.zip"
     if not zip_path.exists():
         zip_path = Path("C:/Users/HP/Desktop/CampusBite-AI-v2.0.zip")
+    fn = zip_path.name if zip_path.exists() else "CampusBite-AI-v3.0.zip"
     return FileResponse(
         zip_path,
         media_type="application/zip",
-        filename="CampusBite-AI-v2.0.zip",
-        headers={"Content-Disposition": 'attachment; filename="CampusBite-AI-v2.0.zip"'}
+        filename=fn,
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'}
     )
 
 @app.get("/manifest.webmanifest", include_in_schema=False)

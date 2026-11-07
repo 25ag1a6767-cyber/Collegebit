@@ -362,6 +362,7 @@
 
     const frag = document.createDocumentFragment();
 
+<<<<<<< HEAD
     const head = el("div", "inspect-head", "");
     head.style.display = "flex";
     head.style.justifyContent = "space-between";
@@ -373,12 +374,21 @@
 
     const leftTok = el("div", "", "");
     leftTok.innerHTML = `<span style="font-size: 26px; font-weight: 900; color: #38bdf8; letter-spacing: 0.5px;">${t.tokenDisplay || ("#" + t.tokenNumber)}</span> <small style="color:#94a3b8; margin-left: 8px;">Order ${t.orderNumber}</small>`;
+=======
+    // 1. Top Token & Order Banner (XSS Safe DOM)
+    const head = el("div", "inspect-head");
+    const leftTok = el("div");
+    const tokSpan = el("span", "token-hero-num", t.tokenDisplay || ("#" + t.tokenNumber));
+    const ordSmall = el("small", "token-hero-sub", `Order ${t.orderNumber}`);
+    leftTok.append(tokSpan, ordSmall);
+>>>>>>> a7aeea7 (3)
     head.appendChild(leftTok);
 
     const rightBadge = el("span", "state-pill", prep.status);
     head.appendChild(rightBadge);
     frag.appendChild(head);
 
+<<<<<<< HEAD
     const custBox = el("div", "inspect-subcard", "");
     custBox.style.background = "#0f172a";
     custBox.style.border = "1px solid #334155";
@@ -397,29 +407,64 @@
     itemsHead.style.color = "#94a3b8";
     itemsHead.style.textTransform = "uppercase";
     itemsHead.style.letterSpacing = "0.5px";
+=======
+    // 2. Customer Information (Part 5A) (XSS Safe DOM)
+    const custBox = el("div", "inspect-subcard");
+    const studentLine = el("div", "student-name-line", `Student: ${c.fullName || ""}`);
+    const metaLine = el("div", "student-meta-line");
+    metaLine.append(
+      document.createTextNode("College ID: "),
+      el("strong", "", c.studentId || "N/A"),
+      document.createTextNode(" · Phone: "),
+      el("strong", "", c.phoneMasked || "N/A"),
+      document.createTextNode(" · Counter: "),
+      el("strong", "", t.counterName || "Main Counter")
+    );
+    custBox.append(studentLine, metaLine);
+    frag.appendChild(custBox);
+
+    // 3. Complete Food Order Breakdown (Part 5C) (XSS Safe DOM)
+    const itemsHead = el("h4", "items-inspect-head", "Ordered Food Items:");
+>>>>>>> a7aeea7 (3)
     frag.appendChild(itemsHead);
 
-    const table = el("table", "data-table", "");
-    table.style.width = "100%";
-    table.style.borderCollapse = "collapse";
-    table.style.marginBottom = "14px";
-    table.style.fontSize = "13px";
+    const table = el("table", "items-inspect-table data-table");
+    const tbody = el("tbody");
+    const selectedItemCheckboxes = [];
 
-    const tbody = el("tbody", "", "");
     items.forEach((it) => {
-      const tr = el("tr", "", "");
-      tr.style.borderBottom = "1px solid #1e293b";
+      const tr = el("tr", "item-inspect-row");
+      const checkTd = el("td", "item-check-cell");
+      const chk = document.createElement("input");
+      chk.type = "checkbox";
+      chk.value = it.id;
+      chk.dataset.itemId = it.id;
+      if (it.isCollected) {
+        chk.checked = true;
+        chk.disabled = true;
+      } else {
+        chk.checked = true;
+        selectedItemCheckboxes.push(chk);
+      }
+      checkTd.appendChild(chk);
+
       const custText = it.customizations && Object.keys(it.customizations).length ? ` (${Object.entries(it.customizations).map(([k, v]) => `${k}: ${v}`).join(", ")})` : "";
-      tr.innerHTML = `
-        <td style="padding: 8px 4px; font-weight: 700; color: #f8fafc;">${it.quantity}× ${it.name}${custText}</td>
-        <td style="padding: 8px 4px; color: #94a3b8; font-size: 11px;">[${it.counterName || "Kitchen"}]</td>
-        <td style="padding: 8px 4px; text-align: right; color: #cbd5e1;">₹${it.lineTotalRupees}</td>
-      `;
+      const nameTd = el("td", "item-name-cell", `${it.quantity}× ${it.name}${custText}`);
+      if (it.isCollected) {
+        const badge = el("span", "badge badge-success", " (Collected)");
+        badge.style.fontSize = "11px";
+        badge.style.marginLeft = "6px";
+        nameTd.appendChild(badge);
+      }
+      const counterTd = el("td", "item-counter-cell", `[${it.counterName || "Kitchen"}]`);
+      const totalTd = el("td", "item-total-cell", `₹${it.lineTotalRupees}`);
+      tr.append(checkTd, nameTd, counterTd, totalTd);
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
     frag.appendChild(table);
 
+<<<<<<< HEAD
     const payBox = el("div", "", "");
     payBox.style.display = "flex";
     payBox.style.justifyContent = "space-between";
@@ -437,20 +482,38 @@
     frag.appendChild(payBox);
 
     const actBox = el("div", "handover-actions", "");
+=======
+    // 4. Payment Verification (Part 5D) (XSS Safe DOM)
+    const payBox = el("div", `pay-box-inspect ${p.status === "PAID" ? "pay-box-paid" : "pay-box-pending"}`);
+    const payInfo = el("div");
+    payInfo.append(
+      el("strong", "", `Payment: ${p.status}`),
+      document.createTextNode(` · ${p.method} · Ref: `),
+      el("code", "", p.referenceMasked || "—")
+    );
+    const totalDiv = el("div", "pay-total-amount", `Total: ₹${p.totalRupees}`);
+    payBox.append(payInfo, totalDiv);
+    frag.appendChild(payBox);
+
+    // 5. Decision & Handover Action (Part 6)
+    const actBox = el("div", "handover-actions");
+>>>>>>> a7aeea7 (3)
     actBox.style.textAlign = "center";
 
     if (data.eligibleForCollection) {
-      const btnCollect = el("button", "btn btn-ok", "✅ Confirm Handover & Mark Collected");
+      const btnCollect = el("button", "btn btn-ok btn-handover-full", "✅ Confirm Handover & Mark Collected");
       btnCollect.type = "button";
-      btnCollect.style.width = "100%";
-      btnCollect.style.padding = "14px";
-      btnCollect.style.fontSize = "16px";
-      btnCollect.style.fontWeight = "800";
       btnCollect.addEventListener("click", () => {
+        const chosenIds = selectedItemCheckboxes.filter(c => c.checked).map(c => Number(c.value));
+        if (selectedItemCheckboxes.length > 0 && chosenIds.length === 0) {
+          alert("Please select at least one item to hand over.");
+          return;
+        }
         verifyPickupPayload({
           orderId: t.orderId,
           pickupToken: requestedPayload.pickupToken || undefined,
           manualCode: requestedPayload.manualCode || undefined,
+          itemIds: chosenIds.length > 0 ? chosenIds : undefined,
         });
       });
       actBox.appendChild(btnCollect);
@@ -504,30 +567,40 @@
       const res = await api("/tokens" + (qs.length ? "?" + qs.join("&") : ""));
       const items = res.items || [];
       if (!items.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 20px; color:#94a3b8;">No tokens match your search criteria.</td></tr>';
+        tbody.replaceChildren();
+        const trEmpty = el("tr");
+        const tdEmpty = el("td", "empty-tokens-cell", "No tokens match your search criteria.");
+        tdEmpty.colSpan = 8;
+        trEmpty.appendChild(tdEmpty);
+        tbody.appendChild(trEmpty);
         return;
       }
       const frag = document.createDocumentFragment();
       items.forEach((t) => {
-        const tr = el("tr", "", "");
-        tr.innerHTML = `
-          <td style="font-weight: 800; color: #38bdf8;">${t.tokenDisplay}</td>
-          <td>${t.orderNumber}</td>
-          <td><strong>${t.customerName}</strong><br><small style="color:#94a3b8;">${t.studentId}</small></td>
-          <td>${t.counterName}</td>
-          <td style="font-size: 12px; color: #cbd5e1;">${t.itemsSummary}</td>
-          <td style="font-weight: 700;">₹${t.totalRupees}</td>
-          <td><span class="state-pill">${t.status}</span></td>
-          <td>
-            <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 12px;">Inspect / Verify</button>
-          </td>
-        `;
-        const btnInspect = tr.querySelector("button");
+        const tr = el("tr");
+        const tokTd = el("td", "tok-display-cell", t.tokenDisplay || "");
+        const ordTd = el("td", "", t.orderNumber || "");
+        const custTd = el("td");
+        custTd.append(
+          el("strong", "", t.customerName || ""),
+          el("br"),
+          el("small", "token-hero-sub", t.studentId || "")
+        );
+        const cntTd = el("td", "", t.counterName || "");
+        const summaryTd = el("td", "item-counter-cell", t.itemsSummary || "");
+        const amtTd = el("td", "item-name-cell", `₹${t.totalRupees || 0}`);
+        const stateTd = el("td");
+        stateTd.appendChild(el("span", "state-pill", t.status || ""));
+        const actTd = el("td");
+        const btnInspect = el("button", "btn btn-outline", "Inspect / Verify");
+        btnInspect.type = "button";
         btnInspect.addEventListener("click", () => {
-          $("quick-token-input").value = t.tokenDisplay;
+          $("quick-token-input").value = t.tokenDisplay || "";
           switchTab("pickup");
           inspectPickupPayload({ orderId: t.orderId });
         });
+        actTd.appendChild(btnInspect);
+        tr.append(tokTd, ordTd, custTd, cntTd, summaryTd, amtTd, stateTd, actTd);
         frag.appendChild(tr);
       });
       tbody.replaceChildren(frag);
