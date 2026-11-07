@@ -40,6 +40,8 @@ jobs:
           node --check frontend/sw.js
           node --check e2e/canteen.spec.js
       - name: Validate Docker Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-only-compose-password
         run: docker compose config --quiet
 
   browser:
