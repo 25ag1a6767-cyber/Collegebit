@@ -92,12 +92,17 @@ REPORT_DEFINITIONS: dict[str, dict[str, str]] = {
     "profit_expense": {"title": "Profit & Expense Report", "cadence": "financial", "description": "Comprehensive daily P&L combining net sales, COGS, wastage, refunds, and operating expenses."},
 }
 
+
+# ==============================================================================
+# Pure-Python Standards-Compliant PDF 1.4 & OpenXML (.xlsx) Renderers
+# ==============================================================================
 def _pdf_safe_text(val: Any) -> str:
     s = str(val if val is not None else "")
     s = s.replace("₹", "INR ").replace("—", "-").replace("–", "-").replace("•", "*")
-
+    # Keep printable ASCII to guarantee clean rendering in PDF Type1 Helvetica
     s = s.encode("ascii", "replace").decode("ascii")
     return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
 
 def render_pdf_document(
     title: str,
@@ -107,7 +112,7 @@ def render_pdf_document(
     rows: list[list[Any]],
 ) -> bytes:
     """Generate a multi-page landscape A4 PDF 1.4 report with header, KPI summary & paginated table."""
-    page_w, page_h = 842, 595
+    page_w, page_h = 842, 595  # A4 Landscape in points
     margin_x = 32
     usable_w = page_w - 2 * margin_x
     col_count = max(1, len(columns))
@@ -132,7 +137,7 @@ def render_pdf_document(
 
     for page_idx, (is_first, page_rows) in enumerate(chunks, start=1):
         cmds: list[str] = []
-
+        # Top header bar
         cmds.append("0.08 0.14 0.26 rg")
         cmds.append(f"{margin_x} {page_h - 62} {usable_w} 38 re f")
         cmds.append("1 1 1 rg")
@@ -156,6 +161,7 @@ def render_pdf_document(
                 cmds.append(f"BT /F2 8.5 Tf {sx:.1f} {sy:.1f} Td ({_pdf_safe_text(txt)}) Tj ET")
             y -= 50
 
+        # Table header row
         cmds.append("0.16 0.26 0.42 rg")
         cmds.append(f"{margin_x} {y - 16} {usable_w} 18 re f")
         cmds.append("1 1 1 rg")
@@ -181,6 +187,7 @@ def render_pdf_document(
                     cmds.append(f"BT /F1 7.8 Tf {cx:.1f} {y - 9.5:.1f} Td ({_pdf_safe_text(c_txt)}) Tj ET")
                 y -= 14
 
+        # Footer note
         cmds.append("0.45 0.5 0.56 rg")
         cmds.append(
             f"BT /F1 7.5 Tf {margin_x} 18 Td "
@@ -188,6 +195,9 @@ def render_pdf_document(
         )
         page_streams.append("\n".join(cmds).encode("ascii"))
 
+    # Assemble PDF objects:
+    # 1: Catalog, 2: Pages, 3: Font F1 (Helvetica), 4: Font F2 (Helvetica-Bold)
+    # Then for each page i: (5 + 2*i) = Page object, (6 + 2*i) = Content stream
     objects: list[bytes] = []
     page_obj_ids = [5 + 2 * i for i in range(total_pages)]
     kids_str = " ".join(f"{pid} 0 R" for pid in page_obj_ids)
@@ -227,6 +237,7 @@ def render_pdf_document(
     )
     return buf.getvalue()
 
+
 def _xlsx_col_letter(col_idx_1based: int) -> str:
     res = ""
     n = col_idx_1based
@@ -234,6 +245,7 @@ def _xlsx_col_letter(col_idx_1based: int) -> str:
         n, rem = divmod(n - 1, 26)
         res = chr(65 + rem) + res
     return res
+
 
 def render_xlsx_workbook(
     sheet_title: str,
@@ -271,6 +283,7 @@ def render_xlsx_workbook(
             cur_r += 1
         cur_r += 1
 
+    # Header row
     hdr_cells = "".join(_cell_xml(cur_r, idx, col, 1) for idx, col in enumerate(columns, start=1))
     xml_rows.append(f'<row r="{cur_r}">{hdr_cells}</row>')
     cur_r += 1
@@ -345,6 +358,7 @@ def render_xlsx_workbook(
         zf.writestr("xl/worksheets/sheet1.xml", sheet_xml)
     return out.getvalue()
 
+
 def render_csv_bytes(columns: list[str], rows: list[list[Any]]) -> bytes:
     sio = io.StringIO(newline="")
     writer = csv.writer(sio)
@@ -353,6 +367,10 @@ def render_csv_bytes(columns: list[str], rows: list[list[Any]]) -> bytes:
         writer.writerow(r)
     return sio.getvalue().encode("utf-8")
 
+
+# ==============================================================================
+# 14 Authoritative Report Dataset Builders
+# ==============================================================================
 def _date_bounds(start_date: date | None, end_date: date | None, default_days: int = 30) -> tuple[date, date, datetime, datetime]:
     tz = ZoneInfo(get_settings().canteen_timezone)
     today_local = datetime.now(tz).date()
@@ -364,8 +382,10 @@ def _date_bounds(start_date: date | None, end_date: date | None, default_days: i
     end_utc = datetime(end_d.year, end_d.month, end_d.day, 23, 59, 59, tzinfo=tz).astimezone(timezone.utc)
     return start_d, end_d, start_utc, end_utc
 
+
 def _rupees_str(paise: int) -> str:
     return f"INR {paise_to_rupees(paise)}"
+
 
 def build_report_dataset(
     db: Session,
@@ -390,6 +410,7 @@ def build_report_dataset(
         u = as_utc(dt)
         return u.astimezone(tz).date() if u else start_d
 
+    # Load orders in window where needed
     o_stmt = select(Order).options(joinedload(Order.items), joinedload(Order.user), joinedload(Order.payments)).where(
         Order.created_at >= start_utc,
         Order.created_at <= end_utc,
@@ -836,6 +857,7 @@ def build_report_dataset(
         "rowCount": len(rows),
     }
 
+
 def generate_daily_reports_job(
     db: Session,
     target_date: date | None = None,
@@ -915,12 +937,18 @@ def generate_daily_reports_job(
         "emailDispatched": email_sent,
     }
 
+
+# ==============================================================================
+# API Endpoints (/api/v1/admin/reports/*)
+# ==============================================================================
 class DailyScheduleConfigIn(BaseModel):
     dailyReportEmails: str = Field(default="", max_length=450)
+
 
 class GenerateDailyReportsIn(BaseModel):
     targetDate: date | None = None
     recipients: list[str] | None = None
+
 
 @router.get("/catalog")
 def get_reports_catalog_v1(
@@ -959,6 +987,7 @@ def get_reports_catalog_v1(
         },
     )
 
+
 @router.put("/schedule")
 def update_daily_report_schedule_v1(
     payload: DailyScheduleConfigIn,
@@ -971,6 +1000,7 @@ def update_daily_report_schedule_v1(
     record_audit(db, "admin.report_schedule_updated", "settings", "daily_report_emails", admin.id, {"emails": cleaned})
     db.commit()
     return ok(request, {"dailyReportEmails": cleaned})
+
 
 @router.get("/preview")
 def preview_report_v1(
@@ -997,6 +1027,7 @@ def preview_report_v1(
             "rowCount": ds["rowCount"],
         },
     )
+
 
 @router.get("/download")
 def download_report_v1(
@@ -1047,6 +1078,7 @@ def download_report_v1(
             "Cache-Control": "no-store",
         },
     )
+
 
 @router.post("/generate-daily", status_code=201)
 def trigger_daily_reports_v1(

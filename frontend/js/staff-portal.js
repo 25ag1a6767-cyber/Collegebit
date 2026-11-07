@@ -39,74 +39,10 @@
     b.hidden = false;
   }
 
-  function setBackendStatus(status, detail) {
-    const pill = $("staff-ws-pill");
-    const label = $("staff-ws-label");
-    if (!pill || !label) return;
-    const labels = {
-      checking: "Checking service…",
-      online: "Service online",
-      unavailable: "Backend unavailable",
-      serverError: "Server error",
-      notReady: "Service not ready",
-      offline: "Network disconnected"
-    };
-    pill.className = "ws-pill " + (status === "online" ? "live" : status === "checking" ? "unknown" : "offline");
-    label.textContent = labels[status] || labels.unavailable;
-    pill.title = detail || label.textContent;
-  }
-
-  async function fetchBackend(url, options) {
-    let response;
-    try {
-      response = await fetch(url, options);
-    } catch (error) {
-      if (!navigator.onLine) {
-        setBackendStatus("offline");
-        throw new Error("Network disconnected. Check your internet connection and try again.");
-      }
-      setBackendStatus("unavailable");
-      throw new Error("Backend unavailable. Check your connection or try again shortly.");
-    }
-    if (response.status === 503) setBackendStatus("unavailable");
-    else if (response.status >= 500) setBackendStatus("serverError");
-    else setBackendStatus("online");
-    return response;
-  }
-
-  async function checkBackendConnectivity() {
-    if (!navigator.onLine) {
-      setBackendStatus("offline");
-      return false;
-    }
-    setBackendStatus("checking");
-    try {
-      const response = await fetchBackend("/api/ready", { headers: { Accept: "application/json" }, cache: "no-store" });
-      const health = await response.json().catch(() => ({}));
-      if (response.ok && health.status === "ready") {
-        setBackendStatus("online");
-        return true;
-      }
-      const checks = health.checks || {};
-      const failed = Object.keys(checks).filter((key) => checks[key] !== "ok");
-      setBackendStatus("notReady", failed.length ? `Service not ready: ${failed.join(", ")}.` : "Service is not ready.");
-    } catch (_) {}
-    return false;
-  }
-
-  function apiErrorMessage(response, payload) {
-    const error = payload.error || {};
-    const code = error.code || "";
-    if (code === "INVALID_CREDENTIALS") return "Invalid email or password.";
-    if (code === "ACCOUNT_DISABLED") return "Staff account inactive. Contact an administrator.";
-    if (code === "STAFF_PORTAL_FORBIDDEN") return "This account is not authorized for the staff portal.";
-    if (response.status === 503) return "Backend unavailable. Try again shortly.";
-    if (response.status >= 500) return "Server error. Try again later.";
-    if (response.status === 401) return "Your session expired. Sign in again.";
-    return error.message || (typeof payload.detail === "string" ? payload.detail : "") || `Request failed (${response.status}).`;
-  }
-
   async function api(path, opts) {
+    if (!navigator.onLine) {
+      throw new Error("Network disconnected. Please check your internet connection.");
+    }
     const options = opts || {};
     const headers = Object.assign({ "Accept": "application/json" }, options.headers || {});
     if (state.accessToken) headers["Authorization"] = "Bearer " + state.accessToken;
@@ -116,33 +52,60 @@
     }
     options.headers = headers;
 
-    let res = await fetchBackend("/api/v1" + path, options);
-    if (res.status === 401 && state.refreshToken && !path.startsWith("/auth/")) {
+    let res;
+    try {
+      res = await fetch("/api/v1" + path, options);
+    } catch (networkErr) {
+      setWsStatus(false, "Server Offline");
+      throw new Error("Backend server is offline or unreachable at http://127.0.0.1:8000. Please start the server.");
+    }
+
+    if (res.status === 401 && state.refreshToken && path !== "/auth/login" && path !== "/auth/refresh") {
       const refreshed = await tryRefresh();
       if (refreshed) {
         options.headers["Authorization"] = "Bearer " + state.accessToken;
-        res = await fetchBackend("/api/v1" + path, options);
+        try {
+          res = await fetch("/api/v1" + path, options);
+        } catch (networkErr) {
+          setWsStatus(false, "Server Offline");
+          throw new Error("Backend server is offline or unreachable at http://127.0.0.1:8000. Please start the server.");
+        }
       }
     }
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload.success === false || payload.ok === false) {
-      if (res.status === 401 && !path.startsWith("/auth/")) clearSession();
-      throw new Error(apiErrorMessage(res, payload));
+    if (!res.ok || payload.ok === false) {
+      if (res.status === 401) {
+        throw new Error("Invalid email/phone or password. Please verify your credentials.");
+      }
+      if (res.status === 403) {
+        const code = (payload.error && payload.error.code) || "";
+        if (code === "ACCOUNT_DISABLED") {
+          throw new Error("This staff account is deactivated/suspended. Please contact the canteen administrator.");
+        }
+        throw new Error("Access denied: You do not have permission to access staff portal resources.");
+      }
+      if (res.status >= 500) {
+        throw new Error("Server error (" + res.status + "). Please try again in a moment.");
+      }
+      const errMsg = (payload.error && payload.error.message) || payload.detail || ("Request failed (" + res.status + ")");
+      throw new Error(errMsg);
     }
     return payload.data !== undefined ? payload.data : payload;
   }
 
   async function tryRefresh() {
-    const response = await fetchBackend("/api/v1/auth/refresh", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: state.refreshToken })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (response.ok && payload.success && payload.data && payload.data.accessToken) {
-      saveTokens(payload.data.accessToken, payload.data.refreshToken);
-      return true;
-    }
+    try {
+      const r = await fetch("/api/v1/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: state.refreshToken })
+      });
+      const j = await r.json();
+      if (r.ok && j.ok && j.data && j.data.accessToken) {
+        saveTokens(j.data.accessToken, j.data.refreshToken);
+        return true;
+      }
+    } catch (_) {}
     clearSession();
     return false;
   }
@@ -167,14 +130,36 @@
     stopCamera();
     $("staff-workspace").hidden = true;
     $("staff-login-section").hidden = false;
-    $("staff-login-form").hidden = false;
-    $("staff-reset-form").hidden = true;
-    $("staff-mfa-section").hidden = true;
-    $("staff-change-password-section").hidden = true;
     $("staff-logout-btn").hidden = true;
     $("staff-user-badge").hidden = true;
     $("staff-counter-select").hidden = true;
     checkBackendConnectivity();
+  }
+
+  function setWsStatus(live, text) {
+    const pill = $("staff-ws-pill");
+    const lbl = $("staff-ws-label");
+    if (!pill || !lbl) return;
+    pill.className = "ws-pill " + (live ? "live" : "offline");
+    lbl.textContent = text || (live ? "Live Stream" : "Offline");
+  }
+
+  async function checkBackendConnectivity() {
+    if (!navigator.onLine) {
+      setWsStatus(false, "No Internet");
+      return false;
+    }
+    try {
+      const res = await fetch("/api/health", { cache: "no-store" });
+      if (res.ok) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
+          setWsStatus(true, "Server Online");
+        }
+        return true;
+      }
+    } catch (_) {}
+    setWsStatus(false, "Server Offline");
+    return false;
   }
 
   function connectWebSocket() {
@@ -187,6 +172,7 @@
     const sock = new WebSocket(wsUrl);
     state.ws = sock;
 
+    sock.addEventListener("open", () => setWsStatus(true, "Live Stream"));
     sock.addEventListener("close", () => {
       checkBackendConnectivity();
       if (state.accessToken) {
@@ -214,21 +200,10 @@
       const role = String(me.role || "").toUpperCase();
       if (role !== "STAFF" && role !== "ADMIN") {
         clearSession();
-        showBanner("This account is not authorized for the staff portal.", "error");
+        showBanner("Access denied: Student accounts cannot sign in to the Kitchen Staff Portal.", "error");
         return;
       }
       state.user = me;
-      if (me.mustChangePassword) {
-        $("staff-login-section").hidden = true;
-        $("staff-workspace").hidden = true;
-        $("staff-change-password-section").hidden = false;
-        $("staff-logout-btn").hidden = false;
-        $("staff-user-badge").textContent = `${me.fullName} (${role})`;
-        $("staff-user-badge").hidden = false;
-        showBanner("Change your temporary password to continue.", "error");
-        return;
-      }
-      $("staff-change-password-section").hidden = true;
       $("staff-login-section").hidden = true;
       $("staff-workspace").hidden = false;
       $("staff-logout-btn").hidden = false;
@@ -845,17 +820,10 @@
       try {
         const identifier = $("staff-login-id").value.trim();
         const password = $("staff-login-pw").value;
-        const res = await api("/auth/staff/login", {
+        const res = await api("/auth/login", {
           method: "POST",
           body: { identifier, password }
         });
-        if (res.mfaRequired) {
-          state.mfaChallengeToken = res.mfaChallengeToken;
-          $("staff-login-section").hidden = true;
-          $("staff-mfa-section").hidden = false;
-          $("staff-mfa-code").focus();
-          return;
-        }
         saveTokens(res.accessToken, res.refreshToken);
         await bootstrapAuthenticated();
       } catch (err) {
@@ -863,94 +831,11 @@
       }
     });
 
-    $("staff-forgot-btn").addEventListener("click", () => {
-      $("staff-login-form").hidden = true;
-      $("staff-reset-form").hidden = false;
-      $("staff-reset-email").value = $("staff-login-id").value.includes("@") ? $("staff-login-id").value.trim() : "";
-      $("staff-reset-email").focus();
-      showBanner("", "");
-    });
-
-    $("staff-reset-cancel").addEventListener("click", () => {
-      $("staff-reset-form").hidden = true;
-      $("staff-login-form").hidden = false;
-      showBanner("", "");
-    });
-
-    $("staff-reset-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try {
-        const response = await fetchBackend("/api/auth/forgot-password", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ email: $("staff-reset-email").value.trim().toLowerCase() })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(response.status === 503 ? "Backend unavailable. Try again shortly." : "Could not request a reset link. Try again later.");
-        }
-        $("staff-reset-form").hidden = true;
-        $("staff-login-form").hidden = false;
-        showBanner(payload.message || "If an account exists for that email, a reset link has been sent.", "success");
-      } catch (err) {
-        showBanner(err.message, "error");
-      }
-    });
-
-    $("staff-mfa-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try {
-        const result = await api("/auth/mfa/verify-login", {
-          method: "POST",
-          body: {
-            mfaChallengeToken: state.mfaChallengeToken,
-            code: $("staff-mfa-code").value.trim()
-          }
-        });
-        saveTokens(result.accessToken, result.refreshToken);
-        state.mfaChallengeToken = "";
-        $("staff-mfa-code").value = "";
-        $("staff-mfa-section").hidden = true;
-        await bootstrapAuthenticated();
-      } catch (err) {
-        showBanner(err.message, "error");
-      }
-    });
-
-    $("staff-mfa-cancel").addEventListener("click", () => {
-      clearSession();
-      showBanner("Sign in was cancelled.", "");
-    });
-
-    $("staff-change-password-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try {
-        const result = await api("/users/me/change-password", {
-          method: "POST",
-          body: {
-            currentPassword: $("staff-current-password").value,
-            newPassword: $("staff-new-password").value
-          }
-        });
-        saveTokens(result.accessToken, result.refreshToken);
-        $("staff-change-password-form").reset();
-        await bootstrapAuthenticated();
-        showBanner("Password updated.", "success");
-      } catch (err) {
-        showBanner(err.message, "error");
-      }
-    });
-
     $("staff-logout-btn").addEventListener("click", async () => {
-      let logoutError = "";
       try {
         await api("/auth/logout", { method: "POST", body: { refreshToken: state.refreshToken } });
-      } catch (err) {
-        logoutError = err.message;
-      }
+      } catch (_) {}
       clearSession();
-      if (logoutError) showBanner(`Signed out on this device. The server session could not be revoked: ${logoutError}`, "error");
-      else showBanner("Signed out.", "success");
     });
 
     $("staff-counter-select").addEventListener("change", (e) => {
@@ -1051,10 +936,10 @@
       }
     });
 
-    window.addEventListener("offline", () => setBackendStatus("offline"));
     window.addEventListener("online", checkBackendConnectivity);
+    window.addEventListener("offline", () => setWsStatus(false, "No Internet"));
     checkBackendConnectivity();
-    window.setInterval(checkBackendConnectivity, 30000);
+    setInterval(checkBackendConnectivity, 15000);
 
     if (state.accessToken) {
       bootstrapAuthenticated();

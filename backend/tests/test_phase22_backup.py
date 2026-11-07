@@ -9,6 +9,7 @@ spec = importlib.util.spec_from_file_location("backup_manager", MODULE_PATH)
 backup_manager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backup_manager)
 
+
 def make_db(path: Path, value: str = "hello") -> None:
     connection = sqlite3.connect(path)
     connection.execute("CREATE TABLE IF NOT EXISTS sample (value TEXT)")
@@ -16,6 +17,7 @@ def make_db(path: Path, value: str = "hello") -> None:
     connection.execute("INSERT INTO sample(value) VALUES (?)", (value,))
     connection.commit()
     connection.close()
+
 
 def test_backup_and_manifest_verify(tmp_path):
     source = tmp_path / "source.db"
@@ -26,6 +28,7 @@ def test_backup_and_manifest_verify(tmp_path):
     connection = sqlite3.connect(output)
     assert connection.execute("SELECT value FROM sample").fetchone()[0] == "hello"
     connection.close()
+
 
 def test_verification_detects_tampering(tmp_path):
     source = tmp_path / "source.db"
@@ -39,6 +42,7 @@ def test_verification_detects_tampering(tmp_path):
         assert "size" in str(exc).lower() or "sha-256" in str(exc).lower()
     else:
         raise AssertionError("Tampering must be detected")
+
 
 def test_restore_requires_explicit_confirmation_and_preserves_old_db(tmp_path):
     source = tmp_path / "source.db"
@@ -61,6 +65,7 @@ def test_restore_requires_explicit_confirmation_and_preserves_old_db(tmp_path):
     assert connection.execute("SELECT value FROM sample").fetchone()[0] == "existing-data"
     connection.close()
 
+
 def test_restore_rejects_corrupt_or_unverified_backup(tmp_path):
     source = tmp_path / "source.db"
     make_db(source)
@@ -72,6 +77,7 @@ def test_restore_rejects_corrupt_or_unverified_backup(tmp_path):
         pass
     else:
         raise AssertionError("Unverified backup must not be restored")
+
 
 def test_sqlite_integrity_check_rejects_missing_file(tmp_path):
     try:

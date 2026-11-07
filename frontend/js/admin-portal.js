@@ -775,21 +775,6 @@
         }
       });
       actTd.appendChild(toggleBtn);
-      if (String(u.role).toUpperCase() === "STAFF") {
-        const resetBtn = el("button", "btn btn-outline", "Email Reset Link");
-        resetBtn.type = "button";
-        resetBtn.disabled = !u.isActive;
-        resetBtn.title = u.isActive ? "Send a one-time password reset link to the staff member" : "Activate this account before sending a reset link";
-        resetBtn.addEventListener("click", async () => {
-          try {
-            const result = await apiFetch("/api/v1/admin/users/" + u.id + "/reset-password", { method: "POST", body: {} });
-            showAlert(result.message, "success");
-          } catch (err) {
-            showAlert(err.message, "error");
-          }
-        });
-        actTd.appendChild(resetBtn);
-      }
       tr.appendChild(actTd);
       frag.appendChild(tr);
     });

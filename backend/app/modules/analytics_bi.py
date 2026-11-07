@@ -75,6 +75,7 @@ VALID_COMPARISONS = {
     "this_year_vs_last_year",
 }
 
+
 def resolve_filter_dates(
     preset: str,
     start_date: date | None,
@@ -101,12 +102,13 @@ def resolve_filter_dates(
         return date(last_prev.year, last_prev.month, 1), last_prev
     if p == "this_year":
         return date(today_local.year, 1, 1), today_local
-
+    # custom
     s = start_date or (today_local - timedelta(days=29))
     e = end_date or today_local
     if s > e:
         raise ApiError(422, "INVALID_DATE_RANGE", "startDate cannot be after endDate.")
     return s, e
+
 
 def compute_unit_cost_map(db: Session) -> dict[int, int]:
     """Compute verified unit cost in paise per product from product.cost_paise or recipe ingredients."""
@@ -125,11 +127,13 @@ def compute_unit_cost_map(db: Session) -> dict[int, int]:
             cost_map[p.id] = recipe_paise
     return cost_map
 
+
 def _local_date_of(dt: datetime | None, tz: ZoneInfo, fallback: date) -> date:
     u = as_utc(dt)
     if u is None:
         return fallback
     return u.astimezone(tz).date()
+
 
 def _order_matches_item_filter(
     order: Order,
@@ -152,10 +156,12 @@ def _order_matches_item_filter(
         matched_paise += int(lp)
     return matched_any, matched_paise, 0
 
+
 def _pct_delta(current: int | float, previous: int | float) -> float | None:
     if previous == 0:
         return 100.0 if current > 0 else 0.0
     return round(((float(current) - float(previous)) / abs(float(previous))) * 100.0, 2)
+
 
 def _summarize_window(
     orders: list[Order],
@@ -274,6 +280,7 @@ def _summarize_window(
         "estimatedProfitPaise": profit_paise,
     }
 
+
 def _build_comparison(cur: dict[str, Any], prev: dict[str, Any], label: str) -> dict[str, Any]:
     return {
         "label": label,
@@ -288,6 +295,7 @@ def _build_comparison(cur: dict[str, Any], prev: dict[str, Any], label: str) -> 
             "activeCustomersPct": _pct_delta(cur["activeCustomers"], prev["activeCustomers"]),
         },
     }
+
 
 @router.get("/dashboard")
 def get_admin_bi_dashboard_v1(
@@ -311,6 +319,7 @@ def get_admin_bi_dashboard_v1(
 
     start_d, end_d = resolve_filter_dates(preset, startDate, endDate, today_local)
 
+    # Load reference catalogs
     categories = db.scalars(select(Category).order_by(Category.name.asc())).all()
     cat_name_map = {c.id: c.name for c in categories}
     counters = db.scalars(select(CanteenCounter).order_by(CanteenCounter.id.asc())).all()
@@ -324,6 +333,7 @@ def get_admin_bi_dashboard_v1(
     staff_users = db.scalars(select(User).where(User.role.in_([UserRole.STAFF, UserRole.ADMIN]))).all()
     staff_name_map = {u.id: u.full_name for u in staff_users}
 
+    # Load historical window sufficient for yearly + comparison rollups (last 740 days)
     earliest_needed = min(start_d, date(today_local.year - 1, 1, 1))
     earliest_utc = datetime(earliest_needed.year, earliest_needed.month, earliest_needed.day, tzinfo=timezone.utc) - timedelta(days=1)
 
@@ -360,6 +370,7 @@ def get_admin_bi_dashboard_v1(
     ).all()
     ing_waste = [m for m in all_ing_movements if m.movement_type == "wastage"]
 
+    # 1. Compute Today's exact KPIs + Filtered Window KPIs
     today_summary = _summarize_window(
         all_orders, all_expenses, prod_waste, ing_waste, all_refunds,
         unit_cost_map, product_category_map, product_price_map,
@@ -371,6 +382,7 @@ def get_admin_bi_dashboard_v1(
         tz, start_d, end_d, categoryId, productId, counterId,
     )
 
+    # Count payment records in filtered window
     succ_payments_cnt = 0
     fail_payments_cnt = 0
     pend_payments_cnt = 0
@@ -402,6 +414,7 @@ def get_admin_bi_dashboard_v1(
             pend_payments_cnt += 1
             payment_daily[dk]["pending"] += 1
 
+    # Also capture orders with failed/paid status that did not create a Payment row (e.g. legacy seeded orders)
     if succ_payments_cnt == 0 and window_summary["paidOrders"] > 0:
         succ_payments_cnt = window_summary["paidOrders"]
     if fail_payments_cnt == 0 and window_summary["failedPayments"] > 0:
@@ -436,6 +449,7 @@ def get_admin_bi_dashboard_v1(
         "refundPaise": window_summary["refundPaise"],
     }
 
+    # 2. Compute all 4 Period Comparisons from real DB records
     yesterday_d = today_local - timedelta(days=1)
     week_start = today_local - timedelta(days=today_local.weekday())
     last_week_start = week_start - timedelta(days=7)
@@ -461,6 +475,8 @@ def get_admin_bi_dashboard_v1(
         "this_year_vs_last_year": _build_comparison(_sum_range(year_start, today_local), _sum_range(last_year_start, last_year_end), "This Year vs Last Year"),
     }
 
+    # 3. Build all 16 Interactive Graph Series
+    # Pre-seed daily buckets across [start_d, end_d] (capped at 366 points for readability)
     daily_rev: dict[str, int] = defaultdict(int)
     daily_orders_cnt: dict[str, int] = defaultdict(int)
     daily_cogs: dict[str, int] = defaultdict(int)
@@ -505,6 +521,7 @@ def get_admin_bi_dashboard_v1(
         if not matches:
             continue
 
+        # Multi-horizon rollups (weekly/monthly/yearly across historical dataset)
         if o.payment_status == PaymentStatus.PAID:
             iso_yr, iso_wk, _ = od.isocalendar()
             wk_key = f"{iso_yr}-W{iso_wk:02d}"
@@ -519,6 +536,7 @@ def get_admin_bi_dashboard_v1(
                 yearly_rev[yr_key] += matched_rev
                 yearly_orders[yr_key] += 1
 
+        # Filtered window series
         if not (start_d <= od <= end_d):
             continue
 
@@ -558,6 +576,7 @@ def get_admin_bi_dashboard_v1(
                 daily_items_qty[dk] += int(it.quantity)
                 daily_cogs[dk] += int(it.quantity) * unit_cost_map.get(it.product_id, 0)
 
+    # Supplement staff performance from OrderStatusHistory & Pickups if handled_by_staff_id wasn't populated on older v1 orders
     hist_rows = db.scalars(
         select(OrderStatusHistory).where(
             OrderStatusHistory.actor_user_id.is_not(None),
@@ -587,6 +606,7 @@ def get_admin_bi_dashboard_v1(
         if start_d <= pkd <= end_d and pk.collected_by:
             staff_collections[int(pk.collected_by)] += 1
 
+    # Daily expenses & wastage for Graphs 12, 15, 16
     daily_op_exp: dict[str, int] = defaultdict(int)
     if categoryId is None and productId is None:
         for ex in all_expenses:
@@ -625,6 +645,7 @@ def get_admin_bi_dashboard_v1(
                 waste_by_item[nm]["lossPaise"] += loss_p
                 waste_by_item[nm]["unit"] = sm.ingredient.unit if sm.ingredient else ""
 
+    # Graph 11: Inventory consumption (menu product reservations + ingredient recipe consumption)
     consumption_by_item: dict[str, dict[str, Any]] = defaultdict(lambda: {"consumed": 0.0, "unit": "units", "kind": "product"})
     for mv in all_prod_movements:
         if mv.movement_type != InventoryMovementType.RESERVATION:
@@ -650,6 +671,7 @@ def get_admin_bi_dashboard_v1(
                 consumption_by_item[key]["unit"] = sm.ingredient.unit
                 consumption_by_item[key]["kind"] = "ingredient"
 
+    # Assemble Top & Least Selling Foods across active catalog (so 0-sale items appear in Least Selling!)
     catalog_candidates = [
         p for p in products
         if (categoryId is None or p.category_id == categoryId)

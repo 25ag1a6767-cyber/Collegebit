@@ -1672,3 +1672,4 @@ window.setInterval(() => {
   document.addEventListener('ace-auth-changed', checkAdminView);
   checkAdminView();
 })();
+

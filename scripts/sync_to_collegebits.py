@@ -8,7 +8,7 @@ SRC = Path("C:/Users/HP/Desktop/clg")
 DST = Path("C:/Users/HP/Desktop/collegebits")
 
 if DST.exists():
-
+    # Files to sync
     files_to_sync = [
         "frontend/admin.html",
         "frontend/staff.html",

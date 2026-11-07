@@ -29,7 +29,7 @@ export const MenuScreen: React.FC = () => {
       const res = await apiRequest<{ items: MenuItemSummary[] }>("/api/v1/favorites");
       setFavoriteIds((res.items || []).map(x => x.id));
     } catch {
-
+      // Ignore if guest or non-student
     }
   }, []);
 
@@ -66,7 +66,7 @@ export const MenuScreen: React.FC = () => {
         setFavoriteIds(prev => [...prev, itemId]);
       }
     } catch {
-
+      // Ignore transient error
     }
   };
 
@@ -77,7 +77,7 @@ export const MenuScreen: React.FC = () => {
       setSelectedCustomizations([]);
       setQty(1);
     } catch {
-
+      // Ignore transient error
     }
   };
 

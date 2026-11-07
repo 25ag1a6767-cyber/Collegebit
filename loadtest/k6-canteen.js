@@ -2,6 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate } from 'k6/metrics';
 
+// Safety default: localhost only. Never point this script at the production site.
 const BASE_URL = (__ENV.BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 const ALLOW_STAGING = (__ENV.K6_ALLOW_STAGING || '').toLowerCase() === 'true';
 const PRODUCTION_HOSTS = new Set(['collegeproject-sandy.vercel.app']);
@@ -57,28 +58,32 @@ function getAndCheck(path, endpoint, validate) {
 }
 
 export default function () {
-
+  // 1. Open the app's main page.
   getAndCheck('/', 'homepage', (r) => r.status === 200 && String(r.headers['Content-Type'] || '').includes('text/html'));
   sleep(1 + Math.random() * 2);
 
+  // 2. Check database readiness (read-only SELECT 1).
   getAndCheck('/api/ready', 'readiness', (r) => {
     if (r.status !== 200) return false;
     try { return JSON.parse(r.body).status === 'ready'; } catch (_) { return false; }
   });
   sleep(1 + Math.random() * 2);
 
+  // 3. Load active categories for the catalogue.
   getAndCheck('/api/categories', 'categories', (r) => {
     if (r.status !== 200) return false;
     try { return Array.isArray(JSON.parse(r.body)); } catch (_) { return false; }
   });
   sleep(1 + Math.random() * 2);
 
+  // 4. Load the first page of in-stock products (same public endpoint as the UI).
   getAndCheck('/api/products?available_only=true&sort_by=name&sort_order=asc&limit=50&offset=0', 'products', (r) => {
     if (r.status !== 200) return false;
     try { return Array.isArray(JSON.parse(r.body)); } catch (_) { return false; }
   });
   sleep(1 + Math.random() * 2);
 
+  // 5. Check current canteen/ordering status. No order or payment is created.
   getAndCheck('/api/canteen/status', 'canteen_status', (r) => {
     if (r.status !== 200) return false;
     try { return !!JSON.parse(r.body) && typeof JSON.parse(r.body) === 'object'; } catch (_) { return false; }

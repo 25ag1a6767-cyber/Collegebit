@@ -1,4 +1,6 @@
-
+/* CampusBite AI v2.0 — Self-Hosted CSP-Safe Interactive SVG Chart Studio.
+ * Zero external CDN dependencies; zero inline style="" attributes (strictly adheres to style-src 'self').
+ */
 (function () {
   "use strict";
 
@@ -102,6 +104,7 @@
     const yFor = (val) => padT + plotH - ((Number(val || 0) - minVal) / (maxVal - minVal)) * plotH;
     const xFor = (idx) => (labels.length === 1 ? padL + plotW / 2 : padL + (idx / (labels.length - 1)) * plotW);
 
+    // Grid lines
     const steps = 4;
     for (let i = 0; i <= steps; i++) {
       const v = minVal + ((maxVal - minVal) * i) / steps;
@@ -112,11 +115,13 @@
       svg.appendChild(lbl);
     }
 
+    // Zero baseline if negative profits exist
     if (minVal < 0 && maxVal > 0) {
       const y0 = yFor(0);
       svg.appendChild(svgEl("line", { x1: padL, y1: y0.toFixed(1), x2: W - padR, y2: y0.toFixed(1), stroke: "#94a3b8", "stroke-dasharray": "4 3", "stroke-width": "1.2" }));
     }
 
+    // X-axis labels
     const stride = Math.max(1, Math.ceil(labels.length / 7));
     labels.forEach((lblText, idx) => {
       if (idx % stride !== 0 && idx !== labels.length - 1) return;
@@ -126,6 +131,7 @@
       svg.appendChild(t);
     });
 
+    // Series polylines + points
     series.forEach((s, sIdx) => {
       const color = s.color || PALETTE[sIdx % PALETTE.length];
       const vals = s.values || [];
@@ -230,6 +236,7 @@
       return;
     }
 
+    // Vertical grouped bar chart
     const W = 640;
     const H = 235;
     const padL = 58;

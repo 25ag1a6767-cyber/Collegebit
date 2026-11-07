@@ -7,6 +7,7 @@ import uuid
 from datetime import date, timedelta
 from contextlib import contextmanager
 
+
 @contextmanager
 def admin_headers():
     suffix = uuid.uuid4().hex[:10]
@@ -19,6 +20,7 @@ def admin_headers():
         assert response.status_code == 200
         yield client, {'Authorization': f"Bearer {response.json()['access_token']}"}, suffix
 
+
 def test_supplier_create_and_list():
     with admin_headers() as (client, headers, suffix):
         created = client.post('/api/admin/suppliers', headers=headers, json={'name': f'Local Supplier {suffix}', 'phone': '9000000000'})
@@ -27,6 +29,7 @@ def test_supplier_create_and_list():
         listed = client.get('/api/admin/suppliers', headers=headers)
         assert listed.status_code == 200
         assert any(x['id'] == created.json()['id'] for x in listed.json())
+
 
 def test_batch_receipt_updates_stock_and_expiry_report():
     with admin_headers() as (client, headers, suffix):
@@ -46,6 +49,7 @@ def test_batch_receipt_updates_stock_and_expiry_report():
         assert expiry.status_code == 200
         assert any(x['batch_code'] == f'B-{suffix}' for x in expiry.json()['batches'])
 
+
 def test_demand_analytics_requires_admin():
     with TestClient(app) as client:
         assert client.get('/api/admin/analytics/demand').status_code == 401
@@ -54,6 +58,7 @@ def test_demand_analytics_requires_admin():
         assert response.status_code == 200
         assert response.json()['window_days'] == 30
         assert 'products' in response.json()
+
 
 def test_inventory_reconciliation_is_admin_only_and_read_only():
     with TestClient(app) as client:

@@ -31,7 +31,7 @@ export async function saveTokens(accessToken: string, refreshToken?: string | nu
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
     }
   } catch {
-
+    // Fallback to in-memory session if secure hardware enclave is unavailable
   }
 }
 
@@ -41,7 +41,7 @@ export async function clearTokens(): Promise<void> {
     await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
   } catch {
-
+    // Ignore storage cleanup errors
   }
 }
 
@@ -150,7 +150,7 @@ export function createRealtimeSocket(
         const parsed = JSON.parse(String(msg.data)) as Record<string, unknown>;
         onEvent(parsed);
       } catch {
-
+        // Ignore malformed frame
       }
     };
     ws.onclose = () => {

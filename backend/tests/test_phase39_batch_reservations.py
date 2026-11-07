@@ -8,6 +8,7 @@ from app.models import BatchReservation, Order, OrderStatus, PaymentStatus, Prod
 from app.security import hash_password
 from sqlalchemy import select
 
+
 def test_batch_stock_is_reserved_fefo_and_release_is_idempotent():
     suffix = uuid.uuid4().hex[:12]
     with SessionLocal() as db:

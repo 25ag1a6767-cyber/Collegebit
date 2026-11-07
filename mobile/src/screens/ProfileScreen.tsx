@@ -29,7 +29,7 @@ export const ProfileScreen: React.FC = () => {
       );
       setNotifications(Array.isArray(res) ? res : res.items || []);
     } catch {
-
+      // Ignore
     }
   }, []);
 

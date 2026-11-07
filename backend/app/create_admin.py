@@ -16,7 +16,7 @@ args = parser.parse_args()
 password = getpass("Admin password (minimum 12 characters): ")
 if len(password) < 12:
     raise SystemExit("Password must contain at least 12 characters.")
-
+# Never create tables outside Alembic on a real database; only bootstrap SQLite for local development.
 if engine.dialect.name == "sqlite":
     Base.metadata.create_all(bind=engine)
 with SessionLocal() as db:

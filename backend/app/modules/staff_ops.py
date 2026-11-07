@@ -50,16 +50,20 @@ from app.security import assert_counter_access, get_staff_assigned_counter_ids, 
 
 router = APIRouter(prefix="/staff", tags=["v1-staff"])
 
+
 class OrderTransitionNoteIn(BaseModel):
     note: str | None = Field(default=None, max_length=255)
+
 
 class OrderExceptionIn(BaseModel):
     reason: str = Field(min_length=3, max_length=255)
     cancelAndRefund: bool = False
 
+
 class MenuAvailabilityPatchIn(BaseModel):
     isAvailable: bool
     reason: str | None = Field(default="Staff availability update", max_length=255)
+
 
 class StaffStockMovementIn(BaseModel):
     ingredientId: int | None = Field(default=None, gt=0)
@@ -67,6 +71,7 @@ class StaffStockMovementIn(BaseModel):
     movementType: str = Field(pattern="^(restock|wastage|adjustment)$")
     quantity: Decimal = Field(gt=Decimal("0"))
     reason: str = Field(min_length=3, max_length=255)
+
 
 def _load_staff_order_locked(db: Session, order_id: int, staff: User) -> Order:
     order = db.scalar(
@@ -81,6 +86,7 @@ def _load_staff_order_locked(db: Session, order_id: int, staff: User) -> Order:
     if order.payment_status != PaymentStatus.PAID:
         raise ApiError(409, "PAYMENT_PENDING", "Only paid orders can be operated in the kitchen queue.")
     return order
+
 
 @router.get("/orders")
 def list_staff_orders_v1(
@@ -157,8 +163,10 @@ def list_staff_orders_v1(
     }
     return ok(request, {"summary": summary, "items": serialized})
 
+
 class OrderRejectIn(BaseModel):
     reason: str = Field(min_length=3, max_length=255)
+
 
 @router.post("/orders/{order_id}/accept")
 def accept_staff_order_v1(
@@ -198,6 +206,7 @@ def accept_staff_order_v1(
     record_audit(db, "staff.order_accepted", "order", order.id, staff.id, {"counter_id": order.counter_id})
     commit_and_flush_outbox(db)
     return ok(request, {"order": out})
+
 
 @router.post("/orders/{order_id}/reject")
 def reject_staff_order_v1(
@@ -250,6 +259,7 @@ def reject_staff_order_v1(
     commit_and_flush_outbox(db)
     return ok(request, {"order": out, "refund": refund_info})
 
+
 @router.post("/orders/{order_id}/start")
 def start_staff_order_v1(
     order_id: int,
@@ -285,6 +295,7 @@ def start_staff_order_v1(
     record_audit(db, "staff.order_started", "order", order.id, staff.id, {"counter_id": order.counter_id})
     commit_and_flush_outbox(db)
     return ok(request, {"order": out})
+
 
 @router.post("/orders/{order_id}/ready")
 def mark_staff_order_ready_v1(
@@ -336,6 +347,7 @@ def mark_staff_order_ready_v1(
             ),
         )
     return ok(request, {"order": out})
+
 
 @router.post("/orders/{order_id}/exception")
 def report_staff_order_exception_v1(
@@ -406,6 +418,7 @@ def report_staff_order_exception_v1(
     commit_and_flush_outbox(db)
     return ok(request, {"order": out, "refund": refund_info})
 
+
 @router.patch("/menu-items/{item_id}/availability")
 def patch_staff_menu_availability_v1(
     item_id: int,
@@ -438,6 +451,7 @@ def patch_staff_menu_availability_v1(
     )
     commit_and_flush_outbox(db)
     return ok(request, serialize_product_v1(product))
+
 
 @router.get("/inventory")
 def get_staff_inventory_v1(
@@ -522,6 +536,7 @@ def get_staff_inventory_v1(
         },
     )
 
+
 @router.post("/inventory/movements", status_code=201)
 def record_staff_stock_movement_v1(
     payload: StaffStockMovementIn,
@@ -541,7 +556,7 @@ def record_staff_stock_movement_v1(
         qty = Decimal(payload.quantity).quantize(Decimal("0.001"))
         delta = -qty if payload.movementType == "wastage" else qty
         if payload.movementType == "adjustment":
-
+            # Adjustment treats quantity as signed delta only if positive restock; wastage is negative.
             delta = qty
         after = (before + delta).quantize(Decimal("0.01"))
         if after < 0:
@@ -583,6 +598,7 @@ def record_staff_stock_movement_v1(
             status_code=201,
         )
 
+    # Menu product movement
     if payload.quantity != payload.quantity.to_integral_value():
         raise ApiError(422, "INTEGER_QUANTITY_REQUIRED", "Menu item stock movements require whole unit quantities.")
     units = int(payload.quantity)
@@ -640,6 +656,7 @@ def record_staff_stock_movement_v1(
         },
         status_code=201,
     )
+
 
 @router.get("/inventory/alerts")
 def get_staff_inventory_alerts_v1(
@@ -706,6 +723,7 @@ def get_staff_inventory_alerts_v1(
         },
     )
 
+
 @router.get("/orders/history")
 def get_staff_completed_order_history_v1(
     request: Request,
@@ -747,6 +765,7 @@ def get_staff_completed_order_history_v1(
             "items": [serialize_order_v1(o, include_customer=True) for o in rows],
         },
     )
+
 
 @router.get("/performance")
 def get_staff_daily_performance_v1(

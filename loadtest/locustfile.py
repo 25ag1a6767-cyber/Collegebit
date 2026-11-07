@@ -13,6 +13,7 @@ import json
 import random
 from locust import HttpUser, between, task, tag
 
+
 class StudentCustomerUser(HttpUser):
     wait_time = between(1.0, 3.0)
     weight = 85
@@ -59,7 +60,7 @@ class StudentCustomerUser(HttpUser):
             headers=self.headers,
             catch_response=True,
         ) as resp:
-
+            # 200 is quote success, 400/404 if mock IDs don't exist yet in target DB
             if resp.status_code in (200, 400, 404):
                 resp.success()
             else:
@@ -69,6 +70,7 @@ class StudentCustomerUser(HttpUser):
     @tag("display", "public")
     def poll_tv_display_tokens(self):
         self.client.get("/api/v1/queue/display-board", headers=self.headers)
+
 
 class StaffCounterUser(HttpUser):
     wait_time = between(2.0, 5.0)

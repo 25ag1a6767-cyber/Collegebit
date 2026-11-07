@@ -50,11 +50,14 @@ from app.models import (
 from app.modules.retention_backup import verify_encrypted_backup
 from app.security import hash_password
 
+
 def _mk_email(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:10]}@campusbite.edu"
 
+
 def _mk_phone() -> str:
     return f"+918{str(uuid.uuid4().int)[:9]}"
+
 
 def _seed_user(role: UserRole, prefix: str, counter_id: int | None = None) -> tuple[int, str, str]:
     email = _mk_email(prefix)
@@ -76,13 +79,16 @@ def _seed_user(role: UserRole, prefix: str, counter_id: int | None = None) -> tu
         db.commit()
         return u.id, email, pw
 
+
 def _login(client: TestClient, email: str, password: str) -> str:
     r = client.post("/api/v1/auth/login", json={"identifier": email, "password": password})
     assert r.status_code == 200, r.text
     return r.json()["data"]["accessToken"]
 
+
 def _hdr(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
 
 def _ensure_open_counter_and_item(price_paise: int = 8000, cost_paise: int = 3500, stock: int = 30) -> tuple[int, int]:
     with SessionLocal() as db:
@@ -119,6 +125,7 @@ def _ensure_open_counter_and_item(price_paise: int = 8000, cost_paise: int = 350
         db.commit()
         return counter.id, prod.id
 
+
 def _mark_order_paid_direct(order_id: int) -> int:
     with SessionLocal() as db:
         o = db.get(Order, order_id)
@@ -139,6 +146,7 @@ def _mark_order_paid_direct(order_id: int) -> int:
         db.add(pay)
         db.commit()
         return pay.id
+
 
 def test_three_portals_and_strict_csp_compliance():
     with TestClient(app) as client:
@@ -163,6 +171,7 @@ def test_three_portals_and_strict_csp_compliance():
             res = client.get(asset)
             assert res.status_code == 200, asset
 
+        # Verify strict backend RBAC: student and staff cannot access /api/v1/admin/*
         _, stu_email, stu_pw = _seed_user(UserRole.STUDENT, "rbac-stu")
         _, stf_email, stf_pw = _seed_user(UserRole.STAFF, "rbac-stf")
         stu_tok = _login(client, stu_email, stu_pw)
@@ -172,6 +181,7 @@ def test_three_portals_and_strict_csp_compliance():
             assert client.get("/api/v1/admin/analytics/dashboard", headers=_hdr(tok)).status_code == 403
             assert client.get("/api/v1/admin/backups", headers=_hdr(tok)).status_code == 403
             assert client.get("/api/v1/admin/database/overview", headers=_hdr(tok)).status_code == 403
+
 
 def test_staff_reject_permissions_history_and_performance():
     counter_id, item_id = _ensure_open_counter_and_item(stock=20)
@@ -184,6 +194,7 @@ def test_staff_reject_permissions_history_and_performance():
         stf_tok = _login(client, staff_email, staff_pw)
         stu_tok = _login(client, stu_email, stu_pw)
 
+        # Place order & mark paid
         ord_res = client.post(
             "/api/v1/orders",
             headers=_hdr(stu_tok),
@@ -193,6 +204,7 @@ def test_staff_reject_permissions_history_and_performance():
         order_id = ord_res.json()["data"]["order"]["id"]
         _mark_order_paid_direct(order_id)
 
+        # Admin disables canRejectOrders for this staff member
         perm_res = client.put(
             f"/api/v1/admin/users/{staff_id}/permissions",
             headers=_hdr(adm_tok),
@@ -208,6 +220,7 @@ def test_staff_reject_permissions_history_and_performance():
         assert perm_res.status_code == 200
         assert perm_res.json()["data"]["staffPermissions"]["canRejectOrders"] is False
 
+        # Staff attempt to reject must be denied with 403
         denied = client.post(
             f"/api/v1/staff/orders/{order_id}/reject",
             headers=_hdr(stf_tok),
@@ -215,6 +228,7 @@ def test_staff_reject_permissions_history_and_performance():
         )
         assert denied.status_code == 403
 
+        # Re-enable canRejectOrders -> reject succeeds, restores stock from 18 back to 20, initiates refund
         client.put(
             f"/api/v1/admin/users/{staff_id}/permissions",
             headers=_hdr(adm_tok),
@@ -241,6 +255,7 @@ def test_staff_reject_permissions_history_and_performance():
             p = db.get(Product, item_id)
             assert p.stock_quantity == 20
 
+        # Verify staff history & performance endpoints
         hist = client.get("/api/v1/staff/orders/history", headers=_hdr(stf_tok))
         assert hist.status_code == 200
         assert any(o["id"] == order_id for o in hist.json()["data"]["items"])
@@ -249,6 +264,7 @@ def test_staff_reject_permissions_history_and_performance():
         assert perf.status_code == 200
         assert "myStatsToday" in perf.json()["data"]
         assert "counterStatsToday" in perf.json()["data"]
+
 
 def test_customer_digital_receipts_and_password_change():
     counter_id, item_id = _ensure_open_counter_and_item()
@@ -267,6 +283,7 @@ def test_customer_digital_receipts_and_password_change():
         order_id = ord_res.json()["data"]["order"]["id"]
         _mark_order_paid_direct(order_id)
 
+        # JSON receipt
         rj = client.get(f"/api/v1/orders/{order_id}/receipt?format=json", headers=_hdr(t1))
         assert rj.status_code == 200
         rcpt = rj.json()["data"]
@@ -274,14 +291,17 @@ def test_customer_digital_receipts_and_password_change():
         assert rcpt["orderId"] == order_id
         assert len(rcpt["items"]) == 1
 
+        # PDF receipt
         rpdf = client.get(f"/api/v1/orders/{order_id}/receipt?format=pdf", headers=_hdr(t1))
         assert rpdf.status_code == 200
         assert rpdf.headers["content-type"].startswith("application/pdf")
         assert rpdf.content.startswith(b"%PDF-1.4")
 
+        # Cross-student isolation: student 2 cannot access student 1's receipt
         forbidden = client.get(f"/api/v1/orders/{order_id}/receipt?format=json", headers=_hdr(t2))
         assert forbidden.status_code in {403, 404}
 
+        # Password rotation via /api/v1/users/me/change-password
         new_pw = "Updated-Student-Pass#2026!"
         cp = client.post(
             "/api/v1/users/me/change-password",
@@ -290,9 +310,10 @@ def test_customer_digital_receipts_and_password_change():
         )
         assert cp.status_code == 200
         new_tok = cp.json()["data"]["accessToken"]
-
+        # Old token invalidated via token_version increment
         assert client.get("/api/v1/users/me", headers=_hdr(t1)).status_code == 401
         assert client.get("/api/v1/users/me", headers=_hdr(new_tok)).status_code == 200
+
 
 def test_suppliers_purchase_orders_expenses_and_admin_ops():
     counter_id, item_id = _ensure_open_counter_and_item(stock=10)
@@ -303,6 +324,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
         adm_tok = _login(client, admin_email, admin_pw)
         stu_tok = _login(client, stu_email, stu_pw)
 
+        # 1. Create Supplier
         sup_res = client.post(
             "/api/v1/admin/suppliers",
             headers=_hdr(adm_tok),
@@ -316,6 +338,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
         assert sup_res.status_code == 201, sup_res.text
         supplier_id = sup_res.json()["data"]["id"]
 
+        # 2. Issue Purchase Order for 15 units of menu item @ ₹32.00 (3200 paise)
         po_res = client.post(
             "/api/v1/admin/purchase-orders",
             headers=_hdr(adm_tok),
@@ -329,6 +352,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
         po_id = po_res.json()["data"]["id"]
         assert po_res.json()["data"]["totalCostPaise"] == 48000
 
+        # 3. Receive PO -> creates ProductBatch, increments stock 10 -> 25, logs OperationalExpense
         rec_res = client.post(f"/api/v1/admin/purchase-orders/{po_id}/receive", headers=_hdr(adm_tok))
         assert rec_res.status_code == 200, rec_res.text
         assert rec_res.json()["data"]["purchaseOrder"]["status"] == "RECEIVED"
@@ -341,6 +365,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
             batches = db.scalars(select(ProductBatch).where(ProductBatch.product_id == item_id)).all()
             assert len(batches) >= 1
 
+        # 4. Manual Expense Create & List
         exp_res = client.post(
             "/api/v1/admin/expenses",
             headers=_hdr(adm_tok),
@@ -352,6 +377,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
         assert exp_list.status_code == 200
         assert any(e["id"] == exp_id for e in exp_list.json()["data"]["items"])
 
+        # 5. Complete Order lifecycle via Admin Override + Student Feedback
         ord_res = client.post(
             "/api/v1/orders",
             headers=_hdr(stu_tok),
@@ -379,6 +405,7 @@ def test_suppliers_purchase_orders_expenses_and_admin_ops():
         assert fb.status_code == 200
         assert fb.json()["data"]["totalReviews"] >= 1
 
+
 def test_admin_bi_dashboard_10_cards_16_graphs_filters_and_comparisons():
     counter_id, item_id = _ensure_open_counter_and_item(price_paise=9000, cost_paise=4000, stock=30)
     _, admin_email, admin_pw = _seed_user(UserRole.ADMIN, "bi-adm")
@@ -404,6 +431,7 @@ def test_admin_bi_dashboard_10_cards_16_graphs_filters_and_comparisons():
         data = res.json()["data"]
         assert data["dataKind"] == "ACTUAL"
 
+        # Verify all 10 required KPI card fields exist and reflect real paid order
         cards = data["cards"]
         for key in (
             "todayRevenuePaise",
@@ -421,9 +449,11 @@ def test_admin_bi_dashboard_10_cards_16_graphs_filters_and_comparisons():
         assert cards["todayRevenuePaise"] >= 18000
         assert cards["estimatedProfitPaise"] == cards["filteredRevenuePaise"] - cards["totalExpensesPaise"]
 
+        # Verify all 4 required period comparisons
         for cmp_key in ("today_vs_yesterday", "this_week_vs_last_week", "this_month_vs_last_month", "this_year_vs_last_year"):
             assert cmp_key in data["comparisons"]
 
+        # Verify all 16 required interactive graph series
         expected_16_graphs = {
             "dailySales",
             "weeklySales",
@@ -443,6 +473,7 @@ def test_admin_bi_dashboard_10_cards_16_graphs_filters_and_comparisons():
             "profitability",
         }
         assert expected_16_graphs.issubset(set(data["graphs"].keys()))
+
 
 def test_all_14_reports_pdf_xlsx_csv_and_daily_runner():
     _, admin_email, admin_pw = _seed_user(UserRole.ADMIN, "rep-adm")
@@ -472,11 +503,13 @@ def test_all_14_reports_pdf_xlsx_csv_and_daily_runner():
         catalog_types = [r["reportType"] for r in cat.json()["data"]["reportTypes"]]
         assert set(expected_14_types) == set(catalog_types)
 
+        # Preview all 14 report types
         for rt in expected_14_types:
             pr = client.get(f"/api/v1/admin/reports/preview?reportType={rt}", headers=_hdr(adm_tok))
             assert pr.status_code == 200, f"Preview failed for {rt}: {pr.text}"
             assert len(pr.json()["data"]["columns"]) >= 3
 
+        # Download PDF, Excel (.xlsx) & CSV and validate binary file formats
         pdf_res = client.get("/api/v1/admin/reports/download?reportType=monthly_financial&format=pdf", headers=_hdr(adm_tok))
         assert pdf_res.status_code == 200
         assert pdf_res.content.startswith(b"%PDF-1.4")
@@ -492,6 +525,7 @@ def test_all_14_reports_pdf_xlsx_csv_and_daily_runner():
         assert csv_res.status_code == 200
         assert "Date" in csv_res.text
 
+        # Configure daily schedule & run automated daily job
         sch = client.put(
             "/api/v1/admin/reports/schedule",
             headers=_hdr(adm_tok),
@@ -502,6 +536,7 @@ def test_all_14_reports_pdf_xlsx_csv_and_daily_runner():
         gen = client.post("/api/v1/admin/reports/generate-daily", headers=_hdr(adm_tok), json={})
         assert gen.status_code == 201
         assert gen.json()["data"]["generatedCount"] >= 4
+
 
 def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     cfg = get_settings()
@@ -518,6 +553,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
         adm_tok = _login(client, admin_email, admin_pw)
         stu_tok = _login(client, stu_email, stu_pw)
 
+        # Create a real paid permanent order
         ord_res = client.post(
             "/api/v1/orders",
             headers=_hdr(stu_tok),
@@ -526,6 +562,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
         perm_order_id = ord_res.json()["data"]["order"]["id"]
         perm_payment_id = _mark_order_paid_direct(perm_order_id)
 
+        # Seed >5-day-old temporary operational records
         six_days_ago = datetime.now(timezone.utc) - timedelta(days=6)
         with SessionLocal() as db:
             old_log = TemporaryApiLog(request_id="req-old-1", method="GET", path="/api/health", status_code=200, duration_ms=4, created_at=six_days_ago)
@@ -546,6 +583,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
             payments_before = db.scalar(select(func.count(Payment.id)))
             audits_before = db.scalar(select(func.count(AuditEvent.id)))
 
+        # 1. SAFETY GATE TEST: Without a backup in primary_dir, cleanup MUST HALT!
         halted = client.post(
             "/api/v1/admin/retention/run",
             headers=_hdr(adm_tok),
@@ -556,6 +594,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
         with SessionLocal() as db:
             assert db.get(TemporaryApiLog, old_log_id) is not None
 
+        # 2. CREATE ENCRYPTED GFS BACKUP -> verify primary + secondary copy + restore drill
         bkp_res = client.post("/api/v1/admin/backups/run", headers=_hdr(adm_tok))
         assert bkp_res.status_code == 201, bkp_res.text
         bkp_data = bkp_res.json()["data"]
@@ -569,6 +608,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
         assert drill.status_code == 200, drill.text
         assert drill.json()["data"]["restoreDrillPassed"] is True
 
+        # Tamper test on a copy: flipping 1 byte MUST fail integrity verification
         tampered = tmp_path / "tampered.enc"
         raw_enc = bytearray(enc_path.read_bytes())
         raw_enc[-10] ^= 0xFF
@@ -579,6 +619,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
         with pytest.raises(ValueError):
             verify_encrypted_backup(tampered)
 
+        # 3. NOW RUN 4-DAY RETENTION CLEANUP -> temporary >4d rows purged, permanent rows 100% preserved!
         clean_res = client.post(
             "/api/v1/admin/retention/run",
             headers=_hdr(adm_tok),
@@ -602,6 +643,7 @@ def test_encrypted_gfs_backups_tamper_detection_and_four_day_retention_safety(tm
             assert db.scalar(select(func.count(AuditEvent.id))) >= audits_before
             assert db.scalar(select(func.count(DailySalesArchive.id))) >= 1
 
+
 def test_ai_bi_12_modules_db_admin_security_and_rate_limiting(monkeypatch: pytest.MonkeyPatch):
     _, admin_email, admin_pw = _seed_user(UserRole.ADMIN, "aibi-adm")
     stu_id, _, _ = _seed_user(UserRole.STUDENT, "aibi-stu")
@@ -609,6 +651,7 @@ def test_ai_bi_12_modules_db_admin_security_and_rate_limiting(monkeypatch: pytes
     with TestClient(app) as client:
         adm_tok = _login(client, admin_email, admin_pw)
 
+        # 1. 12-Module AI BI Suite
         ai_res = client.get("/api/v1/ai/bi/dashboard?days=30", headers=_hdr(adm_tok))
         assert ai_res.status_code == 200, ai_res.text
         ai = ai_res.json()["data"]
@@ -631,6 +674,7 @@ def test_ai_bi_12_modules_db_admin_security_and_rate_limiting(monkeypatch: pytes
         assert all(d["dataKind"] == "PREDICTION" for d in ai["salesForecast7Day"])
         assert all(m["dataKind"] == "ACTUAL" and m["quadrant"] in {"STAR", "PLOWHORSE", "PUZZLE", "DOG"} for m in ai["menuEngineeringMatrix"])
 
+        # 2. Database Administration Diagnostics & ANALYZE
         db_ov = client.get("/api/v1/admin/database/overview", headers=_hdr(adm_tok))
         assert db_ov.status_code == 200
         assert db_ov.json()["data"]["totalTables"] >= 25
@@ -638,6 +682,7 @@ def test_ai_bi_12_modules_db_admin_security_and_rate_limiting(monkeypatch: pytes
         assert db_an.status_code == 200
         assert db_an.json()["data"]["integrityStatus"] == "ok"
 
+        # 3. Security Monitor & Session Revocation
         sec = client.get("/api/v1/admin/security/overview", headers=_hdr(adm_tok))
         assert sec.status_code == 200
         assert "summary24h" in sec.json()["data"]
@@ -645,6 +690,7 @@ def test_ai_bi_12_modules_db_admin_security_and_rate_limiting(monkeypatch: pytes
         rev = client.post(f"/api/v1/admin/security/users/{stu_id}/revoke-sessions", headers=_hdr(adm_tok))
         assert rev.status_code == 200
 
+        # 4. General API Rate Limiter Enforcement
         cfg = get_settings()
         monkeypatch.setattr(cfg, "api_rate_limit_per_minute", 30)
         _api_rate_buckets.clear()

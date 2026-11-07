@@ -54,7 +54,7 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
         setActiveOrder(live || null);
       }
     } catch {
-
+      // Keep last loaded snapshot
     }
   }, [selectedCounterId, user?.role]);
 

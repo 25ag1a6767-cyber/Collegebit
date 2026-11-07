@@ -15,16 +15,14 @@ from typing import Any
 import uuid
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.database import get_db
-from app.emailer import send_email
 from app.envelope import ApiError, ok
 from app.models import (
     AuditEvent,
@@ -65,7 +63,7 @@ from app.modules.common import (
     serialize_user_v1,
     set_app_setting,
 )
-from app.security import create_password_reset_token, hash_password, require_roles, revoke_refresh_sessions
+from app.security import hash_password, require_roles, revoke_refresh_sessions
 
 router = APIRouter(prefix="/admin", tags=["v1-admin"])
 
@@ -244,7 +242,7 @@ class AdminInviteUserIn(BaseModel):
     fullName: str = Field(min_length=2, max_length=120)
     email: EmailStr
     phone: str | None = Field(default=None, max_length=30)
-    temporaryPassword: str = Field(min_length=12, max_length=128)
+    temporaryPassword: str = Field(min_length=8, max_length=128)
     role: str = Field(pattern="^(student|staff|admin|STUDENT|STAFF|ADMIN)$")
     counterIds: list[int] = Field(default_factory=list)
 
@@ -310,45 +308,15 @@ def create_admin_user_v1(
         email_verified_at=datetime.now(timezone.utc),
     )
     db.add(user)
-    try:
-        db.flush()
-        for cid in set(payload.counterIds):
-            if db.get(CanteenCounter, cid):
-                db.add(UserCounterAssignment(user_id=user.id, counter_id=cid))
-        record_audit(db, "admin.user_created", "user", user.id, admin.id, {"role": role_enum.value, "counters": payload.counterIds})
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        raise ApiError(409, "ACCOUNT_ALREADY_EXISTS", "An account with this email or phone already exists.")
+    db.flush()
+    for cid in set(payload.counterIds):
+        if db.get(CanteenCounter, cid):
+            db.add(UserCounterAssignment(user_id=user.id, counter_id=cid))
+    record_audit(db, "admin.user_created", "user", user.id, admin.id, {"role": role_enum.value, "counters": payload.counterIds})
+    db.commit()
     db.refresh(user)
     return ok(request, serialize_user_v1(db, user), status_code=201)
 
-@router.post("/users/{user_id}/reset-password")
-def request_staff_password_reset_v1(
-    user_id: int,
-    request: Request,
-    admin: User = Depends(require_roles("admin")),
-    db: Session = Depends(get_db),
-):
-    target = db.get(User, user_id)
-    if target is None or target.role != UserRole.STAFF:
-        raise ApiError(404, "STAFF_ACCOUNT_NOT_FOUND", "Staff account not found.")
-    if target.is_active:
-        cfg = get_settings()
-        if cfg.environment.lower() in {"production", "prod"} and not cfg.smtp_host:
-            raise ApiError(503, "EMAIL_UNAVAILABLE", "Staff password reset email is not configured. Contact the system administrator.")
-        reset_url = f"{cfg.public_base_url.rstrip('/')}/#reset={create_password_reset_token(target)}"
-        body = (
-            f"Hello {target.full_name},\n\n"
-            f"An administrator requested a password reset for your {cfg.app_name} account. "
-            f"Use this one-time link within {cfg.password_reset_minutes} minutes:\n{reset_url}\n\n"
-            "If you did not expect this message, contact your canteen administrator.\n"
-        )
-        if not send_email(target.email, "Reset your staff account password", body):
-            raise ApiError(503, "EMAIL_UNAVAILABLE", "The password reset email could not be sent. Check the email service configuration and try again.")
-        record_audit(db, "admin.staff_password_reset_requested", "user", target.id, admin.id, {})
-        db.commit()
-    return ok(request, {"message": "If an active staff account is eligible, a password reset link has been sent."})
 
 @router.post("/users/{user_id}/role")
 def update_user_role_v1(
@@ -371,7 +339,6 @@ def update_user_role_v1(
     old_role = target.role.value
     target.role = new_role
     target.token_version += 1
-    revoke_refresh_sessions(db, user_id=target.id)
     record_audit(db, "admin.user_role_changed", "user", target.id, admin.id, {"old_role": old_role, "new_role": new_role.value})
     db.commit()
     db.refresh(target)
@@ -427,6 +394,31 @@ def assign_user_counters_v1(
     record_audit(db, "admin.user_counters_assigned", "user", target.id, admin.id, {"counter_ids": valid_ids})
     db.commit()
     return ok(request, serialize_user_v1(db, target))
+
+
+class AdminResetPasswordIn(BaseModel):
+    newPassword: str = Field(min_length=8, max_length=128)
+    mustChangePassword: bool = False
+
+
+@router.post("/users/{user_id}/reset-password")
+def reset_user_password_v1(
+    user_id: int,
+    payload: AdminResetPasswordIn,
+    request: Request,
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    target = db.get(User, user_id)
+    if target is None:
+        raise ApiError(404, "USER_NOT_FOUND", "User not found.")
+    target.password_hash = hash_password(payload.newPassword)
+    target.must_change_password = payload.mustChangePassword
+    target.token_version += 1
+    revoke_refresh_sessions(db, user_id=target.id)
+    record_audit(db, "admin.user_password_reset", "user", target.id, admin.id, {"must_change": payload.mustChangePassword})
+    db.commit()
+    return ok(request, {"reset": True, "userId": target.id, "email": target.email})
 
 
 # --- A03 Categories, Menu Items, Image Upload, Recipes & Availability Windows ---

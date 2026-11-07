@@ -32,6 +32,7 @@ UUID_TABLES = (
     "batch_reservations",
 )
 
+
 def _ensure_columns(bind, table: str, columns: list[sa.Column]) -> None:
     inspector = inspect(bind)
     if table not in inspector.get_table_names():
@@ -41,6 +42,7 @@ def _ensure_columns(bind, table: str, columns: list[sa.Column]) -> None:
         if col.name not in existing:
             op.add_column(table, col)
 
+
 def _ensure_index(bind, name: str, table: str, cols: list[str], unique: bool = False) -> None:
     inspector = inspect(bind)
     if table not in inspector.get_table_names():
@@ -49,13 +51,16 @@ def _ensure_index(bind, name: str, table: str, cols: list[str], unique: bool = F
     if name not in existing:
         op.create_index(name, table, cols, unique=unique)
 
+
 def upgrade() -> None:
     bind = op.get_bind()
     is_sqlite = bind.dialect.name == "sqlite"
     big_int = sa.Integer() if is_sqlite else sa.BigInteger()
 
+    # 1. Create all new v2.0 tables idempotently
     Base.metadata.create_all(bind=bind)
 
+    # 2. Add public_uuid columns and backfill existing rows
     for tbl in UUID_TABLES:
         _ensure_columns(bind, tbl, [sa.Column("public_uuid", sa.String(length=36), nullable=True)])
         inspector = inspect(bind)
@@ -68,6 +73,7 @@ def upgrade() -> None:
                 )
         _ensure_index(bind, f"ix_{tbl}_public_uuid", tbl, ["public_uuid"], unique=True)
 
+    # 3. Add v2.0 operational & financial columns on existing tables
     _ensure_columns(
         bind,
         "users",
@@ -89,6 +95,7 @@ def upgrade() -> None:
         "purchase_orders",
         [sa.Column("total_cost_paise", big_int, nullable=True, server_default="0")],
     )
+
 
 def downgrade() -> None:
     for tbl in (

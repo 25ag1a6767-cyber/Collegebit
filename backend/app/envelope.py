@@ -9,6 +9,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+
 class ApiError(Exception):
     """Domain exception carrying a stable error code and HTTP status for /api/v1."""
 
@@ -27,12 +28,14 @@ class ApiError(Exception):
         self.details = details
         self.headers = headers
 
+
 def get_request_id(request: Request | None) -> str:
     if request is not None:
         rid = getattr(request.state, "request_id", None)
         if rid:
             return str(rid)
     return uuid.uuid4().hex
+
 
 def ok(
     request: Request,
@@ -48,6 +51,7 @@ def ok(
         "requestId": get_request_id(request),
     }
     return JSONResponse(status_code=status_code, content=body, headers=headers)
+
 
 def fail(
     request: Request,
@@ -69,6 +73,7 @@ def fail(
     }
     return JSONResponse(status_code=status_code, content=body, headers=headers)
 
+
 _STATUS_DEFAULT_CODES: dict[int, str] = {
     400: "BAD_REQUEST",
     401: "UNAUTHORIZED",
@@ -84,8 +89,10 @@ _STATUS_DEFAULT_CODES: dict[int, str] = {
     503: "SERVICE_UNAVAILABLE",
 }
 
+
 def is_v1_request(request: Request) -> bool:
     return request.url.path.startswith("/api/v1")
+
 
 def http_exception_to_v1(request: Request, exc: HTTPException) -> JSONResponse:
     detail = exc.detail
@@ -105,6 +112,7 @@ def http_exception_to_v1(request: Request, exc: HTTPException) -> JSONResponse:
         details=extra,
         headers=dict(exc.headers) if exc.headers else None,
     )
+
 
 def validation_exception_to_v1(request: Request, exc: RequestValidationError) -> JSONResponse:
     return fail(

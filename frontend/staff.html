@@ -19,7 +19,7 @@
       </div>
     </div>
     <div class="staff-topbar-right">
-      <span class="ws-pill unknown" id="staff-ws-pill" role="status" aria-live="polite"><span class="ws-dot"></span><span id="staff-ws-label">Checking service…</span></span>
+      <span class="ws-pill offline" id="staff-ws-pill"><span class="ws-dot"></span><span id="staff-ws-label">Offline</span></span>
       <select id="staff-counter-select" aria-label="Select counter" hidden>
         <option value="">All Assigned Counters</option>
       </select>
@@ -32,54 +32,22 @@
   <main class="portal-shell">
     <div id="staff-banner" class="status-banner" role="status" hidden></div>
 
+    <!-- Staff Secure Sign-In -->
     <section id="staff-login-section" class="login-card" aria-labelledby="staff-login-heading">
       <h1 id="staff-login-heading">Canteen Staff Sign In</h1>
       <p>Authorized kitchen and pickup counter staff only. Student accounts cannot access this portal.</p>
       <form id="staff-login-form">
         <label>Staff Email or Phone
-          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="staff@college.edu">
+          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="25ag1a6767@gmail.com">
         </label>
         <label>Password
           <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
         </label>
         <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
-        <button type="button" class="btn btn-outline" id="staff-forgot-btn">Forgot password?</button>
-      </form>
-      <form id="staff-reset-form" hidden>
-        <label>Staff Email
-          <input id="staff-reset-email" type="email" required autocomplete="email" placeholder="staff@college.edu">
-        </label>
-        <button type="submit" class="btn btn-primary">Email reset link</button>
-        <button type="button" class="btn btn-outline" id="staff-reset-cancel">Back to sign in</button>
       </form>
     </section>
 
-    <section id="staff-mfa-section" class="login-card" aria-labelledby="staff-mfa-heading" hidden>
-      <h1 id="staff-mfa-heading">Verify your sign in</h1>
-      <p>Enter your authenticator code or a recovery code.</p>
-      <form id="staff-mfa-form">
-        <label>Authenticator or recovery code
-          <input id="staff-mfa-code" type="text" required inputmode="numeric" autocomplete="one-time-code" maxlength="20">
-        </label>
-        <button type="submit" class="btn btn-primary">Verify and continue</button>
-        <button type="button" class="btn btn-outline" id="staff-mfa-cancel">Cancel</button>
-      </form>
-    </section>
-
-    <section id="staff-change-password-section" class="login-card" aria-labelledby="staff-change-password-heading" hidden>
-      <h1 id="staff-change-password-heading">Set your staff password</h1>
-      <p>Your administrator issued a temporary password. Choose a new password of at least 12 characters to continue.</p>
-      <form id="staff-change-password-form">
-        <label>Temporary or current password
-          <input id="staff-current-password" type="password" required autocomplete="current-password">
-        </label>
-        <label>New password
-          <input id="staff-new-password" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
-        </label>
-        <button type="submit" class="btn btn-primary">Save new password</button>
-      </form>
-    </section>
-
+    <!-- Authenticated Staff Workspace -->
     <section id="staff-workspace" hidden>
       <div class="kpi-strip" aria-label="Live queue summary">
         <div class="kpi-box"><span>Incoming New</span><strong id="kpi-new">0</strong></div>
@@ -99,6 +67,7 @@
         <button type="button" class="tab-btn" data-staff-tab="performance">Daily Staff Performance</button>
       </nav>
 
+      <!-- TAB 1: Live Incoming Orders & KDS -->
       <section id="tab-queue" data-tab-panel="queue">
         <div class="panel-card">
           <div class="panel-head">
@@ -120,6 +89,7 @@
         </div>
       </section>
 
+      <!-- TAB 2: QR Scanning & Dedicated Order Verification Screen -->
       <section id="tab-pickup" data-tab-panel="pickup" hidden>
         <div class="two-col">
           <div class="panel-card">
@@ -128,6 +98,7 @@
               <button type="button" class="btn btn-outline" id="qr-camera-btn">Toggle Camera Scanner</button>
             </div>
             <video id="qr-video" class="camera-video" playsinline muted hidden></video>
+            
             <form id="qr-verify-form" class="staff-form-group">
               <label>QR Token or URL (from student pickup pass)
                 <input id="qr-token-input" type="text" placeholder="pk_... or https://.../pickup?code=pk_..." autocomplete="off">
@@ -158,6 +129,7 @@
             <div id="pickup-result-box" class="status-banner" hidden></div>
           </div>
 
+          <!-- Dedicated Order Verification Screen (Part 5 & Part 6) -->
           <div class="panel-card" id="pickup-verification-panel">
             <div class="panel-head">
               <h2>2. Order Verification &amp; Handover</h2>
@@ -167,11 +139,13 @@
               Scan a student's QR pass or enter a token number above to inspect complete customer details, ordered items, payment verification, and confirm collection.
             </div>
             <div id="inspection-card" hidden>
+              <!-- Populated dynamically by staff-portal.js -->
             </div>
           </div>
         </div>
       </section>
 
+      <!-- TAB 2.5: Smart Token Management Dashboard (Part 3) -->
       <section id="tab-tokens" data-tab-panel="tokens" hidden>
         <div class="panel-card">
           <div class="panel-head">
@@ -210,6 +184,7 @@
         </div>
       </section>
 
+      <!-- TAB 3: Availability, Inventory & Low-Stock Alerts -->
       <section id="tab-inventory" data-tab-panel="inventory" hidden>
         <div class="panel-card">
           <div class="panel-head">
@@ -263,6 +238,7 @@
         </div>
       </section>
 
+      <!-- TAB 4: Completed Order History -->
       <section id="tab-history" data-tab-panel="history" hidden>
         <div class="panel-card">
           <div class="panel-head">
@@ -285,6 +261,7 @@
         </div>
       </section>
 
+      <!-- TAB 5: Daily Staff Performance & Processing Stats -->
       <section id="tab-performance" data-tab-panel="performance" hidden>
         <div class="kpi-strip" id="perf-kpi-strip">
           <div class="kpi-box"><span>My Accepted Today</span><strong id="perf-my-accepted">0</strong></div>
@@ -305,6 +282,7 @@
     </section>
   </main>
 
+  <!-- Reject / Exception Reason Modal -->
   <div id="staff-reason-modal" class="modal-backdrop" hidden>
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="reason-modal-title">
       <h3 id="reason-modal-title">Reject Order &amp; Initiate Full Refund</h3>

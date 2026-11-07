@@ -8,7 +8,7 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-
+    # 0001 builds tables from the current models, so on a fresh database these already exist.
     if "suppliers" in inspect(op.get_bind()).get_table_names():
         return
     op.create_table("suppliers",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+# CampusBite AI v2.0 — Zero-Subscription College-Owned PostgreSQL + PgBouncer + Redis + Nginx Installer (Ubuntu/Debian)
 set -euo pipefail
 
 if [[ "${EUID}" -ne 0 ]]; then

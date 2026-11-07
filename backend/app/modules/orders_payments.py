@@ -85,8 +85,10 @@ from app.security import (
 logger = logging.getLogger("ace_canteen.orders_payments")
 router = APIRouter(tags=["v1-orders-payments"])
 
+
 def _canteen_tz() -> ZoneInfo:
     return ZoneInfo(get_settings().canteen_timezone)
+
 
 def _assert_ordering_open_v1(db: Session, counter_id: int | None) -> CanteenCounter:
     if get_app_setting(db, "ordering_paused", "0") == "1":
@@ -106,6 +108,7 @@ def _assert_ordering_open_v1(db: Session, counter_id: int | None) -> CanteenCoun
             raise ApiError(409, "CANTEEN_CLOSED", f"Ordering is open between {cfg.canteen_open_time} and {cfg.canteen_close_time}.")
     return counter
 
+
 def _resolve_pickup_slot_v1(db: Session, counter_id: int, raw_slot: str | None) -> tuple[datetime | None, datetime | None]:
     if not raw_slot:
         return None, None
@@ -120,7 +123,7 @@ def _resolve_pickup_slot_v1(db: Session, counter_id: int, raw_slot: str | None) 
     slot_info = compute_counter_pickup_slots(db, counter_id)
     slots = slot_info.get("slots", [])
     if not slots:
-
+        # When operating hours are open-ended (no fixed slot schedule), accept future slots within today.
         if requested_utc < datetime.now(timezone.utc) - timedelta(minutes=2):
             raise ApiError(409, "SLOT_UNAVAILABLE", "Selected pickup time is in the past.")
         slot_end = requested_utc + timedelta(minutes=get_settings().pickup_slot_minutes)
@@ -132,6 +135,7 @@ def _resolve_pickup_slot_v1(db: Session, counter_id: int, raw_slot: str | None) 
     if matched["isFull"] or matched["remaining"] <= 0:
         raise ApiError(409, "SLOT_FULL", "Selected pickup slot is full. Choose another slot.")
     return requested_utc, datetime.fromisoformat(matched["end"]).astimezone(timezone.utc)
+
 
 def _restore_order_inventory_once(db: Session, order: Order, reason: str, actor_user_id: int | None = None) -> None:
     """Idempotently restore product stock, FEFO batch allocations and recipe ingredients for an unfulfilled order."""
@@ -165,6 +169,7 @@ def _restore_order_inventory_once(db: Session, order: Order, reason: str, actor_
             if product.category and product.category.is_active and not product.is_archived:
                 product.is_available = True
 
+
 def release_expired_reservations_v1(db: Session) -> int:
     """Expire unpaid reservations older than CHECKOUT_RESERVATION_MINUTES and restore stock."""
     cfg = get_settings()
@@ -197,6 +202,7 @@ def release_expired_reservations_v1(db: Session) -> int:
     if expired_count > 0:
         db.commit()
     return expired_count
+
 
 def _initiate_gateway_refund(
     db: Session,
@@ -247,6 +253,7 @@ def _initiate_gateway_refund(
 
     db.flush()
 
+    # Synchronize payment & order refund states
     total_order_paise = order.effective_total_paise
     processed_paise = sum(
         int(r.amount_paise or rupees_to_paise(r.amount))
@@ -277,6 +284,7 @@ def _initiate_gateway_refund(
         {"refund_id": refund.id, "amount_paise": amount_paise, "status": refund.status, "provider_refund_id": refund.provider_refund_id},
     )
     return refund
+
 
 def handle_late_captured_payment(
     db: Session,
@@ -358,10 +366,13 @@ def handle_late_captured_payment(
     )
     return refund
 
+
+# --- Request Schemas ---
 class OrderLineInputV1(BaseModel):
     menuItemId: int = Field(gt=0)
     quantity: int = Field(ge=1, le=50)
     customizations: dict[str, Any] = Field(default_factory=dict)
+
 
 class OrderQuoteOrCreateIn(BaseModel):
     items: list[OrderLineInputV1] = Field(default_factory=list, max_length=50)
@@ -372,12 +383,15 @@ class OrderQuoteOrCreateIn(BaseModel):
     notes: str | None = Field(default=None, max_length=500)
     idempotencyKey: str | None = Field(default=None, max_length=100)
 
+
 class CancelOrderIn(BaseModel):
     reason: str | None = Field(default="Cancelled by user", max_length=255)
+
 
 class UpiIntentIn(BaseModel):
     orderId: int = Field(gt=0)
     idempotencyKey: str | None = Field(default=None, max_length=100)
+
 
 class VerifyPaymentV1In(BaseModel):
     razorpayOrderId: str | None = Field(default=None, max_length=100)
@@ -387,9 +401,11 @@ class VerifyPaymentV1In(BaseModel):
     razorpay_payment_id: str | None = Field(default=None, max_length=100)
     razorpay_signature: str | None = Field(default=None, max_length=200)
 
+
 class RefundRequestIn(BaseModel):
     amountPaise: int | None = Field(default=None, gt=0)
     reason: str = Field(min_length=3, max_length=255)
+
 
 class VerifyPickupIn(BaseModel):
     pickupToken: str | None = Field(default=None, max_length=400)
@@ -399,6 +415,7 @@ class VerifyPickupIn(BaseModel):
     tokenString: str | None = Field(default=None, max_length=60)
     itemIds: list[int] | None = None
 
+
 class InspectPickupIn(BaseModel):
     pickupToken: str | None = Field(default=None, max_length=400)
     orderId: int | None = Field(default=None, gt=0)
@@ -406,9 +423,11 @@ class InspectPickupIn(BaseModel):
     tokenNumber: int | None = Field(default=None, gt=0)
     tokenString: str | None = Field(default=None, max_length=60)
 
+
 class ReviewSubmitV1In(BaseModel):
     rating: int = Field(ge=1, le=5)
     comment: str | None = Field(default=None, max_length=500)
+
 
 def _extract_requested_lines(db: Session, user: User, payload: OrderQuoteOrCreateIn) -> tuple[list[OrderLineInputV1], int | None, str | None, str | None, str | None, Cart | None]:
     cart: Cart | None = None
@@ -430,6 +449,7 @@ def _extract_requested_lines(db: Session, user: User, payload: OrderQuoteOrCreat
         notes = payload.notes if payload.notes is not None else cart.notes
         return lines, counter_id, coupon, slot, notes, cart
     return payload.items, payload.counterId, payload.couponCode, payload.pickupSlot, payload.notes, None
+
 
 @router.post("/orders/quote")
 def quote_order_v1(
@@ -510,7 +530,9 @@ def quote_order_v1(
         },
     )
 
+
 _SQLITE_CHECKOUT_LOCK = threading.Lock()
+
 
 @router.post("/orders", status_code=201)
 def create_order_v1(
@@ -526,6 +548,7 @@ def create_order_v1(
         if dialect_name == "sqlite":
             db.expire_all()
         return _execute_create_order_v1(payload, request, idempotency_header, user, db, dialect_name)
+
 
 def _execute_create_order_v1(
     payload: OrderQuoteOrCreateIn,
@@ -665,6 +688,7 @@ def _execute_create_order_v1(
         db.flush()
         order.order_number = f"ACE-{today_str.replace('-', '')}-{order.id:05d}"
 
+        # Deduct stock, FEFO batches and recipe ingredients atomically
         for pid, total_q in agg_qty.items():
             p = by_id[pid]
             reserve_batch_stock_fefo(db, p.id, total_q, order.id)
@@ -736,6 +760,7 @@ def _execute_create_order_v1(
                 db.rollback()
         raise
 
+
 @router.get("/orders")
 def list_orders_v1(
     request: Request,
@@ -771,6 +796,7 @@ def list_orders_v1(
         },
     )
 
+
 def _load_authorized_order(db: Session, order_id: int, user: User) -> Order:
     order = db.scalar(
         select(Order)
@@ -785,6 +811,7 @@ def _load_authorized_order(db: Session, order_id: int, user: User) -> Order:
     elif user.role == UserRole.STAFF:
         assert_counter_access(db, user, order.counter_id)
     return order
+
 
 @router.get("/orders/{order_id}")
 def get_order_v1(
@@ -829,6 +856,7 @@ def get_order_v1(
     )
     return ok(request, data)
 
+
 @router.get("/orders/{order_id}/status")
 def get_order_status_v1(
     order_id: int,
@@ -872,6 +900,7 @@ def get_order_status_v1(
             "statusHistory": serialized["statusHistory"],
         },
     )
+
 
 @router.post("/orders/{order_id}/cancel")
 def cancel_order_v1(
@@ -949,6 +978,8 @@ def cancel_order_v1(
     db.refresh(order)
     return ok(request, {"order": serialize_order_v1(order, include_history=True), "refund": refund_info})
 
+
+# --- UPI Payment Intent, Verification, Lookup, Webhooks & Refunds ---
 @router.post("/payments/upi/intent", status_code=201)
 def create_upi_payment_intent_v1(
     payload: UpiIntentIn,
@@ -1067,6 +1098,7 @@ def create_upi_payment_intent_v1(
         status_code=201,
     )
 
+
 def _mark_order_paid_and_notify(
     db: Session,
     order: Order,
@@ -1124,6 +1156,7 @@ def _mark_order_paid_and_notify(
         actor_user_id,
         {"provider_payment_id": provider_payment_id, "amount_paise": order.effective_total_paise},
     )
+
 
 @router.post("/payments/verify")
 def verify_payment_v1(
@@ -1204,6 +1237,7 @@ def verify_payment_v1(
         )
     return ok(request, {"verified": True, "order": serialize_order_v1(order, include_history=True)})
 
+
 @router.get("/payments/{payment_id}")
 def get_payment_status_v1(
     payment_id: int,
@@ -1265,6 +1299,7 @@ def get_payment_status_v1(
             ],
         },
     )
+
 
 @router.post("/webhooks/payments/{provider}")
 async def payment_webhook_v1(
@@ -1432,6 +1467,7 @@ async def payment_webhook_v1(
     commit_and_flush_outbox(db)
     return ok(request, {"received": True, "duplicate": False, "eventId": webhook_id})
 
+
 @router.post("/payments/{payment_id}/refunds", status_code=201)
 def create_refund_v1(
     payment_id: int,
@@ -1489,6 +1525,8 @@ def create_refund_v1(
         status_code=201,
     )
 
+
+# --- Short-lived Opaque QR Pickup Token & Single-Use Atomic Handover ---
 @router.post("/orders/{order_id}/pickup-token")
 def issue_pickup_token_v1(
     order_id: int,
@@ -1536,12 +1574,14 @@ def issue_pickup_token_v1(
         },
     )
 
+
 def _extract_raw_pickup_token(supplied: str) -> str:
     val = supplied.strip()
     if val.startswith(("http://", "https://")):
         parsed = urlparse(val)
         val = (parse_qs(parsed.fragment).get("code") or parse_qs(parsed.query).get("code") or [""])[0].strip()
     return val
+
 
 @router.post("/pickups/public-status")
 def public_pickup_status_v1(payload: dict[str, Any], request: Request, db: Session = Depends(get_db)):
@@ -1562,6 +1602,7 @@ def public_pickup_status_v1(payload: dict[str, Any], request: Request, db: Sessi
     serialized = serialize_order_v1(order, include_customer=False, include_history=False)
     serialized.pop("manualPickupCode", None)
     return ok(request, serialized)
+
 
 def _lookup_order_for_pickup(
     db: Session,
@@ -1649,6 +1690,7 @@ def _lookup_order_for_pickup(
         used_hash = hash_opaque_token(f"staff_token:{today_str}:{token_number}")
 
     return order, pt_row, used_hash
+
 
 @router.post("/pickups/inspect")
 def inspect_pickup_order_v1(
@@ -1782,6 +1824,7 @@ def inspect_pickup_order_v1(
         },
     )
 
+
 @router.post("/pickups/verify")
 def verify_and_collect_pickup_v1(
     payload: VerifyPickupIn,
@@ -1914,6 +1957,7 @@ def verify_and_collect_pickup_v1(
         },
     )
 
+
 @router.get("/queue/display-board")
 def get_display_board_tokens_v1(
     request: Request,
@@ -1930,6 +1974,7 @@ def get_display_board_tokens_v1(
     c_stmt = select(CanteenCounter).where(CanteenCounter.is_active.is_(True)).order_by(CanteenCounter.id.asc())
     counters = db.scalars(c_stmt).all()
 
+    # Query ready paid orders
     r_stmt = (
         select(Order)
         .options(joinedload(Order.counter))
@@ -1943,6 +1988,7 @@ def get_display_board_tokens_v1(
         r_stmt = r_stmt.where(Order.counter_id == counterId)
     ready_orders = db.scalars(r_stmt.order_by(Order.ready_at.desc(), Order.token_number.asc()).limit(50)).all()
 
+    # Query preparing / accepted orders
     p_stmt = (
         select(Order)
         .options(joinedload(Order.counter))
@@ -1956,6 +2002,7 @@ def get_display_board_tokens_v1(
         p_stmt = p_stmt.where(Order.counter_id == counterId)
     prep_orders = db.scalars(p_stmt.order_by(Order.accepted_at.asc(), Order.token_number.asc()).limit(50)).all()
 
+    # Query last 15 collected orders
     col_stmt = (
         select(Order)
         .options(joinedload(Order.counter))
@@ -1994,6 +2041,7 @@ def get_display_board_tokens_v1(
             "recentlyCollected": [_tok(o) for o in collected_orders],
         },
     )
+
 
 @router.get("/tokens")
 def list_and_search_tokens_v1(
@@ -2076,6 +2124,8 @@ def list_and_search_tokens_v1(
         },
     )
 
+
+# --- Verified Order Ratings & Reviews ---
 @router.get("/orders/{order_id}/review")
 def get_order_review_v1(
     order_id: int,
@@ -2097,6 +2147,7 @@ def get_order_review_v1(
             ),
         },
     )
+
 
 @router.post("/orders/{order_id}/review")
 def upsert_order_review_v1(
@@ -2124,6 +2175,8 @@ def upsert_order_review_v1(
     db.refresh(rev)
     return ok(request, {"id": rev.id, "orderId": order.id, "rating": rev.rating, "comment": rev.comment})
 
+
+# --- Official Digital Order Receipt (JSON & PDF) ---
 @router.get("/orders/{order_id}/receipt")
 def get_order_digital_receipt_v1(
     order_id: int,

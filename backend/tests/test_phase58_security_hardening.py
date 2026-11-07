@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 import app.main as main
 
+
 def test_production_rate_limiter_fails_closed_without_redis(monkeypatch):
     monkeypatch.setattr(main, "IS_PRODUCTION", True)
     monkeypatch.setattr(main.settings, "redis_url", "")
@@ -11,6 +12,7 @@ def test_production_rate_limiter_fails_closed_without_redis(monkeypatch):
     with pytest.raises(HTTPException) as error:
         main._check_login_rate("phase58-test-no-redis")
     assert error.value.status_code == 503
+
 
 def test_production_info_endpoint_does_not_disclose_framework_or_database(monkeypatch):
     monkeypatch.setattr(main, "IS_PRODUCTION", True)
@@ -20,6 +22,7 @@ def test_production_info_endpoint_does_not_disclose_framework_or_database(monkey
     assert "database" not in result
     assert "backend" not in result
     assert "version" not in result
+
 
 def test_development_info_endpoint_keeps_diagnostics(monkeypatch):
     monkeypatch.setattr(main, "IS_PRODUCTION", False)

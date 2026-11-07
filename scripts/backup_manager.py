@@ -71,7 +71,7 @@ def backup(database_url: str, output_dir: Path) -> Path:
         check_sqlite(source)
         target = output_dir / f"ace-canteen-{stamp}.db"
         temp = target.with_name(target.name + ".tmp")
-
+        # SQLite's online backup API creates a consistent snapshot of a live database.
         src_conn = sqlite3.connect(f"file:{source.resolve().as_posix()}?mode=ro", uri=True)
         dst_conn = sqlite3.connect(temp)
         try:
@@ -95,7 +95,7 @@ def backup(database_url: str, output_dir: Path) -> Path:
     if database_url.startswith(("postgresql://", "postgres://", "postgresql+psycopg://")):
         target = output_dir / f"ace-canteen-{stamp}.sql"
         temp = target.with_name(target.name + ".tmp")
-
+        # pg_dump's libpq URL scheme is postgresql://, not SQLAlchemy's driver-qualified URL.
         pg_url = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
         env = os.environ.copy()
         result = subprocess.run(["pg_dump", "--no-owner", "--no-privileges", "--dbname", pg_url, "--file", str(temp)], env=env, capture_output=True, text=True)

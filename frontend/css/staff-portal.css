@@ -82,7 +82,6 @@ body {
 }
 .ws-pill.live { background: rgba(22, 163, 74, 0.32); color: #dcfce7; }
 .ws-pill.offline { background: rgba(220, 38, 38, 0.32); color: #fee2e2; }
-.ws-pill.unknown { background: rgba(255, 255, 255, 0.14); color: #f3f4f6; }
 .ws-dot {
   width: 8px;
   height: 8px;

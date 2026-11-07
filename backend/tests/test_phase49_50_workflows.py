@@ -8,6 +8,7 @@ from app.database import SessionLocal, Base, engine
 from app.models import User, UserRole, Category, Product, Supplier, PurchaseOrder, ProductBatch, InventoryMovement
 from app.security import hash_password
 
+
 def _headers(role="admin"):
     email = f"p49-50-{role}-{uuid.uuid4().hex[:8]}@example.edu"
     password = "Test-only-secure-password-123!"
@@ -18,6 +19,7 @@ def _headers(role="admin"):
     assert response.status_code == 200, response.text
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
+
 def test_payment_reconciliation_is_admin_only_and_diagnostic():
     with TestClient(app) as client:
         assert client.get("/api/admin/payments/reconciliation").status_code == 401
@@ -26,6 +28,7 @@ def test_payment_reconciliation_is_admin_only_and_diagnostic():
         assert response.status_code == 200, response.text
         assert "No automatic capture" in response.json()["safety_note"]
         assert isinstance(response.json()["items"], list)
+
 
 def test_purchase_order_receipt_adds_stock_once():
     Base.metadata.create_all(bind=engine)
@@ -56,7 +59,7 @@ def test_purchase_order_receipt_adds_stock_once():
         with SessionLocal() as db:
             po = db.scalar(select(PurchaseOrder).where(PurchaseOrder.supplier_id == supplier_id))
             if po: db.delete(po)
-
+            # Keep product traceability safe by deleting isolated test movement and batch rows first.
             product = db.get(Product, product_id)
             if product:
                 db.query(InventoryMovement).filter(InventoryMovement.product_id == product_id).delete(synchronize_session=False)

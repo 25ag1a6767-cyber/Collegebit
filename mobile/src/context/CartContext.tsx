@@ -59,7 +59,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             body: JSON.stringify({ quantity: nextQty, customizations: custMap })
           });
         } catch {
-
+          // Local state stays responsive; authoritative check runs at quote/checkout
         }
       }
     },

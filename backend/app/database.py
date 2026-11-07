@@ -5,6 +5,7 @@ from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
+
 def normalize_sqlalchemy_url(raw_url: str) -> str:
     url = (raw_url or "").strip()
     if url.startswith("postgres://"):
@@ -12,6 +13,7 @@ def normalize_sqlalchemy_url(raw_url: str) -> str:
     if url.startswith("postgresql://"):
         return "postgresql+psycopg://" + url[len("postgresql://"):]
     return url
+
 
 settings = get_settings()
 SQLALCHEMY_DATABASE_URL = normalize_sqlalchemy_url(settings.database_url)
@@ -25,7 +27,7 @@ if IS_SQLITE:
         connect_args={"check_same_thread": False, "timeout": 30},
     )
 elif settings.db_use_pgbouncer_transaction_pool:
-
+    # Behind PgBouncer in transaction mode, disable client-side pooling and psycopg3 prepared statements.
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
         poolclass=NullPool,
@@ -51,8 +53,10 @@ if IS_SQLITE:
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
+
 class Base(DeclarativeBase):
     pass
+
 
 def get_db():
     db = SessionLocal()

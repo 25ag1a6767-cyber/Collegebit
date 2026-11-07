@@ -101,9 +101,11 @@ TEMPORARY_FOUR_DAY_CATEGORIES = [
     "tmp_exports (temporary export files >= retention_days)",
 ]
 
+
 def _resolve_dir(configured: str) -> Path:
     p = Path(configured)
     return p if p.is_absolute() else (PROJECT_ROOT / p)
+
 
 def _derive_backup_fernet(explicit_key: str | None = None) -> Fernet:
     cfg = get_settings()
@@ -111,8 +113,10 @@ def _derive_backup_fernet(explicit_key: str | None = None) -> Fernet:
     derived = hashlib.pbkdf2_hmac("sha256", secret_material, b"campusbite-v2-backup-fernet-salt", 310_000, dklen=32)
     return Fernet(base64.urlsafe_b64encode(derived))
 
+
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
 
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -121,12 +125,14 @@ def _sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+
 def _sqlite_path_from_url(db_url: str) -> Path:
     raw = db_url.replace("sqlite:///", "", 1)
     if raw == ":memory:":
         raise ValueError("In-memory SQLite database cannot be backed up to disk.")
     p = Path(unquote(raw))
     return p if p.is_absolute() else (PROJECT_ROOT / p)
+
 
 def _dump_raw_database_bytes(db_url: str | None = None) -> tuple[bytes, str]:
     """Capture consistent raw snapshot bytes and return (raw_bytes, engine_name)."""
@@ -176,6 +182,7 @@ def _dump_raw_database_bytes(db_url: str | None = None) -> tuple[bytes, str]:
 
     raise ValueError("Unsupported database URL scheme for backup.")
 
+
 def _prune_tier(tier_dir: Path, keep_count: int) -> list[str]:
     if not tier_dir.exists():
         return []
@@ -187,6 +194,7 @@ def _prune_tier(tier_dir: Path, keep_count: int) -> list[str]:
         manifest.unlink(missing_ok=True)
         removed.append(stale.name)
     return removed
+
 
 def create_encrypted_gfs_backup(
     db: Session | None = None,
@@ -264,6 +272,7 @@ def create_encrypted_gfs_backup(
             if tier == "daily":
                 secondary_daily_path = s_dest
 
+    # Enforce 7 daily / 4 weekly / 3 monthly GFS retention limits
     pruned["daily"] = _prune_tier(p_root / "daily", cfg.backup_keep_daily)
     pruned["weekly"] = _prune_tier(p_root / "weekly", cfg.backup_keep_weekly)
     pruned["monthly"] = _prune_tier(p_root / "monthly", cfg.backup_keep_monthly)
@@ -319,6 +328,7 @@ def create_encrypted_gfs_backup(
 
     return result
 
+
 def verify_encrypted_backup(backup_enc_path: Path, *, encryption_key: str | None = None) -> dict[str, Any]:
     """Verify manifest, encrypted SHA-256, authenticated Fernet decryption, and plaintext SHA-256."""
     manifest_path = backup_enc_path.with_name(backup_enc_path.name + ".json")
@@ -338,6 +348,7 @@ def verify_encrypted_backup(backup_enc_path: Path, *, encryption_key: str | None
     if _sha256_bytes(plaintext) != manifest.get("plaintext_sha256"):
         raise ValueError("Decrypted payload SHA-256 mismatch.")
     return {"verified": True, "manifest": manifest, "plaintextBytes": len(plaintext)}
+
 
 def run_restore_drill(
     backup_enc_path: Path,
@@ -391,6 +402,7 @@ def run_restore_drill(
 
     return {"restoreDrillPassed": True, **details}
 
+
 def check_backup_health(
     *,
     primary_dir: Path | None = None,
@@ -425,6 +437,10 @@ def check_backup_health(
     except Exception as exc:
         return False, f"Latest backup '{latest.name}' failed verification: {exc}"
 
+
+# ==============================================================================
+# Hybrid Archival + Four-Day Temporary Data Cleanup Engine
+# ==============================================================================
 def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) -> int:
     """Upsert permanent aggregated daily financial & operational statistics into `daily_sales_archives`."""
     tz = ZoneInfo(get_settings().canteen_timezone)
@@ -522,6 +538,7 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
 
     db.flush()
     return upserted
+
 
 def run_four_day_retention_cleanup(
     db: Session,
@@ -632,6 +649,7 @@ def run_four_day_retention_cleanup(
                 "protectedBusinessTables": PROTECTED_BUSINESS_TABLES,
             }
 
+        # CRITICAL SAFETY INVARIANT: Halt destructive deletion if backup health fails!
         if not backup_ok:
             run_log.status = "aborted_unhealthy_backup"
             run_log.deleted_counts_json = json.dumps({})
@@ -714,12 +732,18 @@ def run_four_day_retention_cleanup(
         db.commit()
         raise
 
+
+# ==============================================================================
+# Admin API Routes (/api/v1/admin/retention/* & /api/v1/admin/backups/*)
+# ==============================================================================
 class RetentionRunIn(BaseModel):
     retentionDays: int | None = Field(default=None, ge=1, le=365)
     dryRun: bool = False
 
+
 class RestoreDrillIn(BaseModel):
     backupFilePath: str | None = Field(default=None, max_length=500)
+
 
 @router.get("/retention/status")
 def get_retention_status_v1(
@@ -768,6 +792,7 @@ def get_retention_status_v1(
         },
     )
 
+
 @router.post("/retention/run")
 def trigger_retention_run_v1(
     payload: RetentionRunIn,
@@ -782,6 +807,7 @@ def trigger_retention_run_v1(
         actor_user_id=admin.id,
     )
     return ok(request, res)
+
 
 @router.get("/backups")
 def list_backups_v1(
@@ -840,6 +866,7 @@ def list_backups_v1(
         },
     )
 
+
 @router.post("/backups/run", status_code=201)
 def trigger_gfs_backup_v1(
     request: Request,
@@ -852,6 +879,7 @@ def trigger_gfs_backup_v1(
         raise ApiError(500, "BACKUP_FAILED", f"Encrypted GFS backup failed: {exc}")
     return ok(request, res, status_code=201)
 
+
 @router.post("/backups/restore-test")
 def trigger_restore_drill_v1(
     payload: RestoreDrillIn,
@@ -863,7 +891,7 @@ def trigger_restore_drill_v1(
     p_root = _resolve_dir(cfg.backup_primary_dir)
     if payload.backupFilePath:
         candidate = Path(payload.backupFilePath)
-
+        # Prevent path traversal outside configured backup directories
         resolved = candidate.resolve()
         if p_root.resolve() not in resolved.parents:
             raise ApiError(403, "INVALID_BACKUP_PATH", "Restore drill path must reside inside the configured primary backup directory.")

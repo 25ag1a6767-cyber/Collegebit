@@ -8,7 +8,8 @@ branch_labels = None
 depends_on = None
 
 def upgrade():
-
+    # 0001 creates tables from current metadata in this starter project, so guard
+    # these additions to support both fresh databases and existing installations.
     bind = op.get_bind()
     columns = {column["name"] for column in inspect(bind).get_columns("products")}
     if "dietary_info" not in columns:
