@@ -18,7 +18,6 @@
       </div>
     </div>
     <div class="admin-header-actions">
-      <a class="download-zip-button" href="/download-zip" download="CampusBite-AI-v3.0.zip" title="Download CampusBite AI v3.0 Project ZIP">⬇️ Download ZIP</a>
       <a class="btn btn-header" href="/">Customer App</a>
       <a class="btn btn-header" href="/staff">Staff Portal</a>
       <button type="button" id="btn-admin-refresh" class="btn btn-header" hidden>Refresh Active Module</button>
@@ -35,7 +34,7 @@
       <p>Restricted to authorized college canteen administrators (`ADMIN` role). All administrative actions are recorded in immutable audit logs.</p>
       <form id="admin-login-form">
         <label for="admin-identifier">Admin Email or Phone
-          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="25ag1a6767@aceec.ac.in" />
+          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="Enter your registered email or phone" />
         </label>
         <label for="admin-password">Password
           <div class="pw-row">
@@ -43,12 +42,6 @@
             <button type="button" id="btn-toggle-admin-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
           </div>
         </label>
-        <div class="login-hint-box hint-flex">
-          <div>
-            <strong>Default Login:</strong> <code>25ag1a6767@aceec.ac.in</code> &bull; Password: <code>ace@25ag1a67676</code> (or <code>ace12345</code>)
-          </div>
-          <button type="button" id="btn-autofill-admin" class="btn btn-autofill">⚡ Autofill</button>
-        </div>
         <button type="submit" id="btn-admin-login" class="btn btn-primary">Authenticate to Admin Console</button>
       </form>
     </section>

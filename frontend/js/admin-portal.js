@@ -1286,14 +1286,6 @@
       });
     }
 
-    const autofillAdminBtn = $("btn-autofill-admin");
-    if (autofillAdminBtn) {
-      autofillAdminBtn.addEventListener("click", () => {
-        $("admin-identifier").value = "25ag1a6767@aceec.ac.in";
-        $("admin-password").value = "ace@25ag1a67676";
-      });
-    }
-
     document.querySelectorAll(".nav-tab").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });

@@ -61,25 +61,6 @@ body {
   align-items: center;
   gap: 8px;
 }
-.download-zip-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background-color: #0f3d2e;
-  color: #ffffff !important;
-  font-weight: 700;
-  font-size: 0.82rem;
-  padding: 6px 14px;
-  border-radius: 9999px;
-  text-decoration: none;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.25);
-  transition: background-color 0.15s ease;
-}
-.download-zip-button:hover {
-  background-color: #165b44;
-}
-
 .admin-shell {
   max-width: 1520px;
   margin: 0 auto;
@@ -367,45 +348,5 @@ input:focus, select:focus, textarea:focus {
   transition: all 0.2s;
 }
 .btn-pw-toggle:hover {
-  background: #cbd5e1;
-}
-.login-hint-box {
-  margin: 10px 0 16px;
-  padding: 10px 14px;
-  background: #f1f5f9;
-  border-left: 3px solid #0f2942;
-  border-radius: 6px;
-  font-size: 13px;
-  color: #334155;
-  line-height: 1.5;
-}
-.login-hint-box code {
-  background: #e2e8f0;
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 12px;
-  font-weight: 600;
-  color: #0f2942;
-}
-.login-hint-box.hint-flex {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.btn-autofill {
-  margin-left: 8px;
-  padding: 4px 12px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  background: #e2e8f0;
-  color: #0f2942;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  white-space: nowrap;
-  transition: background 0.15s ease;
-}
-.btn-autofill:hover {
   background: #cbd5e1;
 }

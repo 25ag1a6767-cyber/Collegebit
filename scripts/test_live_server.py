@@ -12,10 +12,3 @@ def test_login(email, pw):
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8")
         print(f"FAILED {email} with '{pw}': {e.code} - {body}")
-
-# Test download
-resp = urllib.request.urlopen("http://127.0.0.1:8000/download-zip")
-print("Download endpoint status:", resp.status)
-print("Content-Type:", resp.headers.get("content-type"))
-print("Content-Length (bytes):", resp.headers.get("content-length"))
-print("Content-Disposition:", resp.headers.get("content-disposition"))

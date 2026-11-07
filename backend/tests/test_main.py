@@ -8,6 +8,30 @@ def test_homepage_serves_html():
         assert response.status_code == 200
         assert "ACE Canteen" in response.text
         assert "catalogue-grid" in response.text
+        assert "Download ZIP" not in response.text
+
+
+def test_portal_pages_do_not_offer_project_downloads():
+    with TestClient(app) as client:
+        for path in ("/staff", "/admin"):
+            response = client.get(path)
+            assert response.status_code == 200
+            assert "Download ZIP" not in response.text
+            assert "Default Login:" not in response.text
+            assert "Autofill" not in response.text
+            assert "ace12345" not in response.text
+
+
+def test_project_archives_are_not_served():
+    with TestClient(app) as client:
+        for path in (
+            "/download-zip",
+            "/CampusBite-AI-v2.0.zip",
+            "/CampusBite-AI-v3.0.zip",
+            "/download/CampusBite-AI-v2.0.zip",
+            "/download/CampusBite-AI-v3.0.zip",
+        ):
+            assert client.get(path).status_code == 404
 
 
 def test_health_endpoint():

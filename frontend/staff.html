@@ -20,7 +20,6 @@
     </div>
     <div class="staff-topbar-right">
       <span class="ws-pill offline" id="staff-ws-pill"><span class="ws-dot"></span><span id="staff-ws-label">Offline</span></span>
-      <a class="download-zip-button" href="/download-zip" download="CampusBite-AI-v3.0.zip" title="Download CampusBite AI v3.0 Project ZIP">⬇️ Download ZIP</a>
       <select id="staff-counter-select" aria-label="Select counter" hidden>
         <option value="">All Assigned Counters</option>
       </select>
@@ -39,7 +38,7 @@
       <p>Authorized kitchen and pickup counter staff only. Student accounts cannot access this portal.</p>
       <form id="staff-login-form">
         <label>Staff Email or Phone
-          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="25ag1a6767@gmail.com">
+          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="Enter your registered email or phone">
         </label>
         <label>Password
           <div class="pw-row">
@@ -47,12 +46,6 @@
             <button type="button" id="btn-toggle-staff-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
           </div>
         </label>
-        <div class="login-hint-box hint-flex">
-          <div>
-            <strong>Default Login:</strong> <code>25ag1a6767@gmail.com</code> &bull; Password: <code>ace@25ag1a67676staff</code> (or <code>ace12345</code>)
-          </div>
-          <button type="button" id="btn-autofill-staff" class="btn btn-autofill">⚡ Autofill</button>
-        </div>
         <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
       </form>
     </section>
