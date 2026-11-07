@@ -27,7 +27,15 @@
       "apiUrl": "http://10.0.2.2:8000"
     },
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.24"
+          }
+        }
+      ]
     ]
   }
 }
