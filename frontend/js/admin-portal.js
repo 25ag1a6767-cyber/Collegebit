@@ -189,11 +189,10 @@
     showAlert("", "");
     const identifier = $("admin-identifier").value.trim();
     const password = $("admin-password").value;
-    const totpCode = $("admin-totp").value.trim() || undefined;
     try {
       const data = await apiFetch("/api/v1/auth/login", {
         method: "POST",
-        body: { identifier, password, totpCode }
+        body: { identifier, password }
       });
       if (!data.user || String(data.user.role).toUpperCase() !== "ADMIN") {
         showAlert("Access denied: Only ADMIN accounts may sign in to the Enterprise Administration Console.", "error");
@@ -781,6 +780,19 @@
       infoTd.appendChild(el("div", "muted", it.categoryName || ""));
       tr.appendChild(infoTd);
 
+      const counterTd = el("td");
+      const counterSelect = el("select");
+      (countersRes.items || []).forEach((c) => {
+        const opt = el("option", "", c.name);
+        opt.value = String(c.id);
+        if (Number(it.counterId) === Number(c.id)) {
+          opt.selected = true;
+        }
+        counterSelect.appendChild(opt);
+      });
+      counterTd.appendChild(counterSelect);
+      tr.appendChild(counterTd);
+
       const priceInput = el("input");
       priceInput.type = "number";
       priceInput.step = "0.5";
@@ -816,6 +828,7 @@
           await apiFetch("/api/v1/admin/menu-items/" + it.id, {
             method: "PATCH",
             body: {
+              counterId: counterSelect.value ? Number(counterSelect.value) : null,
               pricePaise: Math.round(Number(priceInput.value || 0) * 100),
               costPaise: Math.round(Number(costInput.value || 0) * 100),
               stockQuantity: Math.round(Number(stockInput.value || 0))
@@ -840,8 +853,23 @@
           showAlert(err.message, "error");
         }
       });
+      const deleteBtn = el("button", "btn btn-danger", "Delete");
+      deleteBtn.type = "button";
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm("Are you sure you want to delete '" + it.name + "'?")) return;
+        try {
+          await apiFetch("/api/v1/admin/menu-items/" + it.id, {
+            method: "DELETE"
+          });
+          showAlert("Deleted " + it.name, "success");
+          await loadMenuModule();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
       actTd.appendChild(saveBtn);
       actTd.appendChild(toggleBtn);
+      actTd.appendChild(deleteBtn);
       tr.appendChild(actTd);
       mFrag.appendChild(tr);
     });

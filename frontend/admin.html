@@ -18,6 +18,7 @@
       </div>
     </div>
     <div class="admin-header-actions">
+      <a class="btn btn-header" href="/download-zip" download="CampusBite-AI-v2.0.zip">⬇️ Download ZIP</a>
       <a class="btn btn-header" href="/">Customer App</a>
       <a class="btn btn-header" href="/staff">Staff Portal</a>
       <button type="button" id="btn-admin-refresh" class="btn btn-header" hidden>Refresh Active Module</button>
@@ -34,13 +35,10 @@
       <p>Restricted to authorized college canteen administrators (`ADMIN` role). All administrative actions are recorded in immutable audit logs.</p>
       <form id="admin-login-form">
         <label for="admin-identifier">Admin Email or Phone
-          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="admin@acecanteen.local" />
+          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="25ag1a6767@aceec.ac.in" />
         </label>
         <label for="admin-password">Password
           <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••••" />
-        </label>
-        <label for="admin-totp">Authenticator TOTP Code (if MFA enabled)
-          <input id="admin-totp" name="totpCode" type="text" inputmode="numeric" maxlength="8" placeholder="Optional 6-digit code" />
         </label>
         <button type="submit" id="btn-admin-login" class="btn btn-primary">Authenticate to Admin Console</button>
       </form>
@@ -399,7 +397,7 @@
           <div class="card-head"><h2>Complete Menu &amp; Unit Cost Catalogue</h2></div>
           <div class="table-scroll">
             <table class="admin-table">
-              <thead><tr><th>ID</th><th>Item &amp; Category</th><th>Price (₹)</th><th>Cost (₹)</th><th>Stock</th><th>Status</th><th>Quick Update</th></tr></thead>
+              <thead><tr><th>ID</th><th>Item &amp; Category</th><th>Assigned Counter</th><th>Price (₹)</th><th>Cost (₹)</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="menu-items-tbody"></tbody>
             </table>
           </div>

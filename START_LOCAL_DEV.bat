@@ -32,6 +32,9 @@ if errorlevel 1 (
 echo [*] Ensuring local development sample data (new accounts print their one-time passwords) ...
 "%PYTHON_EXE%" scripts\seed_dev_demo.py
 
+echo [*] Enforcing clean 2 counters (Main Counter & Counter A) and verified offers ...
+"%PYTHON_EXE%" scripts\cleanup_counters_and_discounts.py
+
 echo.
 echo [*] Starting http://127.0.0.1:8000  (Ctrl+C to stop)
 start "" "http://127.0.0.1:8000"

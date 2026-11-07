@@ -759,32 +759,12 @@
       e.preventDefault();
       showBanner("", "");
       try {
-        if (state.mfaChallengeToken && !$("staff-mfa-wrap").hidden) {
-          const code = $("staff-login-totp").value.trim();
-          const mfaRes = await api("/auth/mfa/verify-login", {
-            method: "POST",
-            body: { mfaChallengeToken: state.mfaChallengeToken, code }
-          });
-          state.mfaChallengeToken = "";
-          $("staff-mfa-wrap").hidden = true;
-          saveTokens(mfaRes.accessToken, mfaRes.refreshToken);
-          await bootstrapAuthenticated();
-          return;
-        }
-
         const identifier = $("staff-login-id").value.trim();
         const password = $("staff-login-pw").value;
-        const totpCode = $("staff-login-totp").value.trim() || undefined;
         const res = await api("/auth/login", {
           method: "POST",
-          body: { identifier, password, totpCode }
+          body: { identifier, password }
         });
-        if (res.mfaRequired) {
-          state.mfaChallengeToken = res.mfaChallengeToken;
-          $("staff-mfa-wrap").hidden = false;
-          showBanner("MFA required: enter your 6-digit authenticator code.", "");
-          return;
-        }
         saveTokens(res.accessToken, res.refreshToken);
         await bootstrapAuthenticated();
       } catch (err) {

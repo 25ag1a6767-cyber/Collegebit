@@ -623,6 +623,37 @@ def patch_admin_menu_item_v1(
     return ok(request, serialize_product_v1(p))
 
 
+@router.delete("/menu-items/{item_id}")
+def delete_admin_menu_item_v1(
+    item_id: int,
+    request: Request,
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    p = db.get(Product, item_id)
+    if p is None:
+        raise ApiError(404, "ITEM_NOT_FOUND", "Menu item not found.")
+
+    item_name = p.name
+    try:
+        db.delete(p)
+        db.flush()
+        record_audit(db, "menu_item.deleted", "product", item_id, admin.id, {"name": item_name})
+        commit_and_flush_outbox(db)
+        return ok(request, {"deleted": True, "archived": False, "id": item_id})
+    except Exception:
+        db.rollback()
+        p = db.get(Product, item_id)
+        if p is not None:
+            p.is_archived = True
+            p.is_available = False
+            p.stock_quantity = 0
+            record_audit(db, "menu_item.archived_as_deleted", "product", item_id, admin.id, {"name": item_name})
+            commit_and_flush_outbox(db)
+            return ok(request, {"deleted": True, "archived": True, "id": item_id})
+        raise ApiError(500, "DELETE_FAILED", "Failed to delete menu item.")
+
+
 @router.post("/menu-items/{item_id}/image")
 async def upload_admin_menu_item_image_v1(
     item_id: int,
