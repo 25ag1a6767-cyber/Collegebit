@@ -2130,6 +2130,7 @@ from app.modules import (
     orders_payments,
     reporting_engine,
     retention_backup,
+    rewards_wallet,
     staff_ops,
 )
 
@@ -2137,6 +2138,7 @@ v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_profile.router)
 v1_router.include_router(menu_cart.router)
 v1_router.include_router(orders_payments.router)
+v1_router.include_router(rewards_wallet.router)
 v1_router.include_router(staff_ops.router)
 v1_router.include_router(admin_portal.router)
 v1_router.include_router(admin_enterprise.router)

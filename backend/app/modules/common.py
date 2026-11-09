@@ -34,10 +34,12 @@ from app.models import (
     Product,
     ProductBatch,
     RecipeItem,
+    RewardTransaction,
     StockMovement,
     User,
     UserCounterAssignment,
     UserRole,
+    WalletTransaction,
     paise_to_rupees,
     rupees_to_paise,
 )
@@ -73,6 +75,116 @@ def as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+
+def reward_points_balance(db: Session, user_id: int) -> int:
+    return int(db.scalar(
+        select(func.coalesce(func.sum(RewardTransaction.points_delta), 0))
+        .where(RewardTransaction.user_id == user_id)
+    ) or 0)
+
+
+def record_reward_movement(
+    db: Session,
+    user_id: int,
+    points_delta: int,
+    reason: str,
+    reference_key: str,
+    *,
+    order_id: int | None = None,
+    actor_user_id: int | None = None,
+) -> RewardTransaction:
+    existing = db.scalar(select(RewardTransaction).where(RewardTransaction.reference_key == reference_key))
+    if existing is not None:
+        if existing.user_id != user_id or existing.points_delta != points_delta:
+            raise ApiError(409, "LEDGER_REFERENCE_CONFLICT", "The reward transaction reference was already used.")
+        return existing
+    account = db.scalar(select(User).where(User.id == user_id).with_for_update())
+    if account is None:
+        raise ApiError(404, "USER_NOT_FOUND", "Student account not found.")
+    if points_delta < 0 and reward_points_balance(db, user_id) < -points_delta:
+        raise ApiError(409, "INSUFFICIENT_REWARD_POINTS", "Not enough reward points are available.")
+    movement = RewardTransaction(
+        user_id=user_id,
+        order_id=order_id,
+        actor_user_id=actor_user_id,
+        points_delta=points_delta,
+        reason=reason[:255],
+        reference_key=reference_key[:120],
+    )
+    db.add(movement)
+    db.flush()
+    return movement
+
+
+def wallet_balance_paise(db: Session, user_id: int) -> int:
+    return int(db.scalar(
+        select(func.coalesce(func.sum(WalletTransaction.amount_paise), 0))
+        .where(WalletTransaction.user_id == user_id)
+    ) or 0)
+
+
+def record_wallet_movement(
+    db: Session,
+    user_id: int,
+    amount_paise: int,
+    transaction_type: str,
+    reason: str,
+    reference_key: str,
+    *,
+    order_id: int | None = None,
+    actor_user_id: int | None = None,
+) -> WalletTransaction:
+    existing = db.scalar(select(WalletTransaction).where(WalletTransaction.reference_key == reference_key))
+    if existing is not None:
+        if existing.user_id != user_id or existing.amount_paise != amount_paise:
+            raise ApiError(409, "LEDGER_REFERENCE_CONFLICT", "The wallet transaction reference was already used.")
+        return existing
+    account = db.scalar(select(User).where(User.id == user_id).with_for_update())
+    if account is None:
+        raise ApiError(404, "USER_NOT_FOUND", "Student account not found.")
+    if amount_paise < 0 and wallet_balance_paise(db, user_id) < -amount_paise:
+        raise ApiError(409, "INSUFFICIENT_WALLET_BALANCE", "Wallet balance is insufficient for this order.")
+    movement = WalletTransaction(
+        user_id=user_id,
+        order_id=order_id,
+        actor_user_id=actor_user_id,
+        amount_paise=amount_paise,
+        transaction_type=transaction_type[:30],
+        reason=reason[:255],
+        reference_key=reference_key[:120],
+    )
+    db.add(movement)
+    db.flush()
+    return movement
+
+
+def restore_order_reward_points(db: Session, order: Order, actor_user_id: int | None = None) -> None:
+    if order.loyalty_points_redeemed > 0:
+        record_reward_movement(
+            db,
+            order.user_id,
+            order.loyalty_points_redeemed,
+            f"Restore reward points for cancelled/refunded order #{order.id}",
+            f"order:{order.id}:points-restored",
+            order_id=order.id,
+            actor_user_id=actor_user_id,
+        )
+
+
+def award_order_reward_points(db: Session, order: Order, actor_user_id: int | None = None) -> int:
+    points = max(0, order.effective_total_paise // 1000)
+    if points:
+        record_reward_movement(
+            db,
+            order.user_id,
+            points,
+            f"Reward for collected order #{order.id}",
+            f"order:{order.id}:points-earned",
+            order_id=order.id,
+            actor_user_id=actor_user_id,
+        )
+    return points
 
 
 def parse_tags(csv_or_json: str | None, fallback_text: str | None = None) -> list[str]:

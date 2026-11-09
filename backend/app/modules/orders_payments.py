@@ -50,6 +50,7 @@ from app.models import (
 )
 from app.modules.common import (
     as_utc,
+    award_order_reward_points,
     assert_staff_permission,
     commit_and_flush_outbox,
     compute_customization_extra_paise,
@@ -67,6 +68,11 @@ from app.modules.common import (
     record_audit,
     record_order_status_change,
     record_product_stock_movement,
+    record_reward_movement,
+    record_wallet_movement,
+    restore_order_reward_points,
+    reward_points_balance,
+    wallet_balance_paise,
     release_batch_stock_once,
     reserve_batch_stock_fefo,
     restore_recipe_ingredients,
@@ -148,7 +154,9 @@ def _restore_order_inventory_once(db: Session, order: Order, reason: str, actor_
         )
     )
     if already_released and int(already_released) > 0:
+        restore_order_reward_points(db, order, actor_user_id)
         return
+    restore_order_reward_points(db, order, actor_user_id)
     release_batch_stock_once(db, order.id)
     restore_recipe_ingredients(db, order.id, actor_user_id=actor_user_id)
     for line in order.items:
@@ -229,7 +237,19 @@ def _initiate_gateway_refund(
     db.add(refund)
     db.flush()
 
-    if provider_payment_id and cfg.razorpay_key_id and cfg.razorpay_key_secret:
+    if payment_record is not None and payment_record.provider == "campusbite_wallet":
+        record_wallet_movement(
+            db,
+            order.user_id,
+            amount_paise,
+            "refund",
+            f"Prepaid wallet refund for order #{order.id}",
+            f"refund:{refund.id}:wallet-credit",
+            order_id=order.id,
+            actor_user_id=actor_user_id,
+        )
+        refund.status = "PROCESSED"
+    elif provider_payment_id and cfg.razorpay_key_id and cfg.razorpay_key_secret:
         try:
             resp = httpx.post(
                 f"https://api.razorpay.com/v1/payments/{provider_payment_id}/refund",
@@ -380,6 +400,8 @@ class OrderQuoteOrCreateIn(BaseModel):
     counterId: int | None = Field(default=None, gt=0)
     pickupSlot: str | None = Field(default=None, max_length=60)
     couponCode: str | None = Field(default=None, max_length=50)
+    loyaltyPointsRedeemed: int = Field(default=0, ge=0, le=1_000_000)
+    payWithWallet: bool = False
     notes: str | None = Field(default=None, max_length=500)
     idempotencyKey: str | None = Field(default=None, max_length=100)
 
@@ -504,6 +526,13 @@ def quote_order_v1(
         })
 
     discount_paise, offer = evaluate_discount_paise(db, coupon_code, subtotal_paise)
+    loyalty_discount_paise = payload.loyaltyPointsRedeemed * 10
+    available_points = reward_points_balance(db, user.id)
+    if payload.loyaltyPointsRedeemed > available_points:
+        raise ApiError(409, "INSUFFICIENT_REWARD_POINTS", "Not enough reward points are available.")
+    if loyalty_discount_paise > max(0, subtotal_paise - discount_paise - 1):
+        raise ApiError(422, "INVALID_REWARD_REDEMPTION", "Reward redemption must leave a positive item subtotal.")
+    discount_paise += loyalty_discount_paise
     taxable_paise = max(0, subtotal_paise - discount_paise)
     tax_bps = get_tax_rate_bps(db)
     tax_paise = (taxable_paise * tax_bps + 5000) // 10000
@@ -520,6 +549,10 @@ def quote_order_v1(
             "items": quote_lines,
             "subtotalPaise": subtotal_paise,
             "discountPaise": discount_paise,
+            "couponDiscountPaise": discount_paise - loyalty_discount_paise,
+            "loyaltyDiscountPaise": loyalty_discount_paise,
+            "loyaltyPointsRedeemed": payload.loyaltyPointsRedeemed,
+            "availableRewardPoints": available_points,
             "couponCode": offer.code if offer else None,
             "taxRateBps": tax_bps,
             "taxPaise": tax_paise,
@@ -569,6 +602,8 @@ def _execute_create_order_v1(
             "coupon": (coupon_code or "").strip().upper(),
             "slot": slot_raw,
             "notes": (notes or "").strip(),
+            "loyaltyPointsRedeemed": payload.loyaltyPointsRedeemed,
+            "payWithWallet": payload.payWithWallet,
         },
         sort_keys=True,
         default=str,
@@ -647,10 +682,22 @@ def _execute_create_order_v1(
         if offer is not None:
             offer.usage_count += 1
 
+        loyalty_discount_paise = payload.loyaltyPointsRedeemed * 10
+        account = db.scalar(select(User).where(User.id == user.id).with_for_update())
+        if payload.loyaltyPointsRedeemed > reward_points_balance(db, user.id):
+            raise ApiError(409, "INSUFFICIENT_REWARD_POINTS", "Not enough reward points are available.")
+        if loyalty_discount_paise > max(0, subtotal_paise - discount_paise - 1):
+            raise ApiError(422, "INVALID_REWARD_REDEMPTION", "Reward redemption must leave a positive item subtotal.")
+        discount_paise += loyalty_discount_paise
         taxable_paise = max(0, subtotal_paise - discount_paise)
         tax_bps = get_tax_rate_bps(db)
         tax_paise = (taxable_paise * tax_bps + 5000) // 10000
         total_paise = taxable_paise + tax_paise
+        if payload.payWithWallet:
+            if user.role != UserRole.STUDENT:
+                raise ApiError(403, "WALLET_STUDENT_ONLY", "Only student accounts can pay with a prepaid wallet.")
+            if wallet_balance_paise(db, user.id) < total_paise:
+                raise ApiError(409, "INSUFFICIENT_WALLET_BALANCE", "Wallet balance is not enough to pay for this order.")
 
         today_str = now_local.date().isoformat()
         if dialect_name == "postgresql":
@@ -676,6 +723,7 @@ def _execute_create_order_v1(
             discount_paise=discount_paise,
             tax_paise=tax_paise,
             total_paise=total_paise,
+            loyalty_points_redeemed=payload.loyaltyPointsRedeemed,
             coupon_code=offer.code if offer else None,
             manual_pickup_code=generate_manual_pickup_code(),
             notes=(notes or "").strip()[:500] or None,
@@ -687,6 +735,15 @@ def _execute_create_order_v1(
         db.add(order)
         db.flush()
         order.order_number = f"ACE-{today_str.replace('-', '')}-{order.id:05d}"
+        if payload.loyaltyPointsRedeemed:
+            record_reward_movement(
+                db,
+                user.id,
+                -payload.loyaltyPointsRedeemed,
+                f"Redeemed for order #{order.id}",
+                f"order:{order.id}:points-redeemed",
+                order_id=order.id,
+            )
 
         # Deduct stock, FEFO batches and recipe ingredients atomically
         for pid, total_q in agg_qty.items():
@@ -723,6 +780,35 @@ def _execute_create_order_v1(
             )
 
         record_order_status_change(db, order, "NONE", "PENDING_PAYMENT", user.id, "Order placed; awaiting UPI payment")
+        if payload.payWithWallet:
+            wallet_tx = record_wallet_movement(
+                db,
+                user.id,
+                -total_paise,
+                "order_payment",
+                f"Prepaid wallet payment for order #{order.id}",
+                f"order:{order.id}:wallet-payment",
+                order_id=order.id,
+            )
+            wallet_payment = Payment(
+                order_id=order.id,
+                provider="campusbite_wallet",
+                provider_payment_id=f"wallet-tx-{wallet_tx.id}",
+                amount_paise=total_paise,
+                currency=get_settings().payment_currency,
+                status="SUCCESS",
+            )
+            db.add(wallet_payment)
+            db.flush()
+            _mark_order_paid_and_notify(
+                db,
+                order,
+                wallet_payment,
+                f"wallet-tx-{wallet_tx.id}",
+                None,
+                user.id,
+                "prepaid_wallet",
+            )
         record_audit(
             db,
             "order.created_v1",
@@ -1896,13 +1982,14 @@ def verify_and_collect_pickup_v1(
 
         order.status = OrderStatus.COLLECTED
         order.collected_at = now
+        earned_points = award_order_reward_points(db, order, staff.id)
         record_order_status_change(db, order, prev_status, "COLLECTED", staff.id, "All items collected via verified handover")
         notify_user(
             db,
             order.user_id,
             "order_status",
             "Order collected",
-            f"All items for Order #{order.order_number or order.id} were collected. Enjoy your meal!",
+            f"All items for Order #{order.order_number or order.id} were collected. Enjoy your meal! You earned {earned_points} reward point(s).",
             entity_type="order",
             entity_id=order.id,
         )

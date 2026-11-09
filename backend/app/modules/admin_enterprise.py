@@ -15,12 +15,14 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
+import logging
 from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, inspect, or_, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
@@ -63,6 +65,68 @@ from app.modules.orders_payments import _initiate_gateway_refund, _restore_order
 from app.security import require_roles, revoke_refresh_sessions
 
 router = APIRouter(prefix="/admin", tags=["v1-admin-enterprise"])
+logger = logging.getLogger("ace_canteen.admin_diagnostics")
+
+
+@router.get("/diagnostics")
+def get_admin_runtime_diagnostics_v1(
+    request: Request,
+    _: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    cfg = get_settings()
+    head_revision = "0022_rewards_and_wallet"
+    database: dict[str, Any] = {
+        "available": False,
+        "schemaReady": False,
+        "revision": None,
+        "expectedRevision": head_revision,
+        "missingTables": [],
+        "missingColumns": [],
+        "status": "unavailable",
+    }
+    try:
+        inspector = inspect(db.get_bind())
+        tables = set(inspector.get_table_names())
+        database["available"] = True
+        database["missingTables"] = sorted({
+            "users", "products", "orders", "order_items", "app_settings",
+            "wallet_transactions", "reward_transactions",
+        } - tables)
+        if "orders" in tables:
+            order_columns = {column["name"] for column in inspector.get_columns("orders")}
+            if "loyalty_points_redeemed" not in order_columns:
+                database["missingColumns"].append("orders.loyalty_points_redeemed")
+        if "order_items" in tables:
+            item_columns = {column["name"] for column in inspector.get_columns("order_items")}
+            if "collected_quantity" not in item_columns:
+                database["missingColumns"].append("order_items.collected_quantity")
+        if "alembic_version" in tables:
+            database["revision"] = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        ready = (
+            not database["missingTables"]
+            and not database["missingColumns"]
+            and database["revision"] == head_revision
+        )
+        database["schemaReady"] = ready
+        database["status"] = "healthy" if ready else "needs_attention"
+    except SQLAlchemyError as exc:
+        logger.warning("Admin diagnostics database check failed: %s", type(exc).__name__)
+
+    integrations = {
+        "razorpay": bool(cfg.razorpay_key_id and cfg.razorpay_key_secret and cfg.razorpay_webhook_secret),
+        "redis": bool(cfg.redis_url),
+        "smtp": bool(cfg.smtp_host and cfg.smtp_from),
+        "webPush": bool(cfg.vapid_public_key and cfg.vapid_private_key),
+        "aiAssistant": bool(cfg.gemini_api_key),
+    }
+    return ok(request, {
+        "database": database,
+        "integrations": integrations,
+        "environment": cfg.environment,
+        "checkedAt": datetime.now(timezone.utc),
+        "secretsDisplayed": False,
+    })
 
 
 # ==============================================================================

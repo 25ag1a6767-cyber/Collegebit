@@ -290,6 +290,7 @@ class Order(Base):
     discount_paise: Mapped[int | None] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0)
     tax_paise: Mapped[int | None] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0)
     total_paise: Mapped[int | None] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0)
+    loyalty_points_redeemed: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     coupon_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     manual_pickup_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     notes: Mapped[str | None] = mapped_column(String(500))
@@ -605,6 +606,41 @@ class OrderReview(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
     order: Mapped[Order] = relationship()
     user: Mapped[User] = relationship()
+
+
+class RewardTransaction(Base):
+    """Append-only ledger for student reward point grants and redemptions."""
+    __tablename__ = "reward_transactions"
+    __table_args__ = (
+        CheckConstraint("points_delta != 0", name="ck_reward_transaction_nonzero"),
+        Index("ix_reward_transactions_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    points_delta: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference_key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WalletTransaction(Base):
+    """Append-only ledger for administratively issued prepaid credit and order spending."""
+    __tablename__ = "wallet_transactions"
+    __table_args__ = (
+        CheckConstraint("amount_paise != 0", name="ck_wallet_transaction_nonzero"),
+        Index("ix_wallet_transactions_user_created", "user_id", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    transaction_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    reference_key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class PaymentWebhookEvent(Base):

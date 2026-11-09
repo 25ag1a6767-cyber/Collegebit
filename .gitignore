@@ -29,3 +29,5 @@ backend/ci_canteen.db*
 # Operational backups and logs
 backups/
 *.log
+
+.vercel
