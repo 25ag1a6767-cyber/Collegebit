@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.envelope import ApiError, ok
 from app.models import Order, Payment, PaymentStatus, User, UserRole, RewardTransaction, WalletTransaction
@@ -180,9 +181,10 @@ def pay_order_with_wallet_v1(
     payment = Payment(
         order_id=order.id,
         provider="campusbite_wallet",
+        provider_order_id=f"wallet-order-{order.id}",
         provider_payment_id=f"wallet-tx-{movement.id}",
         amount_paise=amount_paise,
-        currency="INR",
+        currency=get_settings().payment_currency,
         status="SUCCESS",
     )
     db.add(payment)

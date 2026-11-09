@@ -793,6 +793,7 @@ def _execute_create_order_v1(
             wallet_payment = Payment(
                 order_id=order.id,
                 provider="campusbite_wallet",
+                provider_order_id=f"wallet-order-{order.id}",
                 provider_payment_id=f"wallet-tx-{wallet_tx.id}",
                 amount_paise=total_paise,
                 currency=get_settings().payment_currency,

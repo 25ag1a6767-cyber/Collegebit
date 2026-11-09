@@ -36,11 +36,17 @@ Copy `deploy/nginx-https-example.conf`, configure Let's Encrypt TLS (`certbot --
 3. **Late-Capture Protection:** If a `payment.captured` webhook arrives after an unpaid reservation expired or was cancelled, the backend automatically flags `late_capture_flagged=true`, moves the order to `REFUND_PENDING`, and initiates a gateway refund so students never lose money on unreserved stock.
 4. **Authorized Refunds:** Administrators can issue full or partial refunds directly from **A04 · Authorized Gateway Refund** (`POST /api/v1/payments/{id}/refunds`) and audit discrepancies via `/api/v1/admin/payments/reconciliation`.
 
-## 5. AI Services & Privacy Controls
+## 5. Loyalty Rewards & Prepaid Wallet
+- Students earn 1 point per ₹10 after staff verifies full pickup; each point redeems for ₹0.10 at checkout. Reward transactions are ledgered, and points reserved at checkout are restored when an order is cancelled or expires.
+- Prepaid wallet credits are issued only by an administrator after verifying an in-person/campus payment. Do not issue credit based only on a student request. Every credit and wallet-paid order is ledgered and audited.
+- Wallet checkout currently requires the available balance to cover the full payable amount. Wallet refunds return to that same wallet. Keep the existing gateway flow for any remaining or partial balance.
+- Verify student identity and payment receipt at the counter before submitting `/api/v1/admin/wallet/credit`. Never use wallet credits as a substitute for recording an unverified payment.
+
+## 6. AI Services & Privacy Controls
 - **Grounded Menu Concierge (`/api/v1/ai/assistant`):** Uses `GEMINI_API_KEY` (`gemini-2.5-flash` by default) with strict post-generation verification against live in-stock menu rows, budget caps, and allergen tags, falling back automatically to deterministic verified search if Gemini is unconfigured or unreachable. Never sends student PII to external AI APIs, and never adds items to carts without explicit student confirmation.
 - **Demand Forecasting (`/api/v1/ai/demand-forecasts`):** Computes weekday + slot weighted moving averages with empirical `[lowerBound, upperBound]` intervals, low-sample warnings, staff overrides, and genuine rolling backtest `MAE` / `WAPE`.
 
-## 6. Customer Apps for Android & iPhone (`mobile/`)
+## 7. Customer Apps for Android & iPhone (`mobile/`)
 The staff/admin website is served at `/`, `/staff`, and `/admin`. The installable customer PWA is served separately at `/customer/`.
 
 Build the Expo React Native customer app for Android and iPhone using the production HTTPS API configured in `mobile/eas.json`:
@@ -52,7 +58,7 @@ npx eas build --platform ios --profile production
 ```
 The Android and iOS installs require the EAS build outputs and corresponding distribution setup. Until those builds are distributed, students can install the PWA from `https://app-sai-e3e1.vercel.app/customer/` (Android: browser install option; iPhone: Safari Share → Add to Home Screen).
 
-## 7. Backups, Monitoring & Campus Pilot
+## 8. Backups, Monitoring & Campus Pilot
 - Run `./scripts/backup_db.sh` daily to off-host encrypted storage and verify a restore drill before opening campus-wide.
 - Monitor `/api/ready` and authenticated `/api/metrics` (`Bearer <METRICS_TOKEN>`).
 - Run a 1-week single-counter live pilot before enabling all campus counters.

@@ -793,6 +793,7 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
         "paymentStatus": V1_PAYMENT_STATUS_OUT.get(order.payment_status, order.payment_status.value.upper()),
         "subtotalPaise": subtotal_p,
         "discountPaise": discount_p,
+        "loyaltyPointsRedeemed": order.loyalty_points_redeemed,
         "taxPaise": tax_p,
         "totalPaise": total_p,
         "subtotal": str(paise_to_rupees(subtotal_p)),
