@@ -13,7 +13,7 @@ interface CartContextValue {
   addItem: (item: MenuItemSummary, quantity?: number, customizations?: CustomizationOption[]) => Promise<void>;
   updateQuantity: (menuItemId: number, quantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
-  refreshQuote: (pickupSlot?: string | null) => Promise<OrderQuote | null>;
+  refreshQuote: (pickupSlot?: string | null, loyaltyPointsRedeemed?: number) => Promise<OrderQuote | null>;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -96,7 +96,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user?.role]);
 
   const refreshQuote = useCallback(
-    async (pickupSlot?: string | null): Promise<OrderQuote | null> => {
+    async (pickupSlot?: string | null, loyaltyPointsRedeemed = 0): Promise<OrderQuote | null> => {
       if (!lines.length || user?.role !== "student") {
         setQuote(null);
         return null;
@@ -111,7 +111,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })),
           counterId: selectedCounterId,
           couponCode: discountCode.trim() || null,
-          pickupSlot: pickupSlot || null
+          pickupSlot: pickupSlot || null,
+          loyaltyPointsRedeemed
         })
       });
       setQuote(q);

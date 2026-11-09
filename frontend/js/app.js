@@ -127,7 +127,8 @@ async function reviewCart() {
   const quoteBreakdown = document.querySelector('#v1-quote-breakdown');
   if (quoteBreakdown) quoteBreakdown.hidden = false;
   document.querySelector('#v1-q-subtotal').textContent = money(Number(data.subtotalPaise) / 100);
-  document.querySelector('#v1-q-discount').textContent = '−' + money(Number(data.discountPaise) / 100);
+  document.querySelector('#v1-q-discount').textContent = '−' + money(Number(data.couponDiscountPaise ?? data.discountPaise) / 100);
+  document.querySelector('#v1-q-rewards').textContent = '−' + money(Number(data.loyaltyDiscountPaise || 0) / 100);
   document.querySelector('#v1-q-tax').textContent = money(Number(data.taxPaise) / 100);
   document.querySelector('#v1-q-total').textContent = money(Number(data.totalPaise) / 100);
   document.querySelector('#cart-message').textContent = 'Prices and stock validated by the server. Stock is not reserved until you place the order.';

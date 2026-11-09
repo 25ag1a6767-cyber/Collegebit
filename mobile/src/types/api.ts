@@ -109,6 +109,10 @@ export interface CartLineInput {
 export interface OrderQuote {
   subtotalPaise: number;
   discountPaise: number;
+  couponDiscountPaise?: number;
+  loyaltyDiscountPaise?: number;
+  loyaltyPointsRedeemed?: number;
+  availableRewardPoints?: number;
   taxPaise: number;
   totalPaise: number;
   discountCode?: string | null;

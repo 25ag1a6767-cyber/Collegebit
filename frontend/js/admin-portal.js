@@ -1173,6 +1173,7 @@
   // TAB 9: DB ADMIN, ENCRYPTED GFS BACKUPS, 4-DAY RETENTION, SECURITY & AUDIT
   // ============================================================================
   async function loadGovernanceModule() {
+    await loadRuntimeDiagnostics();
     const [bkp, ret, dbOv, sec, aud] = await Promise.all([
       apiFetch("/api/v1/admin/backups"),
       apiFetch("/api/v1/admin/retention/status"),
@@ -1264,6 +1265,47 @@
     $("audit-tbody").replaceChildren(audFrag);
   }
 
+  async function loadRuntimeDiagnostics() {
+    const summary = $("runtime-diagnostics-summary");
+    const tbody = $("runtime-diagnostics-tbody");
+    if (!summary || !tbody) return;
+    summary.textContent = "Checking database schema and integration configuration…";
+    try {
+      const diagnostics = await apiFetch("/api/v1/admin/diagnostics");
+      const rows = [];
+      const db = diagnostics.database || {};
+      const missing = [...(db.missingTables || []), ...(db.missingColumns || [])];
+      rows.push({
+        name: "Database schema",
+        status: db.status || "unavailable",
+        details: db.available
+          ? `Revision ${db.revision || "not initialized"} (expected ${db.expectedRevision || "unknown"})` +
+            (missing.length ? ` · Missing: ${missing.join(", ")}` : "")
+          : "Database could not be reached. Error details are intentionally redacted."
+      });
+      Object.entries(diagnostics.integrations || {}).forEach(([name, configured]) => {
+        rows.push({
+          name: name.replace(/[A-Z]/g, letter => " " + letter.toLowerCase()),
+          status: configured ? "configured" : "not configured",
+          details: configured ? "Required settings are present; secret values are hidden." : "Optional or feature-specific settings are absent."
+        });
+      });
+      const frag = document.createDocumentFragment();
+      rows.forEach(row => {
+        const tr = el("tr");
+        tr.appendChild(el("td", "", row.name));
+        tr.appendChild(el("td", "", row.status));
+        tr.appendChild(el("td", "", row.details));
+        frag.appendChild(tr);
+      });
+      tbody.replaceChildren(frag);
+      summary.textContent = `Environment: ${diagnostics.environment || "unknown"} · Checked ${fmtDateTime(diagnostics.checkedAt)} · Secret values displayed: no`;
+    } catch (err) {
+      summary.textContent = `Diagnostics could not be loaded: ${err.message}`;
+      tbody.replaceChildren();
+    }
+  }
+
   // ============================================================================
   // Wire All Form & Button Event Listeners
   // ============================================================================
@@ -1271,6 +1313,28 @@
     $("admin-login-form").addEventListener("submit", onAdminLoginSubmit);
     $("btn-admin-logout").addEventListener("click", onAdminLogout);
     $("btn-admin-refresh").addEventListener("click", () => loadActiveTab());
+    $("btn-runtime-diagnostics")?.addEventListener("click", () => loadRuntimeDiagnostics());
+
+    $("wallet-credit-form")?.addEventListener("submit", async event => {
+      event.preventDefault();
+      const amountPaise = Math.round(Number($("wallet-credit-amount").value) * 100);
+      const referenceKey = window.crypto?.randomUUID?.() || `admin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      try {
+        const result = await apiFetch("/api/v1/admin/wallet/credit", {
+          method: "POST",
+          body: {
+            userId: Number($("wallet-credit-user").value),
+            amountPaise,
+            reason: $("wallet-credit-reason").value.trim(),
+            referenceKey
+          }
+        });
+        showAlert(`Prepaid credit issued. Student #${result.studentId} balance: ${formatINRFromPaise(result.balancePaise)}.`, "success");
+        $("wallet-credit-form").reset();
+      } catch (err) {
+        showAlert(err.message, "error");
+      }
+    });
 
     const toggleAdminPwBtn = $("btn-toggle-admin-pw");
     if (toggleAdminPwBtn) {

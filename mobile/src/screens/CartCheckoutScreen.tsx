@@ -31,12 +31,25 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
   const [slots, setSlots] = useState<Array<{ slot: string; label: string; remaining: number }>>([]);
   const [pickupSlot, setPickupSlot] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
+  const [rewardPoints, setRewardPoints] = useState<string>("0");
+  const [pointsBalance, setPointsBalance] = useState(0);
+  const [walletBalancePaise, setWalletBalancePaise] = useState(0);
+  const [payWithWallet, setPayWithWallet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    refreshQuote(pickupSlot || null).catch(() => null);
-  }, [lines, discountCode, pickupSlot, refreshQuote]);
+    apiRequest<{ pointsBalance: number; walletBalancePaise: number }>("/api/v1/rewards/me")
+      .then(account => {
+        setPointsBalance(account.pointsBalance);
+        setWalletBalancePaise(account.walletBalancePaise);
+      })
+      .catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    refreshQuote(pickupSlot || null, Number(rewardPoints || 0)).catch(() => null);
+  }, [lines, discountCode, pickupSlot, rewardPoints, refreshQuote]);
 
   useEffect(() => {
     (async () => {
@@ -70,27 +83,37 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
           counterId: selectedCounterId,
           pickupSlot: pickupSlot || null,
           couponCode: discountCode.trim() || null,
-          notes: notes.trim() || null
+          notes: notes.trim() || null,
+          loyaltyPointsRedeemed: Number(rewardPoints || 0),
+          payWithWallet
         })
       });
       const created = "order" in createdRes && createdRes.order ? createdRes.order : (createdRes as OrderRecord);
+      setPointsBalance(Math.max(0, pointsBalance - (Number(rewardPoints) || 0)));
 
-      const intent = await apiRequest<UpiPaymentIntent>("/api/v1/payments/upi/intent", {
-        method: "POST",
-        body: JSON.stringify({ orderId: created.id })
-      });
+      if (!payWithWallet) {
+        const intent = await apiRequest<UpiPaymentIntent>("/api/v1/payments/upi/intent", {
+          method: "POST",
+          body: JSON.stringify({ orderId: created.id })
+        });
 
-      if (intent.upiIntentUri) {
-        const supported = await Linking.canOpenURL(intent.upiIntentUri);
-        if (supported) {
-          await Linking.openURL(intent.upiIntentUri);
+        if (intent.upiIntentUri) {
+          const supported = await Linking.canOpenURL(intent.upiIntentUri);
+          if (supported) {
+            await Linking.openURL(intent.upiIntentUri);
+          }
         }
       }
 
       await clearCart();
       setStatusMessage(
-        `Order #${created.id} created (${formatRupeesFromPaise(intent.amountPaise)}). Payment status updates automatically once UPI confirms.`
+        payWithWallet
+          ? `Order #${created.id} paid from prepaid wallet.`
+          : `Order #${created.id} created. Payment status updates automatically once UPI confirms.`
       );
+      if (payWithWallet) {
+        setWalletBalancePaise(Math.max(0, walletBalancePaise - (created.totalPaise || 0)));
+      }
       onOrderCreated();
     } catch (err) {
       setStatusMessage(err instanceof Error ? err.message : "Could not complete checkout");
@@ -170,7 +193,7 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
             />
             <TouchableOpacity
               style={styles.applyBtn}
-              onPress={() => refreshQuote(pickupSlot || null).catch(e => setStatusMessage(e.message))}
+              onPress={() => refreshQuote(pickupSlot || null, Number(rewardPoints || 0)).catch(e => setStatusMessage(e.message))}
             >
               <Text style={styles.applyBtnText}>Apply</Text>
             </TouchableOpacity>
@@ -184,6 +207,29 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
             placeholder="Less spicy, no cutlery, etc."
           />
 
+          <Text style={styles.label}>Rewards &amp; prepaid wallet</Text>
+          <Text style={styles.balanceText}>
+            {pointsBalance} points · Wallet {formatRupeesFromPaise(walletBalancePaise)}
+          </Text>
+          <TextInput
+            style={styles.notesInput}
+            value={rewardPoints}
+            onChangeText={value => setRewardPoints(value.replace(/\D/g, ""))}
+            keyboardType="number-pad"
+            placeholder="Reward points to redeem"
+          />
+          <TouchableOpacity
+            style={[styles.walletToggle, payWithWallet && styles.walletToggleActive]}
+            onPress={() => setPayWithWallet(value => !value)}
+          >
+            <Text style={[styles.walletToggleText, payWithWallet && styles.walletToggleTextActive]}>
+              {payWithWallet ? "✓ Pay full total from wallet" : "Use prepaid wallet for full payment"}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.balanceText}>
+            Earn 1 point per ₹10 after collection; 1 point saves ₹0.10. Wallet balance must cover the full order.
+          </Text>
+
           {quote && (
             <View style={styles.quoteBox}>
               <View style={styles.quoteRow}>
@@ -192,7 +238,11 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
               </View>
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Approved Discount</Text>
-                <Text style={styles.quoteVal}>−{formatRupeesFromPaise(quote.discountPaise)}</Text>
+                <Text style={styles.quoteVal}>−{formatRupeesFromPaise(quote.couponDiscountPaise ?? quote.discountPaise)}</Text>
+              </View>
+              <View style={styles.quoteRow}>
+                <Text style={styles.quoteLabel}>Rewards Applied</Text>
+                <Text style={styles.quoteVal}>−{formatRupeesFromPaise(quote.loyaltyDiscountPaise || 0)}</Text>
               </View>
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Tax</Text>
@@ -211,7 +261,7 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
             disabled={busy}
           >
             <Text style={styles.payBtnText}>
-              {busy ? "Reserving Stock & Creating UPI Intent…" : "Confirm & Pay via UPI"}
+              {busy ? "Processing secure checkout…" : payWithWallet ? "Place Order & Pay from Wallet" : "Confirm & Pay via UPI"}
             </Text>
           </TouchableOpacity>
         </>
@@ -292,6 +342,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10
   },
+  balanceText: { color: "#5e6e64", fontSize: 12, marginBottom: 8 },
+  walletToggle: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#cfdcd2",
+    backgroundColor: "#fff"
+  },
+  walletToggleActive: { backgroundColor: "#e5f3e8", borderColor: "#26734e" },
+  walletToggleText: { color: "#234638", fontWeight: "700" },
+  walletToggleTextActive: { color: "#176b4d" },
   quoteBox: {
     marginTop: 14,
     backgroundColor: "#eef6f0",
