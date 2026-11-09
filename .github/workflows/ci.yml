@@ -37,8 +37,12 @@ jobs:
       - name: Check frontend JavaScript syntax
         run: |
           node --check frontend/js/app.js
+          node --check frontend/js/staff-portal.js
           node --check frontend/sw.js
           node --check e2e/canteen.spec.js
+          node --check e2e/authenticated.spec.js
+          node --check e2e/global-setup.js
+          python -m py_compile e2e/seed_authenticated.py
       - name: Validate Docker Compose configuration
         env:
           POSTGRES_PASSWORD: ci-only-compose-validation-password

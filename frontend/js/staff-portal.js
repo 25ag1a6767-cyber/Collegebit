@@ -13,7 +13,8 @@
     counters: [],
     selectedCounterId: "",
     inventoryData: { menuItems: [], ingredients: [] },
-    ws: null,
+    pollTimer: null,
+    pollInFlight: false,
     cameraStream: null,
     scanTimer: null
   };
@@ -123,10 +124,7 @@
     state.user = null;
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(REFRESH_KEY);
-    if (state.ws) {
-      try { state.ws.close(); } catch (_) {}
-      state.ws = null;
-    }
+    stopStaffPolling();
     stopCamera();
     $("staff-workspace").hidden = true;
     $("staff-login-section").hidden = false;
@@ -152,9 +150,7 @@
     try {
       const res = await fetch("/api/health", { cache: "no-store" });
       if (res.ok) {
-        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-          setWsStatus(true, "Server Online");
-        }
+        setWsStatus(true, state.accessToken ? "Polling updates" : "Server Online");
         return true;
       }
     } catch (_) {}
@@ -162,36 +158,46 @@
     return false;
   }
 
-  function connectWebSocket() {
-    if (!state.accessToken) return;
-    if (state.ws) {
-      try { state.ws.close(); } catch (_) {}
-    }
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${location.host}/api/v1/ws?token=${encodeURIComponent(state.accessToken)}`;
-    const sock = new WebSocket(wsUrl);
-    state.ws = sock;
-
-    sock.addEventListener("open", () => setWsStatus(true, "Live Stream"));
-    sock.addEventListener("close", () => {
-      checkBackendConnectivity();
-      if (state.accessToken) {
-        setTimeout(() => {
-          if (state.accessToken && state.ws === sock) connectWebSocket();
-        }, 4000);
+  async function pollStaffViews() {
+    if (!state.accessToken || state.pollInFlight || document.hidden || !navigator.onLine) return;
+    state.pollInFlight = true;
+    try {
+      await loadQueue();
+      const activeTab = document.querySelector("[data-tab-panel]:not([hidden])");
+      switch (activeTab && activeTab.dataset.tabPanel) {
+        case "tokens":
+          await loadTokenManagement();
+          break;
+        case "inventory":
+          await loadInventory();
+          break;
+        case "history":
+          await loadHistory();
+          break;
+        case "performance":
+          await loadPerformance();
+          break;
       }
-    });
-    sock.addEventListener("message", (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        const topic = String(msg.topic || "");
-        if (topic.startsWith("kitchen.") || topic.startsWith("order.") || topic.startsWith("inventory.")) {
-          loadQueue();
-          if (!$("tab-inventory").hidden) loadInventory();
-          if (!$("tab-performance").hidden) loadPerformance();
-        }
-      } catch (_) {}
-    });
+      setWsStatus(true, "Polling updates");
+    } finally {
+      state.pollInFlight = false;
+    }
+  }
+
+  function stopStaffPolling() {
+    if (state.pollTimer !== null) {
+      clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
+    state.pollInFlight = false;
+  }
+
+  function startStaffPolling() {
+    stopStaffPolling();
+    if (!state.accessToken) return;
+    setWsStatus(true, "Polling updates");
+    pollStaffViews();
+    state.pollTimer = setInterval(pollStaffViews, 10000);
   }
 
   async function bootstrapAuthenticated() {
@@ -217,7 +223,7 @@
 
       await loadCounters();
       await loadQueue();
-      connectWebSocket();
+      startStaffPolling();
       showBanner("", "");
     } catch (err) {
       clearSession();
@@ -953,6 +959,9 @@
 
     window.addEventListener("online", checkBackendConnectivity);
     window.addEventListener("offline", () => setWsStatus(false, "No Internet"));
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) pollStaffViews();
+    });
     checkBackendConnectivity();
     setInterval(checkBackendConnectivity, 15000);
 
