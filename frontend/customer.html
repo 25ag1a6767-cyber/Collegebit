@@ -88,6 +88,11 @@
                 </div>
                 <p id="v1-profile-msg" class="management-message" role="status"></p>
               </div>
+              <section class="notification-center" id="rewards-wallet-panel" aria-labelledby="rewards-wallet-heading">
+                <h3 id="rewards-wallet-heading">Rewards &amp; prepaid balance</h3>
+                <p id="rewards-wallet-summary" class="management-message" role="status" aria-live="polite">Sign in to view your balance.</p>
+                <p class="management-message">Earn 1 point per ₹10 after collecting a paid order. 1 point saves ₹0.10. Prepaid wallet credits are added by canteen administration after payment is verified.</p>
+              </section>
               <section class="notification-center" id="notification-center" aria-labelledby="notification-heading">
                 <div class="management-list-head">
                   <h3 id="notification-heading">Notifications <span class="notification-count" id="notification-unread-count">0 unread</span></h3>
@@ -202,6 +207,13 @@
         <p class="canteen-status" id="canteen-status" role="status" aria-live="polite" hidden></p>
         <label class="cart-notes-label" for="pickup-slot" id="pickup-slot-wrap" hidden>Pickup time<select id="pickup-slot"><option value="">As soon as possible</option></select></label>
         <label class="cart-notes-label" for="checkout-notes">Order notes (optional)<textarea id="checkout-notes" maxlength="500" rows="3" placeholder="Any useful pickup or preparation note (max 500 characters)"></textarea></label>
+        <div class="v1-checkout-box">
+          <label>Reward points to redeem (1 point = ₹0.10)
+            <input id="checkout-reward-points" type="number" min="0" max="1000000" step="1" value="0">
+          </label>
+          <label><input id="checkout-use-wallet" type="checkbox"> Pay the full order total from prepaid wallet</label>
+          <p class="management-message">Wallet payment requires enough balance to cover the full order; otherwise choose UPI. Prepaid loads are handled by the canteen.</p>
+        </div>
         <div class="cart-actions">
           <button type="button" class="secondary-button" id="cart-review">Review total</button>
           <button type="button" class="primary-button" id="cart-checkout">Pay &amp; place order</button>

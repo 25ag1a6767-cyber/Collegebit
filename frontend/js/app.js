@@ -74,27 +74,62 @@ function addToCart(product) {
   cart[id] = next; window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[product.id] = product; saveCart(); renderCart(`${product.name} added to your cart.`);
   document.querySelector('#cart-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+function checkoutPayload(overrides = {}) {
+  const counterValue = document.querySelector('#v1-checkout-counter')?.value || '';
+  return {
+    items: cartLines().map(line => ({
+      menuItemId: line.product_id,
+      quantity: line.quantity,
+      customizations: {}
+    })),
+    counterId: counterValue ? Number(counterValue) : null,
+    pickupSlot: document.querySelector('#pickup-slot')?.value || null,
+    notes: document.querySelector('#checkout-notes')?.value.trim() || null,
+    loyaltyPointsRedeemed: Number(document.querySelector('#checkout-reward-points')?.value || 0),
+    payWithWallet: Boolean(document.querySelector('#checkout-use-wallet')?.checked),
+    ...overrides
+  };
+}
+async function customerV1Request(path, body, method = 'POST') {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${window.aceCanteenToken}`,
+      Accept: 'application/json'
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error?.message || payload.detail || `Request failed (${response.status}).`);
+  return payload.data;
+}
 async function reviewCart() {
   const lines = cartLines(); if (!lines.length) { renderCart(); return null; }
   if (!window.aceCanteenToken || window.aceCanteenUser?.role !== 'student') throw new Error('Sign in with a student account to review checkout.');
-  const response = await fetch('/api/orders/quote', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.aceCanteenToken}`, Accept: 'application/json' }, body: JSON.stringify({ items: lines, notes: document.querySelector('#checkout-notes')?.value.trim() || null, pickup_slot: document.querySelector('#pickup-slot')?.value || null }) });
-  const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.detail || data.error?.message || 'Could not validate your cart.');
+  const data = await customerV1Request('/api/v1/orders/quote', checkoutPayload());
   const list = document.querySelector('#cart-items'); list.replaceChildren();
   for (const item of data.items) {
     const row = document.createElement('div'); row.className = 'cart-line'; const details = document.createElement('div'); details.className = 'cart-line-info';
-    const name = document.createElement('strong'); name.textContent = item.product_name; const meta = document.createElement('small'); meta.textContent = `${item.quantity} × ${money(item.unit_price)} · ${item.stock_available} in stock`;
+    const name = document.createElement('strong'); name.textContent = item.itemName; const meta = document.createElement('small'); meta.textContent = `${item.quantity} × ${money(Number(item.unitPricePaise) / 100)} · ${item.stockAvailable} in stock`;
     details.append(name, meta);
     const controls = document.createElement('div'); controls.className = 'cart-line-controls';
-    const minus = document.createElement('button'); minus.type = 'button'; minus.className = 'secondary-button'; minus.textContent = '−'; minus.setAttribute('aria-label', `Decrease ${item.product_name} quantity`); minus.disabled = item.quantity <= 1;
-    minus.addEventListener('click', () => { cart[item.product_id] = Math.max(1, item.quantity - 1); saveCart(); renderCart(); });
+    const minus = document.createElement('button'); minus.type = 'button'; minus.className = 'secondary-button'; minus.textContent = '−'; minus.setAttribute('aria-label', `Decrease ${item.itemName} quantity`); minus.disabled = item.quantity <= 1;
+    minus.addEventListener('click', () => { cart[item.menuItemId] = Math.max(1, item.quantity - 1); saveCart(); renderCart(); });
     const qty = document.createElement('span'); qty.textContent = String(item.quantity);
-    const plus = document.createElement('button'); plus.type = 'button'; plus.className = 'secondary-button'; plus.textContent = '+'; plus.setAttribute('aria-label', `Increase ${item.product_name} quantity`); plus.disabled = item.quantity >= 50;
-    plus.addEventListener('click', () => { if (item.quantity < 50) cart[item.product_id] = item.quantity + 1; saveCart(); renderCart(); });
-    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary-button'; remove.textContent = 'Remove'; remove.addEventListener('click', () => { delete cart[item.product_id]; saveCart(); renderCart(); });
-    const total = document.createElement('strong'); total.textContent = money(item.line_total); controls.append(minus, qty, plus, remove); row.append(details, controls, total); list.append(row);
-    window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[item.product_id] = { ...(window.aceCatalogueProducts[item.product_id] || {}), name: item.product_name, price: item.unit_price };
+    const plus = document.createElement('button'); plus.type = 'button'; plus.className = 'secondary-button'; plus.textContent = '+'; plus.setAttribute('aria-label', `Increase ${item.itemName} quantity`); plus.disabled = item.quantity >= 50;
+    plus.addEventListener('click', () => { if (item.quantity < 50) cart[item.menuItemId] = item.quantity + 1; saveCart(); renderCart(); });
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'secondary-button'; remove.textContent = 'Remove'; remove.addEventListener('click', () => { delete cart[item.menuItemId]; saveCart(); renderCart(); });
+    const total = document.createElement('strong'); total.textContent = money(Number(item.lineTotalPaise) / 100); controls.append(minus, qty, plus, remove); row.append(details, controls, total); list.append(row);
+    window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[item.menuItemId] = { ...(window.aceCatalogueProducts[item.menuItemId] || {}), name: item.itemName, price: Number(item.unitPricePaise) / 100 };
   }
-  document.querySelector('#cart-subtotal').textContent = money(data.subtotal);
+  document.querySelector('#cart-subtotal').textContent = money(Number(data.subtotalPaise) / 100);
+  const quoteBreakdown = document.querySelector('#v1-quote-breakdown');
+  if (quoteBreakdown) quoteBreakdown.hidden = false;
+  document.querySelector('#v1-q-subtotal').textContent = money(Number(data.subtotalPaise) / 100);
+  document.querySelector('#v1-q-discount').textContent = '−' + money(Number(data.discountPaise) / 100);
+  document.querySelector('#v1-q-tax').textContent = money(Number(data.taxPaise) / 100);
+  document.querySelector('#v1-q-total').textContent = money(Number(data.totalPaise) / 100);
   document.querySelector('#cart-message').textContent = 'Prices and stock validated by the server. Stock is not reserved until you place the order.';
   return data;
 }
@@ -102,29 +137,59 @@ async function placeCartOrder() {
   const button = document.querySelector('#cart-checkout'); if (!button) return;
   if (!window.aceCanteenToken || window.aceCanteenUser?.role !== 'student') { document.querySelector('#account')?.scrollIntoView({ behavior: 'smooth' }); const msg = document.querySelector('#auth-message'); if (msg) msg.textContent = 'Sign in as a student to check out.'; return; }
   if (!cartLines().length) { renderCart(); return; }
-  if (!window.Razorpay) { renderCart('Payment checkout did not load. Check your connection and reload the page.'); return; }
+  const useWallet = Boolean(document.querySelector('#checkout-use-wallet')?.checked);
+  if (!useWallet && !window.Razorpay) { renderCart('Payment checkout did not load. Check your connection and reload the page.'); return; }
   button.disabled = true; const original = button.textContent; button.textContent = 'Preparing secure checkout…';
   try {
     const quote = await reviewCart();
-    if (!quote || !window.confirm(`Continue to secure payment for ${money(quote.subtotal)}?`)) return;
-    const response = await fetch('/api/payments/create-order', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.aceCanteenToken}`, Accept: 'application/json' }, body: JSON.stringify({ items: cartLines(), notes: document.querySelector('#checkout-notes')?.value.trim() || null, pickup_slot: document.querySelector('#pickup-slot')?.value || null }) });
-    const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.detail || data.error?.message || 'Could not start payment checkout.');
-    const payment = data.payment;
-    await new Promise((resolve, reject) => {
-      const checkout = new window.Razorpay({ key: payment.key_id, amount: payment.amount, currency: payment.currency, name: payment.name, description: payment.description, order_id: payment.gateway_order_id, prefill: payment.prefill, theme: { color: '#176b4d' }, modal: { ondismiss: () => reject(new Error('Payment window closed. If you completed payment, refresh your order history before retrying.')) }, handler: async result => {
-        try {
-          const verifyResponse = await fetch('/api/payments/verify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.aceCanteenToken}`, Accept: 'application/json' }, body: JSON.stringify(result) });
-          const verified = await verifyResponse.json().catch(() => ({}));
-          if (!verifyResponse.ok || verified.verified !== true) throw new Error(verified.detail || 'Payment could not be verified. Do not pay again until you check order history.');
-          resolve(verified.order);
-        } catch (error) { reject(error); }
-      } });
-      checkout.on('payment.failed', event => reject(new Error(event.error?.description || 'Payment failed. Please retry or use another payment method.')));
-      checkout.open();
-    }).then(async order => {
-      cart = {}; saveCart(); document.querySelector('#checkout-notes').value = ''; renderCart(`Payment successful and verified. Order #${order.id}, pickup token #${order.token_number}.`);
-      document.querySelector('#my-orders-section').hidden = false; await loadMyOrders(); await loadCatalogue(); document.querySelector('#my-orders-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!quote || !window.confirm(`Continue to checkout for ${money(Number(quote.totalPaise) / 100)}?`)) return;
+    const createdResponse = await customerV1Request('/api/v1/orders', {
+      ...checkoutPayload(),
+      idempotencyKey: window.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     });
+    let order = createdResponse.order;
+    if (!useWallet) {
+      const payment = await customerV1Request('/api/v1/payments/upi/intent', { orderId: order.id });
+      order = await new Promise((resolve, reject) => {
+        const checkout = new window.Razorpay({
+          key: payment.keyId,
+          amount: payment.amountPaise,
+          currency: payment.currency,
+          name: 'CollegeBits',
+          description: `Canteen order ${order.orderNumber}`,
+          order_id: payment.providerOrderId,
+          prefill: payment.prefill,
+          theme: { color: '#176b4d' },
+          modal: { ondismiss: () => reject(new Error('Payment window closed. Check order history before retrying.')) },
+          handler: async result => {
+            try {
+              const verified = await customerV1Request('/api/v1/payments/verify', {
+                razorpayOrderId: result.razorpay_order_id,
+                razorpayPaymentId: result.razorpay_payment_id,
+                razorpaySignature: result.razorpay_signature
+              });
+              if (!verified.verified) throw new Error('Payment could not be verified. Check order history before paying again.');
+              resolve(verified.order);
+            } catch (error) { reject(error); }
+          }
+        });
+        checkout.on('payment.failed', event => reject(new Error(event.error?.description || 'Payment failed.')));
+        checkout.open();
+      });
+    }
+    cart = {}; saveCart(); document.querySelector('#checkout-notes').value = '';
+    document.querySelector('#checkout-reward-points').value = '0';
+    document.querySelector('#checkout-use-wallet').checked = false;
+    renderCart(`${useWallet ? 'Prepaid wallet payment confirmed.' : 'Payment successful and verified.'} Order ${order.orderNumber}, pickup token #${order.tokenNumber}.`);
+    document.querySelector('#my-orders-section').hidden = false;
+    await loadMyOrders(); await loadCatalogue();
+    customerV1Request('/api/v1/rewards/me', undefined, 'GET').then(account => {
+      const summary = document.querySelector('#rewards-wallet-summary');
+      if (summary) summary.textContent = `${account.pointsBalance} points · Wallet ${money(Number(account.walletBalancePaise) / 100)}. Wallet top-ups are issued by the canteen after verified payment.`;
+      const pointsInput = document.querySelector('#checkout-reward-points');
+      if (pointsInput) pointsInput.max = String(account.pointsBalance);
+    }).catch(() => {});
+    document.querySelector('#my-orders-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) { renderCart(`Checkout: ${error.message}`); }
   finally { button.disabled = !cartLines().length || window.aceCanteenClosed === true; button.textContent = original; }
 }

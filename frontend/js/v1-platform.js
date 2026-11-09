@@ -941,6 +941,19 @@
         mfaBtn.hidden = !["admin", "staff"].includes(me.role);
         mfaBtn.textContent = me.mfaEnabled ? "2FA Enabled (Manage)" : "Setup 2FA / MFA";
       }
+      const benefits = $("#rewards-wallet-summary");
+      const rewardsPanel = $("#rewards-wallet-panel");
+      if (benefits && rewardsPanel) {
+        rewardsPanel.hidden = me.role !== "student";
+        if (me.role === "student") {
+          const account = await v1Fetch("/api/v1/rewards/me");
+          benefits.textContent =
+            `${account.pointsBalance} points · Wallet ${paise(account.walletBalancePaise)}. ` +
+            "Wallet top-ups are issued by the canteen after verified payment.";
+          const rewardInput = $("#checkout-reward-points");
+          if (rewardInput) rewardInput.max = String(account.pointsBalance);
+        }
+      }
     } catch { /* ignore */ }
   }
 

@@ -344,6 +344,16 @@
             </table>
           </div>
         </div>
+        <div class="section-card">
+            <div class="card-head"><h2>Prepaid Wallet / Meal-Plan Credit</h2></div>
+            <p class="muted">Issue credit only after an authorized canteen employee has verified the student’s offline payment. This action is recorded in the audit trail.</p>
+            <form id="wallet-credit-form" class="inline-controls">
+              <label>Student user ID<input id="wallet-credit-user" type="number" min="1" required></label>
+              <label>Verified amount (₹)<input id="wallet-credit-amount" type="number" min="0.01" max="50000" step="0.01" required></label>
+              <label>Reason / receipt reference<input id="wallet-credit-reason" type="text" minlength="3" maxlength="255" required placeholder="Verified prepaid meal plan sale"></label>
+              <button type="submit" class="btn btn-primary">Issue Prepaid Credit</button>
+            </form>
+        </div>
       </section>
 
       <!-- ===================================================================== -->
@@ -623,6 +633,20 @@
       <!-- TAB 9: DATABASE ADMIN, ENCRYPTED GFS BACKUPS, 4-DAY RETENTION, SECURITY & AUDIT -->
       <!-- ===================================================================== -->
       <section id="tab-governance" class="admin-tab-pane" hidden>
+        <div class="section-card">
+          <div class="card-head">
+            <h2>Runtime &amp; Deployment Diagnostics</h2>
+            <button type="button" id="btn-runtime-diagnostics" class="btn btn-blue">Refresh Diagnostics</button>
+          </div>
+          <p class="muted">Shows database schema readiness and whether integrations are configured. Secret values are never displayed.</p>
+          <div id="runtime-diagnostics-summary" class="muted" role="status" aria-live="polite">Checking…</div>
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead><tr><th>Component</th><th>Status</th><th>Details</th></tr></thead>
+              <tbody id="runtime-diagnostics-tbody"></tbody>
+            </table>
+          </div>
+        </div>
         <div class="split-2">
           <div class="section-card">
             <div class="card-head">

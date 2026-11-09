@@ -683,7 +683,7 @@ def _execute_create_order_v1(
             offer.usage_count += 1
 
         loyalty_discount_paise = payload.loyaltyPointsRedeemed * 10
-        account = db.scalar(select(User).where(User.id == user.id).with_for_update())
+        db.scalar(select(User).where(User.id == user.id).with_for_update())
         if payload.loyaltyPointsRedeemed > reward_points_balance(db, user.id):
             raise ApiError(409, "INSUFFICIENT_REWARD_POINTS", "Not enough reward points are available.")
         if loyalty_discount_paise > max(0, subtotal_paise - discount_paise - 1):
@@ -1982,7 +1982,11 @@ def verify_and_collect_pickup_v1(
 
         order.status = OrderStatus.COLLECTED
         order.collected_at = now
-        earned_points = award_order_reward_points(db, order, staff.id)
+        earned_points = (
+            award_order_reward_points(db, order, staff.id)
+            if order.user and order.user.role == UserRole.STUDENT
+            else 0
+        )
         record_order_status_change(db, order, prev_status, "COLLECTED", staff.id, "All items collected via verified handover")
         notify_user(
             db,
