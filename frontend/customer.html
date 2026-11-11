@@ -25,16 +25,26 @@
     </a>
     <div class="header-account">
       <span class="ws-live-pill offline" id="v1-ws-status" title="Real-time order &amp; queue stream"><span class="ws-dot"></span><span id="v1-ws-label">Connecting…</span></span>
-      <button class="secondary-button" id="install-app-button" type="button" hidden>Install app</button>
-      <details class="app-install-help">
-        <summary>Install app</summary>
-        <p><strong>Android:</strong> open this page in Chrome and choose Install app from the browser menu.</p>
-        <p><strong>iPhone or iPad:</strong> open this page in Safari, tap Share, then choose Add to Home Screen.</p>
-      </details>
+      <button class="install-app-button" id="install-app-button" type="button" aria-label="Install CollegeBits app on your phone">📲 Install app</button>
       <a class="header-account-link" id="header-account-link" href="#account">Sign in / Account</a>
       <span class="header-account-user" id="header-account-user" hidden></span>
     </div>
   </header>
+
+  <!-- Mobile PWA Install Banner (Visible on Phones & Mobile Browsers) -->
+  <section id="pwa-install-banner" class="pwa-install-banner" aria-label="Install CollegeBits application" hidden>
+    <div class="pwa-banner-content">
+      <img class="pwa-banner-icon" src="/assets/icon-192.png" alt="CollegeBits icon" width="40" height="40">
+      <div class="pwa-banner-text">
+        <strong>CollegeBits App</strong>
+        <span>Instant ordering &amp; live kitchen token tracking</span>
+      </div>
+    </div>
+    <div class="pwa-banner-buttons">
+      <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">Install</button>
+      <button type="button" class="pwa-banner-close" id="pwa-banner-dismiss-btn" aria-label="Dismiss install prompt">✕</button>
+    </div>
+  </section>
 
   <main>
     <section class="hero">
@@ -712,6 +722,76 @@
       <button type="submit" class="primary-button">Ask</button>
     </form>
   </aside>
+
+  <!-- PWA Install Guide Modal (iOS & Android fallback) -->
+  <div id="pwa-install-modal" class="pwa-modal-backdrop" hidden>
+    <div class="pwa-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pwa-modal-title">
+      <div class="pwa-modal-head">
+        <img class="pwa-modal-icon" src="/assets/icon-192.png" alt="CollegeBits app" width="44" height="44">
+        <div>
+          <h3 id="pwa-modal-title">Install CollegeBits</h3>
+          <p class="pwa-modal-sub">Add to your phone for 1-tap ordering</p>
+        </div>
+        <button type="button" class="pwa-modal-close" id="pwa-modal-close" aria-label="Close dialog">✕</button>
+      </div>
+
+      <div class="pwa-modal-body">
+        <!-- iOS Instructions -->
+        <div id="pwa-guide-ios" class="pwa-guide-steps" hidden>
+          <div class="pwa-step">
+            <span class="pwa-step-num">1</span>
+            <div class="pwa-step-desc">
+              <strong>Tap the Share button</strong>
+              <p>Tap the <strong>Share</strong> icon at the bottom of Safari (the square with an arrow pointing up ⎋).</p>
+            </div>
+          </div>
+          <div class="pwa-step">
+            <span class="pwa-step-num">2</span>
+            <div class="pwa-step-desc">
+              <strong>Select "Add to Home Screen"</strong>
+              <p>Scroll down the share sheet and tap <strong>"Add to Home Screen"</strong> (➕).</p>
+            </div>
+          </div>
+          <div class="pwa-step">
+            <span class="pwa-step-num">3</span>
+            <div class="pwa-step-desc">
+              <strong>Tap "Add" in top corner</strong>
+              <p>Tap <strong>"Add"</strong> in the top-right corner. The CollegeBits icon will appear on your home screen!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Android Instructions -->
+        <div id="pwa-guide-android" class="pwa-guide-steps" hidden>
+          <div class="pwa-step">
+            <span class="pwa-step-num">1</span>
+            <div class="pwa-step-desc">
+              <strong>Open Browser Menu</strong>
+              <p>Tap the three dots <strong>(⋮)</strong> in the top-right corner of Chrome.</p>
+            </div>
+          </div>
+          <div class="pwa-step">
+            <span class="pwa-step-num">2</span>
+            <div class="pwa-step-desc">
+              <strong>Choose "Install app"</strong>
+              <p>Tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.</p>
+            </div>
+          </div>
+          <div class="pwa-step">
+            <span class="pwa-step-num">3</span>
+            <div class="pwa-step-desc">
+              <strong>Confirm Installation</strong>
+              <p>Tap <strong>"Install"</strong> when prompted. The app will be added to your home screen!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pwa-modal-foot">
+        <button type="button" class="pwa-modal-confirm" id="pwa-modal-confirm">Got it!</button>
+      </div>
+    </div>
+  </div>
 
   <footer><a class="footer-brand" href="/customer/">ACE Canteen</a><span>Live campus canteen pre-order, UPI &amp; QR collection platform.</span><span>Secure student ordering and live order tracking</span></footer>
 </body>

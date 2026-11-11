@@ -12,19 +12,122 @@
       }
     });
   }
+
   let installPrompt = null;
-  const installButton = document.querySelector("#install-app-button");
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  function hideAllInstallPrompts() {
+    const installButton = document.querySelector("#install-app-button");
+    const installBanner = document.querySelector("#pwa-install-banner");
+    const installModal = document.querySelector("#pwa-install-modal");
+    if (installButton) installButton.hidden = true;
+    if (installBanner) installBanner.hidden = true;
+    if (installModal) installModal.hidden = true;
+  }
+
+  function showInstallModal() {
+    const installModal = document.querySelector("#pwa-install-modal");
+    if (!installModal) return;
+    const guideIos = document.querySelector("#pwa-guide-ios");
+    const guideAndroid = document.querySelector("#pwa-guide-android");
+    if (guideIos) guideIos.hidden = !isIOS;
+    if (guideAndroid) guideAndroid.hidden = isIOS;
+    installModal.hidden = false;
+  }
+
+  function closeInstallModal() {
+    const installModal = document.querySelector("#pwa-install-modal");
+    if (installModal) installModal.hidden = true;
+  }
+
+  async function triggerInstallFlow() {
+    if (installPrompt) {
+      try {
+        installPrompt.prompt();
+        const choice = await installPrompt.userChoice;
+        if (choice && choice.outcome === "accepted") {
+          installPrompt = null;
+          hideAllInstallPrompts();
+          return;
+        }
+      } catch (err) {
+        console.warn("Install prompt error:", err);
+      }
+    }
+    // Fallback: Show step-by-step guidance for iOS or browsers without deferred prompt
+    showInstallModal();
+  }
+
+  function setupInstallUI() {
+    if (isStandalone) {
+      hideAllInstallPrompts();
+      return;
+    }
+
+    const installButton = document.querySelector("#install-app-button");
+    if (installButton) {
+      installButton.hidden = false;
+      installButton.onclick = triggerInstallFlow;
+    }
+
+    const installBanner = document.querySelector("#pwa-install-banner");
+    const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
+    const bannerDismissBtn = document.querySelector("#pwa-banner-dismiss-btn");
+
+    let dismissed = false;
+    try {
+      dismissed = sessionStorage.getItem("pwa_install_dismissed") === "true";
+    } catch (_) {}
+
+    if (installBanner && !dismissed) {
+      installBanner.hidden = false;
+    }
+
+    if (bannerInstallBtn) bannerInstallBtn.onclick = triggerInstallFlow;
+    if (bannerDismissBtn) {
+      bannerDismissBtn.onclick = () => {
+        if (installBanner) installBanner.hidden = true;
+        try { sessionStorage.setItem("pwa_install_dismissed", "true"); } catch (_) {}
+      };
+    }
+
+    const modalClose = document.querySelector("#pwa-modal-close");
+    const modalConfirm = document.querySelector("#pwa-modal-confirm");
+    const installModal = document.querySelector("#pwa-install-modal");
+
+    if (modalClose) modalClose.onclick = closeInstallModal;
+    if (modalConfirm) modalConfirm.onclick = closeInstallModal;
+    if (installModal) {
+      installModal.onclick = (e) => {
+        if (e.target === installModal) closeInstallModal();
+      };
+    }
+  }
+
   window.addEventListener("beforeinstallprompt", event => {
-    event.preventDefault(); installPrompt = event;
-    if (installButton) installButton.hidden = false;
+    event.preventDefault();
+    installPrompt = event;
+    if (!isStandalone) {
+      const installButton = document.querySelector("#install-app-button");
+      if (installButton) installButton.hidden = false;
+      const installBanner = document.querySelector("#pwa-install-banner");
+      let dismissed = false;
+      try { dismissed = sessionStorage.getItem("pwa_install_dismissed") === "true"; } catch (_) {}
+      if (installBanner && !dismissed) installBanner.hidden = false;
+    }
   });
-  installButton?.addEventListener("click", async () => {
-    if (!installPrompt) return;
-    installPrompt.prompt();
-    await installPrompt.userChoice;
-    installPrompt = null; installButton.hidden = true;
+
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+    hideAllInstallPrompts();
   });
-  window.addEventListener("appinstalled", () => { installPrompt = null; if (installButton) installButton.hidden = true; });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", setupInstallUI);
+  } else {
+    setupInstallUI();
+  }
 })();
 
 "use strict";
