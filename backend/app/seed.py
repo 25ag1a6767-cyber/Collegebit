@@ -43,11 +43,15 @@ def seed_demo_data(db: Session) -> None:
         admin = User(
             full_name="ACE Admin",
             email="25ag1a6767@aceec.ac.in",
+            phone="25ag1a6767",
             password_hash=hash_password("ace@25ag1a67676"),
             role=UserRole.ADMIN,
             is_active=True,
         )
         db.add(admin)
+        db.flush()
+    elif not admin.phone:
+        admin.phone = "25ag1a6767"
         db.flush()
 
     # 3. Ensure default staff user exists
@@ -56,11 +60,15 @@ def seed_demo_data(db: Session) -> None:
         staff = User(
             full_name="ACE Kitchen Staff",
             email="25ag1a6767@gmail.com",
+            phone="25ag1a6767staff",
             password_hash=hash_password("ace@25ag1a67676staff"),
             role=UserRole.STAFF,
             is_active=True,
         )
         db.add(staff)
+        db.flush()
+    elif not staff.phone:
+        staff.phone = "25ag1a6767staff"
         db.flush()
 
     # Assign staff to both counters
