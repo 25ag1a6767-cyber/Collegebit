@@ -89,18 +89,6 @@ h1 {
   color: #ffffff;
 }
 
-.portal-links a.portal-apk-link {
-  background: #fdfaf3;
-  border-color: #e4d7b5;
-  color: #7a5404;
-}
-
-.portal-links a.portal-apk-link:hover,
-.portal-links a.portal-apk-link:focus-visible {
-  background: #fbf3db;
-  border-color: #c99c33;
-}
-
 .portal-links a:hover,
 .portal-links a:focus-visible {
   border-color: #39704e;
