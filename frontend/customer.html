@@ -7,10 +7,13 @@
   <meta name="description" content="ACE Canteen — live campus pre-order, UPI checkout, QR pickup and kitchen operations platform.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/assets/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icon-192.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/assets/icon-192.png">
+  <link rel="apple-touch-icon" sizes="167x167" href="/assets/icon-192.png">
   <meta name="apple-mobile-web-app-title" content="CollegeBits">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>ACE Canteen | Campus ordering</title>
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/v1-platform.css">
@@ -753,25 +756,29 @@
 
         <!-- iOS Instructions -->
         <div id="pwa-guide-ios" class="pwa-guide-steps" hidden>
+          <div id="pwa-ios-inapp-alert" class="pwa-inapp-alert" hidden>
+            <strong>⚠️ Viewing inside an in-app browser?</strong><br>
+            WhatsApp, Instagram, and Telegram block direct installation. Tap the <strong>•••</strong> menu or <strong>Compass icon (🧭)</strong> and select <strong>"Open in Safari"</strong> first.
+          </div>
           <div class="pwa-step">
             <span class="pwa-step-num">1</span>
             <div class="pwa-step-desc">
-              <strong>Tap the Share button</strong>
-              <p>Tap the <strong>Share</strong> icon at the bottom of Safari (the square with an arrow pointing up ⎋).</p>
+              <strong>Tap the Share button in Safari</strong>
+              <p>At the bottom toolbar of Safari, tap the <strong>Share</strong> icon <span class="pwa-ios-step-icon">⎋</span> (square with an upward arrow).</p>
             </div>
           </div>
           <div class="pwa-step">
             <span class="pwa-step-num">2</span>
             <div class="pwa-step-desc">
               <strong>Select "Add to Home Screen"</strong>
-              <p>Scroll down the share sheet and tap <strong>"Add to Home Screen"</strong> (➕).</p>
+              <p>Scroll down the share sheet and tap <strong>"Add to Home Screen"</strong> <span class="pwa-ios-step-icon">➕</span>.</p>
             </div>
           </div>
           <div class="pwa-step">
             <span class="pwa-step-num">3</span>
             <div class="pwa-step-desc">
-              <strong>Tap "Add" in top corner</strong>
-              <p>Tap <strong>"Add"</strong> in the top-right corner. The CollegeBits icon will appear on your home screen!</p>
+              <strong>Tap "Add" in top-right corner</strong>
+              <p>Tap <strong>"Add"</strong> at the top right. CollegeBits will be installed on your iPhone home screen with standalone app performance!</p>
             </div>
           </div>
         </div>

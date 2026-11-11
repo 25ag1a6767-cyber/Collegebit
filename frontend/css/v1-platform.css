@@ -805,6 +805,31 @@
 .pwa-guide-steps[hidden] {
   display: none !important;
 }
+.pwa-inapp-alert {
+  background: #fef2f2;
+  border: 1.5px solid #fca5a5;
+  color: #991b1b;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+.pwa-inapp-alert[hidden] {
+  display: none !important;
+}
+.pwa-ios-step-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+}
 .pwa-step {
   display: flex;
   align-items: flex-start;

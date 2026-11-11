@@ -16,6 +16,7 @@
   let installPrompt = null;
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isInApp = /FBAN|FBAV|Instagram|WhatsApp|Telegram|Line|Twitter|Snapchat|MicroMessenger/i.test(navigator.userAgent);
 
   function hideAllInstallPrompts() {
     const installButton = document.querySelector("#install-app-button");
@@ -33,10 +34,12 @@
     const guideAndroid = document.querySelector("#pwa-guide-android");
     const apkSection = document.querySelector("#pwa-apk-section");
     const pwaDivider = document.querySelector("#pwa-divider");
+    const inAppAlert = document.querySelector("#pwa-ios-inapp-alert");
     if (guideIos) guideIos.hidden = !isIOS;
     if (guideAndroid) guideAndroid.hidden = isIOS;
     if (apkSection) apkSection.hidden = isIOS;
     if (pwaDivider) pwaDivider.hidden = isIOS;
+    if (inAppAlert) inAppAlert.hidden = !(isIOS && isInApp);
     installModal.hidden = false;
   }
 
