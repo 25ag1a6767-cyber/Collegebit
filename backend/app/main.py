@@ -21,7 +21,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select, text, func, or_, cast, String
@@ -476,6 +476,13 @@ async def web_app_manifest() -> FileResponse:
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/customer/"})
+
+APK_RELEASE_URL = "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk"
+
+@app.get("/download/app.apk", include_in_schema=False)
+@app.get("/app.apk", include_in_schema=False)
+async def download_android_apk() -> RedirectResponse:
+    return RedirectResponse(url=APK_RELEASE_URL, status_code=302)
 
 @app.get("/api/health", tags=["system"])
 async def health() -> dict[str, Any]:

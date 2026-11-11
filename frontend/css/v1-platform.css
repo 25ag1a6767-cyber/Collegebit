@@ -653,6 +653,26 @@
 .pwa-banner-btn:hover {
   background: #4ade80;
 }
+.pwa-banner-apk-btn {
+  padding: 6px 13px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 999px;
+  background: #047857;
+  color: #ffffff !important;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  display: inline-flex;
+  align-items: center;
+  transition: background-color 0.15s ease;
+}
+.pwa-banner-apk-btn:hover {
+  background: #059669;
+}
+.pwa-banner-apk-btn[hidden] {
+  display: none !important;
+}
 .pwa-banner-close {
   background: transparent;
   border: none;
@@ -814,6 +834,63 @@
   font-size: 0.82rem;
   color: #475569;
   line-height: 1.45;
+}
+.pwa-apk-cta {
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px rgba(20, 83, 45, 0.08);
+}
+.pwa-apk-cta[hidden] {
+  display: none !important;
+}
+.pwa-apk-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+}
+.pwa-apk-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+.pwa-apk-info {
+  display: flex;
+  flex-direction: column;
+}
+.pwa-apk-info strong {
+  font-size: 0.95rem;
+  color: #14532d;
+  font-weight: 800;
+}
+.pwa-apk-info small {
+  font-size: 0.75rem;
+  color: #166534;
+  margin-top: 1px;
+}
+.pwa-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 4px 0;
+}
+.pwa-divider[hidden] {
+  display: none !important;
+}
+.pwa-divider::before,
+.pwa-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+.pwa-divider span {
+  padding: 0 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.5px;
 }
 .pwa-modal-foot {
   display: flex;

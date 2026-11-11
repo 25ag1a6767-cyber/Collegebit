@@ -2,7 +2,7 @@
 // Phase 21: installable app shell. Offline mode never submits orders or caches API/private data.
 (() => {
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
-    window.addEventListener("load", async () => {
+    (async () => {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.filter(registration => registration.scope === `${location.origin}/`).map(registration => registration.unregister()));
@@ -10,7 +10,7 @@
       } catch (error) {
         console.warn("ACE Canteen offline shell unavailable:", error);
       }
-    });
+    })();
   }
 
   let installPrompt = null;
@@ -31,8 +31,12 @@
     if (!installModal) return;
     const guideIos = document.querySelector("#pwa-guide-ios");
     const guideAndroid = document.querySelector("#pwa-guide-android");
+    const apkSection = document.querySelector("#pwa-apk-section");
+    const pwaDivider = document.querySelector("#pwa-divider");
     if (guideIos) guideIos.hidden = !isIOS;
     if (guideAndroid) guideAndroid.hidden = isIOS;
+    if (apkSection) apkSection.hidden = isIOS;
+    if (pwaDivider) pwaDivider.hidden = isIOS;
     installModal.hidden = false;
   }
 
@@ -74,6 +78,11 @@
     const installBanner = document.querySelector("#pwa-install-banner");
     const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
     const bannerDismissBtn = document.querySelector("#pwa-banner-dismiss-btn");
+    const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
+
+    if (bannerApkBtn && isIOS) {
+      bannerApkBtn.hidden = true;
+    }
 
     let dismissed = false;
     try {

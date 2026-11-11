@@ -9,6 +9,7 @@
   <link rel="apple-touch-icon" href="/assets/icon-192.png">
   <meta name="apple-mobile-web-app-title" content="CollegeBits">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>ACE Canteen | Campus ordering</title>
   <link rel="stylesheet" href="/css/style.css">
@@ -41,7 +42,8 @@
       </div>
     </div>
     <div class="pwa-banner-buttons">
-      <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">Install</button>
+      <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">📲 Install</button>
+      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">Download APK</a>
       <button type="button" class="pwa-banner-close" id="pwa-banner-dismiss-btn" aria-label="Dismiss install prompt">✕</button>
     </div>
   </section>
@@ -736,6 +738,19 @@
       </div>
 
       <div class="pwa-modal-body">
+        <!-- Direct Android APK Download Button (Works on ANY Android phone) -->
+        <div class="pwa-apk-cta" id="pwa-apk-section">
+          <a class="pwa-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">
+            <span class="pwa-apk-icon">🤖</span>
+            <div class="pwa-apk-info">
+              <strong>Download Android App (.APK)</strong>
+              <small>Direct install for Samsung, OnePlus, Vivo, Oppo, Realme, etc.</small>
+            </div>
+          </a>
+        </div>
+
+        <div class="pwa-divider" id="pwa-divider"><span>OR ADD TO HOME SCREEN</span></div>
+
         <!-- iOS Instructions -->
         <div id="pwa-guide-ios" class="pwa-guide-steps" hidden>
           <div class="pwa-step">
