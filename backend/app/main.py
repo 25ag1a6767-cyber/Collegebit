@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import csv
 import base64
 import io
+import os
 from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 import logging
@@ -245,13 +246,29 @@ app = FastAPI(
     openapi_url=None if IS_PRODUCTION else "/openapi.json",
 )
 _cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-if not _cors_origins and not IS_PRODUCTION:
-    _cors_origins = [
+_official_origins = [
+    "https://www.collegebits.com",
+    "https://collegebits.com",
+    "http://www.collegebits.com",
+    "http://collegebits.com",
+    "https://app-sai-e3e1.vercel.app",
+]
+for _o in _official_origins:
+    if _o not in _cors_origins:
+        _cors_origins.append(_o)
+
+if not IS_PRODUCTION:
+    for _dev in [
         "http://localhost:8081",
         "http://127.0.0.1:8081",
         "http://localhost:19006",
         "http://localhost:5173",
-    ]
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]:
+        if _dev not in _cors_origins:
+            _cors_origins.append(_dev)
+
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
@@ -303,6 +320,14 @@ def _check_general_api_rate_limit(request: Request) -> int:
 
 @app.middleware("http")
 async def security_and_request_logging(request: Request, call_next):
+    # Enforce canonical custom domain (e.g. www.collegebits.com) when enabled
+    if os.getenv("ENFORCE_CANONICAL_DOMAIN", "false").lower() in ("true", "1", "yes"):
+        canonical_host = os.getenv("CANONICAL_DOMAIN", "www.collegebits.com").strip().lower()
+        req_host = (request.headers.get("host") or "").split(":")[0].lower()
+        if req_host in ("app-sai-e3e1.vercel.app",) and not request.url.path.startswith("/api/health"):
+            target_url = str(request.url).replace(f"://{req_host}", f"://{canonical_host}", 1)
+            return RedirectResponse(url=target_url, status_code=308)
+
     # Accept only a simple caller-supplied request ID; otherwise create one. This
     # avoids log injection while making requests traceable across a reverse proxy.
     supplied_id = request.headers.get("x-request-id", "")

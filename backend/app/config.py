@@ -41,9 +41,9 @@ class Settings(BaseSettings):
     object_storage_bucket: str = ""
     object_storage_public_url: str = ""
     # CORS origins for mobile / separate web builds (comma-separated; empty = same-origin only in production)
-    cors_origins: str = ""
+    cors_origins: str = "https://www.collegebits.com,https://collegebits.com,https://app-sai-e3e1.vercel.app"
     # Public base URL used in emailed links (no trailing slash), e.g. https://canteen.example.edu
-    public_base_url: str = "http://127.0.0.1:8000"
+    public_base_url: str = "https://www.collegebits.com"
     password_reset_minutes: int = 30
     email_verification_required: bool = False
     email_receipts_enabled: bool = True
