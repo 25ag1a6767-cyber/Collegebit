@@ -140,8 +140,8 @@ The project includes operational, security, deployment and reporting foundations
 - Production validation still requires Razorpay test-mode delivery/retry tests and review of concurrent webhook behavior on the target database.
 
 
-### No-refunds policy
-This application does not provide refund requests, refund processing, or refund buttons. Paid orders cannot be cancelled by students through the application. Before enabling real payments, the college must display its no-refunds policy clearly before checkout and ensure it complies with applicable law and payment-provider rules. Payment failures and duplicate webhook deliveries must still be reconciled; these are not refund features.
+### Refund and cancellation policy
+Student-initiated cancellations are restricted once food preparation begins to protect cafeteria inventory and eliminate unnecessary food waste. However, full automated UPI refunds are immediately dispatched if kitchen staff rejects an order (e.g. stockout, kitchen rush), and authorized administrators have access to full/partial gateway refund tools in the Admin Console backed by Razorpay webhook reconciliation. Payment failures and duplicate webhook deliveries are handled idempotently.
 
 ## Phase 24 — production deployment hardening
 
