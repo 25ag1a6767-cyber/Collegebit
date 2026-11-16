@@ -54,7 +54,7 @@
         <button type="button" class="nav-tab" data-tab="users">4. Users, Staff &amp; Permissions</button>
         <button type="button" class="nav-tab" data-tab="menu">5. Menu, Pricing &amp; Offers</button>
         <button type="button" class="nav-tab" data-tab="procurement">6. Inventory, Suppliers, POs &amp; Expenses</button>
-        <button type="button" class="nav-tab" data-tab="operations">7. Orders, Payments, Refunds &amp; Feedback</button>
+        <button type="button" class="nav-tab" data-tab="operations">7. Orders, Payments, Incidents &amp; Feedback</button>
         <button type="button" class="nav-tab" data-tab="settings">8. Counters &amp; Operating Hours</button>
         <button type="button" class="nav-tab" data-tab="governance">9. DB Admin, Backups, 4-Day Retention &amp; Security</button>
       </nav>
@@ -159,7 +159,7 @@
                   <option value="supplier_purchase">10. Supplier &amp; Purchase Report</option>
                   <option value="staff_performance">11. Staff Performance Report</option>
                   <option value="customer_activity">12. Customer Activity Report</option>
-                  <option value="refunds">13. Refund Report</option>
+                  <option value="payment_incidents">13. Payment Incidents &amp; Exceptions Report</option>
                   <option value="profit_expense">14. Profit &amp; Expense Report</option>
                 </select>
               </label>
@@ -312,7 +312,7 @@
               </label>
               <div class="split-2">
                 <label><input type="checkbox" id="perm-accept" checked /> Accept Incoming Orders</label>
-                <label><input type="checkbox" id="perm-reject" checked /> Reject Orders (Auto-Refund)</label>
+                <label><input type="checkbox" id="perm-reject" checked /> Reject Orders (Incident Flagging)</label>
                 <label><input type="checkbox" id="perm-prep" checked /> Update Kitchen Prep Status</label>
                 <label><input type="checkbox" id="perm-pickup" checked /> Scan &amp; Verify QR Pickup</label>
                 <label><input type="checkbox" id="perm-avail" checked /> Toggle Menu Availability</label>
@@ -527,7 +527,7 @@
       </section>
 
       <!-- ===================================================================== -->
-      <!-- TAB 7: ORDERS, PAYMENTS, REFUNDS & CUSTOMER FEEDBACK -->
+      <!-- TAB 7: ORDERS, PAYMENTS, INCIDENTS & CUSTOMER FEEDBACK -->
       <!-- ===================================================================== -->
       <section id="tab-operations" class="admin-tab-pane" hidden>
         <div class="section-card">
@@ -542,7 +542,6 @@
                 <option value="ready">Ready</option>
                 <option value="collected">Collected</option>
                 <option value="cancelled">Cancelled</option>
-                <option value="refund_pending">Refund Pending</option>
               </select>
               <input id="ord-filter-search" type="search" placeholder="Order # or customer…" />
               <button type="button" id="btn-ord-filter" class="btn btn-outline">Search Orders</button>
@@ -558,13 +557,8 @@
 
         <div class="split-2">
           <div class="section-card">
-            <div class="card-head"><h2>Payment Reconciliation &amp; Refunds</h2></div>
-            <form id="refund-create-form" class="split-2">
-              <label>Payment Record ID<input id="ref-payment-id" type="number" min="1" required placeholder="Payment ID from table below" /></label>
-              <label>Refund Amount in ₹ (blank = full remaining)<input id="ref-amount" type="number" step="0.5" min="1" placeholder="Full balance" /></label>
-              <label>Refund Reason<input id="ref-reason" type="text" required minlength="3" placeholder="Item out of stock / duplicate charge" /></label>
-              <div><button type="submit" class="btn btn-danger">Issue Gateway Refund</button></div>
-            </form>
+            <div class="card-head"><h2>Payment Reconciliation &amp; Incident Ledger</h2></div>
+            <p class="muted">Strict no-refunds policy: all verified payment transactions are preserved permanently. Late captures or unfulfilled paid orders are flagged below for authorized administrative resolution.</p>
             <div id="payment-discrepancies-box"></div>
             <div class="table-scroll">
               <table class="admin-table">
@@ -671,7 +665,7 @@
               <h2>4-Day Hybrid Data Retention Engine</h2>
               <span class="pill pill-ok">Permanent Records Protected</span>
             </div>
-            <p class="muted">Deletes ONLY eligible temporary records older than N days (expired sessions, used QR tokens, temporary API logs, delivered outbox rows). Orders, payments, refunds, users, stock movements, and audit logs are <strong>never</strong> deleted. Automatically aborts if backup health fails.</p>
+            <p class="muted">Deletes ONLY eligible temporary records older than N days (expired sessions, used QR tokens, temporary API logs, delivered outbox rows). Orders, payments, users, stock movements, and audit logs are <strong>never</strong> deleted. Automatically aborts if backup health fails.</p>
             <div class="inline-controls">
               <label for="ret-days">Temp Retention Days
                 <input id="ret-days" type="number" min="1" max="365" value="4" />

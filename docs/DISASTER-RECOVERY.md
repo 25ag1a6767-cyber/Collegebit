@@ -26,14 +26,14 @@ Before deleting a single row, `run_four_day_retention_cleanup()` calls `check_ba
 3. **If backup verification fails or is missing, cleanup immediately halts (`status = "aborted_unhealthy_backup"`) and zero rows are deleted.**
 
 ### B. Hybrid Rollup Archival
-Before pruning temporary tables, historical daily totals (orders, paid orders, gross/discount/tax/net revenue, COGS, expenses, wastage, refunds, net profit) are upserted into `daily_sales_archives`.
+Before pruning temporary tables, historical daily totals (orders, paid orders, gross/discount/tax/net revenue, COGS, expenses, wastage, net profit) are upserted into `daily_sales_archives`.
 
 ### C. Strict Separation of Temporary vs Permanent Records
 
 | Purged After 4 Days (Temporary Operational Artifacts ONLY) | NEVER Deleted (Protected Permanent Records) |
 | :--- | :--- |
 | Expired or revoked `refresh_sessions` | `orders`, `order_items`, `order_status_history` |
-| Expired or used `pickup_tokens` on non-active orders | `payments`, `refunds`, `payment_webhook_events` |
+| Expired or used `pickup_tokens` on non-active orders | `payments`, `payment_webhook_events` |
 | Completed/expired `checkout_idempotency` keys | `pickups` (verified pickup audit records) |
 | Delivered `outbox_events` | `users` (students, staff, admins) |
 | Read non-financial `notifications` | `inventory_movements`, `stock_movements`, `product_batches` |

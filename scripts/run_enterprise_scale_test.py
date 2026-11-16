@@ -165,7 +165,7 @@ def run_enterprise_scale_benchmark() -> dict:
                 ("/api/v1/tokens?limit=10", staff_token),
             ]
 
-            for total_reqs, workers in [(100, 10), (500, 25), (1000, 35), (2000, 50)]:
+            for total_reqs, workers in [(50, 25), (100, 35), (250, 50), (500, 64), (1000, 64), (2000, 64)]:
                 t0 = time.perf_counter()
                 latencies = []
                 codes = []
@@ -295,7 +295,7 @@ def run_enterprise_scale_benchmark() -> dict:
             }
 
             final_benchmark_report = {
-                "system": "CampusBite AI v2.0 - Enterprise Canteen Ecosystem",
+                "system": "CollegeBits 3.0 (CampusBite AI) - Enterprise Canteen Ecosystem",
                 "institution": "ACE Engineering College",
                 "concurrencyTiers": tier_results,
                 "stockContentionStress": {
@@ -308,6 +308,7 @@ def run_enterprise_scale_benchmark() -> dict:
                     "wallTimeSeconds": round(wall_contention, 3),
                     "latencyP50Ms": pct(contention_latencies, 50),
                     "latencyP95Ms": pct(contention_latencies, 95),
+                    "latencyP99Ms": pct(contention_latencies, 99),
                 },
                 "biAnalyticsDownloadExports": export_results,
                 "dataIntegrityAudit": database_integrity,

@@ -25,7 +25,6 @@ UUID_TABLES = (
     "orders",
     "order_status_history",
     "payments",
-    "refunds",
     "pickup_tokens",
     "pickups",
     "order_reviews",

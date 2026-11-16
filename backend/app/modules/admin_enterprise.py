@@ -61,7 +61,7 @@ from app.modules.common import (
     serialize_order_v1,
     serialize_user_v1,
 )
-from app.modules.orders_payments import _initiate_gateway_refund, _restore_order_inventory_once
+from app.modules.orders_payments import _restore_order_inventory_once
 from app.security import require_roles, revoke_refresh_sessions
 
 router = APIRouter(prefix="/admin", tags=["v1-admin-enterprise"])
@@ -75,7 +75,7 @@ def get_admin_runtime_diagnostics_v1(
     db: Session = Depends(get_db),
 ):
     cfg = get_settings()
-    head_revision = "0022_rewards_and_wallet"
+    head_revision = "0023_collegebits_v3_no_refunds"
     database: dict[str, Any] = {
         "available": False,
         "schemaReady": False,
@@ -679,21 +679,20 @@ def admin_override_order_status_v1(
     desired = payload.status.strip().lower()
     prev = order.status.value
     now = datetime.now(timezone.utc)
-    refund_info = None
+    incident_flagged = False
 
     if desired == "cancelled":
-        if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+        if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED}:
             raise ApiError(409, "INVALID_TRANSITION", f"Cannot cancel order in state '{order.status.value}'.")
         _restore_order_inventory_once(db, order, f"Admin cancelled #{order.id}: {payload.reason}", actor_user_id=admin.id)
         order.cancelled_at = now
+        order.status = OrderStatus.CANCELLED
+        order.exception_reason = payload.reason.strip()[:255]
         if order.payment_status == PaymentStatus.PAID:
-            order.status = OrderStatus.REFUND_PENDING
-            order.payment_status = PaymentStatus.REFUND_PENDING
+            incident_flagged = True
             paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
-            rf = _initiate_gateway_refund(db, order, paid_rec, order.effective_total_paise, payload.reason, admin.id)
-            refund_info = {"refundId": rf.id, "status": rf.status, "amountPaise": rf.amount_paise}
-        else:
-            order.status = OrderStatus.CANCELLED
+            if paid_rec is not None:
+                paid_rec.late_capture_flagged = True
     else:
         if order.payment_status != PaymentStatus.PAID:
             raise ApiError(409, "PAYMENT_REQUIRED", "Cannot advance unpaid order to fulfillment states.")
@@ -712,14 +711,18 @@ def admin_override_order_status_v1(
         order.user_id,
         "order_status",
         f"Order #{order.order_number or order.id} updated",
-        f"Order status updated to {order.status.value.upper()}: {payload.reason}",
+        (
+            f"Order #{order.order_number or order.id} could not be fulfilled ({payload.reason}). Your payment record is preserved and flagged for authorized administrative resolution."
+            if incident_flagged
+            else f"Order status updated to {order.status.value.upper()}: {payload.reason}"
+        ),
         entity_type="order",
         entity_id=order.id,
     )
-    record_audit(db, "admin.order_status_override", "order", order.id, admin.id, {"from": prev, "to": order.status.value, "reason": payload.reason})
+    record_audit(db, "admin.order_status_override", "order", order.id, admin.id, {"from": prev, "to": order.status.value, "reason": payload.reason, "incident_flagged": incident_flagged})
     commit_and_flush_outbox(db)
     db.refresh(order)
-    return ok(request, {"order": serialize_order_v1(order, include_customer=True, include_history=True), "refund": refund_info})
+    return ok(request, {"order": serialize_order_v1(order, include_customer=True, include_history=True), "incidentFlagged": incident_flagged})
 
 
 # ==============================================================================

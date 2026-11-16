@@ -57,7 +57,6 @@ V1_ORDER_STATUS_OUT = {
     OrderStatus.COLLECTED: "COLLECTED",
     OrderStatus.PARTIALLY_COLLECTED: "PARTIALLY_COLLECTED",
     OrderStatus.CANCELLED: "CANCELLED",
-    OrderStatus.REFUND_PENDING: "REFUND_PENDING",
 }
 
 V1_PAYMENT_STATUS_OUT = {
@@ -65,9 +64,6 @@ V1_PAYMENT_STATUS_OUT = {
     PaymentStatus.PAID: "SUCCESS",
     PaymentStatus.FAILED: "FAILED",
     PaymentStatus.EXPIRED: "EXPIRED",
-    PaymentStatus.REFUND_PENDING: "REFUND_PENDING",
-    PaymentStatus.PARTIALLY_REFUNDED: "PARTIALLY_REFUNDED",
-    PaymentStatus.REFUNDED: "REFUNDED",
 }
 
 
@@ -165,7 +161,7 @@ def restore_order_reward_points(db: Session, order: Order, actor_user_id: int | 
             db,
             order.user_id,
             order.loyalty_points_redeemed,
-            f"Restore reward points for cancelled/refunded order #{order.id}",
+            f"Restore reward points for cancelled order #{order.id}",
             f"order:{order.id}:points-restored",
             order_id=order.id,
             actor_user_id=actor_user_id,
@@ -587,17 +583,43 @@ def evaluate_discount_paise(db: Session, code: str | None, subtotal_paise: int, 
 
 
 def estimate_counter_wait_minutes(db: Session, counter_id: int | None, extra_prep_minutes: int = 8) -> dict[str, Any]:
-    """Transparent queue + preparation duration + recent fulfillment speed formula."""
+    """Transparent queue + preparation duration + staff availability + recent fulfillment speed formula."""
+    now_utc = datetime.now(timezone.utc)
     active_statuses = [OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.ACCEPTED, OrderStatus.PREPARING]
-    stmt = select(func.count(Order.id)).where(Order.payment_status == PaymentStatus.PAID, Order.status.in_(active_statuses))
+    stmt = select(Order).where(Order.payment_status == PaymentStatus.PAID, Order.status.in_(active_statuses))
     if counter_id is not None:
         stmt = stmt.where((Order.counter_id == counter_id) | (Order.counter_id.is_(None)))
-    queued_count = db.scalar(stmt) or 0
+    active_orders = db.scalars(stmt).all()
+    queued_count = len(active_orders)
+
+    delayed_count = sum(
+        1
+        for ao in active_orders
+        if ao.estimated_ready_at is not None and as_utc(ao.estimated_ready_at) < now_utc
+    )
+
+    # Consider active staff availability at this counter
+    if counter_id is not None:
+        staff_cnt = db.scalar(
+            select(func.count(User.id))
+            .join(UserCounterAssignment, UserCounterAssignment.user_id == User.id)
+            .where(
+                User.is_active.is_(True),
+                User.role == UserRole.STAFF,
+                UserCounterAssignment.counter_id == counter_id,
+            )
+        ) or 0
+    else:
+        staff_cnt = db.scalar(
+            select(func.count(User.id)).where(User.is_active.is_(True), User.role == UserRole.STAFF)
+        ) or 0
 
     counter = db.get(CanteenCounter, counter_id) if counter_id else None
-    parallel_capacity = max(2, min(8, (counter.capacity_per_slot // 4) if counter and counter.capacity_per_slot else 3))
+    slot_cap_factor = max(2, min(8, (counter.capacity_per_slot // 4) if counter and counter.capacity_per_slot else 3))
+    staff_factor = max(1, int(staff_cnt)) * 2
+    parallel_capacity = max(2, min(8, min(slot_cap_factor, staff_factor) if staff_cnt > 0 else slot_cap_factor))
 
-    # Measure median fulfillment duration from recent completed/collected orders today if available.
+    # Measure fulfillment duration from recent completed/collected orders today if available.
     today = datetime.now(ZoneInfo(get_settings().canteen_timezone)).date().isoformat()
     recent_orders = db.scalars(
         select(Order)
@@ -610,20 +632,30 @@ def estimate_counter_wait_minutes(db: Session, counter_id: int | None, extra_pre
         .limit(20)
     ).all()
     measured_durations = []
+    delay_samples = []
     for ro in recent_orders:
         c_at = as_utc(ro.created_at)
         r_at = as_utc(ro.ready_at)
+        e_at = as_utc(ro.estimated_ready_at)
         if c_at and r_at and r_at > c_at:
             mins = (r_at - c_at).total_seconds() / 60.0
             if 1 <= mins <= 90:
                 measured_durations.append(mins)
+        if e_at and r_at and r_at > e_at:
+            delay_samples.append((r_at - e_at).total_seconds() / 60.0)
+
     avg_ticket_mins = (sum(measured_durations) / len(measured_durations)) if measured_durations else float(max(4, extra_prep_minutes))
     queue_backlog_mins = round((queued_count / parallel_capacity) * avg_ticket_mins)
-    estimated_minutes = max(3, int(round(extra_prep_minutes + queue_backlog_mins * 0.6)))
+    estimated_minutes = min(90, max(3, int(round(extra_prep_minutes + queue_backlog_mins * 0.6))))
+    estimated_collection_at = (now_utc + timedelta(minutes=estimated_minutes)).isoformat()
     return {
         "queuedOrders": queued_count,
+        "delayedOrders": delayed_count,
+        "activeStaffCount": int(staff_cnt),
         "parallelCapacity": parallel_capacity,
-        "estimatedMinutes": min(estimated_minutes, 90),
+        "estimatedMinutes": estimated_minutes,
+        "estimatedCollectionTime": estimated_collection_at,
+        "averageDelayMinutes": round(sum(delay_samples) / len(delay_samples), 1) if delay_samples else 0.0,
         "basis": "measured_today_and_queue" if measured_durations else "formula_queue_and_prep_time",
         "sampleSize": len(measured_durations),
     }
@@ -775,7 +807,7 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
     tax_p = order.tax_paise if order.tax_paise is not None else rupees_to_paise(order.tax_amount)
     total_p = order.effective_total_paise
 
-    can_cancel = order.status in {OrderStatus.PENDING, OrderStatus.CONFIRMED} and order.collected_at is None
+    can_cancel = order.status == OrderStatus.PENDING and order.payment_status != PaymentStatus.PAID and order.collected_at is None
     c_name = order.counter.name if getattr(order, "counter", None) else None
 
     out: dict[str, Any] = {

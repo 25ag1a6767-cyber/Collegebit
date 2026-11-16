@@ -59,7 +59,6 @@ class OrderStatus(str, enum.Enum):
     COMPLETED = "completed"
     COLLECTED = "collected"
     CANCELLED = "cancelled"
-    REFUND_PENDING = "refund_pending"
 
 
 class PaymentStatus(str, enum.Enum):
@@ -67,9 +66,6 @@ class PaymentStatus(str, enum.Enum):
     PAID = "paid"
     FAILED = "failed"
     EXPIRED = "expired"
-    REFUND_PENDING = "refund_pending"
-    PARTIALLY_REFUNDED = "partially_refunded"
-    REFUNDED = "refunded"
 
 
 def new_uuid() -> str:
@@ -394,28 +390,6 @@ class Payment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
     order: Mapped[Order] = relationship(back_populates="payments")
-    refunds: Mapped[list["Refund"]] = relationship(back_populates="payment_record")
-
-
-class Refund(Base):
-    """Provider-backed refund record with gateway reference and lifecycle status."""
-    __tablename__ = "refunds"
-    __table_args__ = (Index("ix_refunds_order_created", "order_id", "created_at"),)
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    public_uuid: Mapped[str | None] = mapped_column(String(36), default=new_uuid, unique=True, index=True, nullable=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    payment_record_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
-    payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    provider_refund_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
-    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    amount_paise: Mapped[int | None] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=True)
-    status: Mapped[str] = mapped_column(String(30), default="PENDING", nullable=False)
-    reason: Mapped[str] = mapped_column(String(255), nullable=False)
-    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=True)
-    order: Mapped[Order] = relationship()
-    payment_record: Mapped[Payment | None] = relationship(back_populates="refunds")
 
 
 class PickupToken(Base):
@@ -831,7 +805,6 @@ class DailySalesArchive(Base):
     discount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     tax_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     net_revenue_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
-    refund_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     cogs_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     wastage_loss_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
     operating_expense_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
@@ -953,12 +926,3 @@ def _sync_order_item_paise(_mapper, _connection, target: OrderItem) -> None:
         target.unit_price_paise = rupees_to_paise(target.unit_price)
     if target.line_total is not None:
         target.line_total_paise = rupees_to_paise(target.line_total)
-
-
-@event.listens_for(Refund, "before_insert")
-@event.listens_for(Refund, "before_update")
-def _sync_refund_paise(_mapper, _connection, target: Refund) -> None:
-    if target.amount is not None:
-        target.amount_paise = rupees_to_paise(target.amount)
-    elif target.amount_paise is not None:
-        target.amount = paise_to_rupees(target.amount_paise)

@@ -13,7 +13,7 @@
     title.textContent = `Order #${data.order_id} · Token #${data.token_number ?? '—'}`;
     message.textContent = data.status === 'completed' ? 'This order has already been collected.' : 'Live order details verified with the canteen server.';
     const grid = el('div', '', 'grid');
-    const paymentClass = data.payment_status === 'paid' ? 'pill' : (data.payment_status === 'failed' || data.payment_status === 'refunded' ? 'pill bad' : 'pill warn');
+    const paymentClass = data.payment_status === 'paid' ? 'pill' : (data.payment_status === 'failed' ? 'pill bad' : 'pill warn');
     const statusClass = data.status === 'completed' ? 'pill' : (data.status === 'cancelled' ? 'pill bad' : 'pill warn');
     [[ 'Payment status', data.payment_status.toUpperCase(), paymentClass ], ['Order status', data.status.replaceAll('_',' '), statusClass], ['Order placed', fmtDate(data.created_at)], ['Pickup time', fmtDate(data.pickup_slot)], ['Last updated', fmtDate(data.updated_at)], ['Collected at', fmtDate(data.collected_at)]].forEach(([label,value,cls]) => {
       const box = el('div', '', 'stat'); box.append(el('span', label)); box.append(el('strong', value, cls)); grid.append(box);

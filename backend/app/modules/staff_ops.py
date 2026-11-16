@@ -44,7 +44,7 @@ from app.modules.common import (
     serialize_order_v1,
     serialize_product_v1,
 )
-from app.modules.orders_payments import _initiate_gateway_refund, _restore_order_inventory_once
+from app.modules.orders_payments import _restore_order_inventory_once
 from app.realtime import stage_outbox_event
 from app.security import assert_counter_access, get_staff_assigned_counter_ids, require_roles
 
@@ -57,7 +57,7 @@ class OrderTransitionNoteIn(BaseModel):
 
 class OrderExceptionIn(BaseModel):
     reason: str = Field(min_length=3, max_length=255)
-    cancelAndRefund: bool = False
+    cancelOrder: bool = False
 
 
 class MenuAvailabilityPatchIn(BaseModel):
@@ -228,36 +228,28 @@ def reject_staff_order_v1(
     order.handled_by_staff_id = staff.id
     order.exception_reason = reason_clean
     order.cancelled_at = datetime.now(timezone.utc)
-    order.status = OrderStatus.REFUND_PENDING
-    order.payment_status = PaymentStatus.REFUND_PENDING
+    order.status = OrderStatus.CANCELLED
 
     paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
-    refund = _initiate_gateway_refund(
-        db,
-        order,
-        paid_rec,
-        amount_paise=order.effective_total_paise,
-        reason=f"Rejected by kitchen: {reason_clean}",
-        actor_user_id=staff.id,
-    )
-    refund_info = {"refundId": refund.id, "status": refund.status, "amountPaise": refund.amount_paise}
+    if paid_rec is not None:
+        paid_rec.late_capture_flagged = True
 
-    record_order_status_change(db, order, prev, "REJECTED_REFUND_INITIATED", staff.id, reason_clean)
+    record_order_status_change(db, order, prev, "REJECTED_INCIDENT_FLAGGED", staff.id, reason_clean)
     notify_user(
         db,
         order.user_id,
         "order_status",
-        "Order declined by kitchen — full refund initiated",
-        f"Order #{order.order_number or order.id} could not be accepted ({reason_clean}). Your full UPI refund has been initiated.",
+        "Order declined by kitchen — flagged for administrative resolution",
+        f"Order #{order.order_number or order.id} could not be accepted ({reason_clean}). Your payment record is preserved and flagged for authorized administrative resolution at the canteen counter.",
         entity_type="order",
         entity_id=order.id,
     )
     out = serialize_order_v1(order, include_customer=True, include_history=True)
     stage_outbox_event(db, "kitchen.order.rejected", out, counter_id=order.counter_id, target_user_id=order.user_id)
     stage_outbox_event(db, "order.cancelled", out, counter_id=order.counter_id, target_user_id=order.user_id)
-    record_audit(db, "staff.order_rejected", "order", order.id, staff.id, {"reason": reason_clean, "refund_id": refund.id})
+    record_audit(db, "staff.order_rejected", "order", order.id, staff.id, {"reason": reason_clean, "incident_flagged": True})
     commit_and_flush_outbox(db)
-    return ok(request, {"order": out, "refund": refund_info})
+    return ok(request, {"order": out, "incidentFlagged": True})
 
 
 @router.post("/orders/{order_id}/start")
@@ -358,36 +350,29 @@ def report_staff_order_exception_v1(
     db: Session = Depends(get_db),
 ):
     order = _load_staff_order_locked(db, order_id, staff)
-    if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+    if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED}:
         raise ApiError(409, "INVALID_STATE_TRANSITION", f"Cannot raise kitchen exception on order in state '{order.status.value}'.")
 
     reason_clean = payload.reason.strip()
     order.exception_reason = reason_clean
-    refund_info = None
+    incident_flagged = False
 
-    if payload.cancelAndRefund:
+    if payload.cancelOrder:
         _restore_order_inventory_once(db, order, f"Kitchen exception cancellation #{order.id}: {reason_clean}", actor_user_id=staff.id)
         prev = order.status.value
         order.cancelled_at = datetime.now(timezone.utc)
-        order.status = OrderStatus.REFUND_PENDING
-        order.payment_status = PaymentStatus.REFUND_PENDING
+        order.status = OrderStatus.CANCELLED
         paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
-        refund = _initiate_gateway_refund(
-            db,
-            order,
-            paid_rec,
-            amount_paise=order.effective_total_paise,
-            reason=f"Kitchen exception: {reason_clean}",
-            actor_user_id=staff.id,
-        )
-        refund_info = {"refundId": refund.id, "status": refund.status, "amountPaise": refund.amount_paise}
-        record_order_status_change(db, order, prev, order.status.value.upper(), staff.id, f"Kitchen exception & refund: {reason_clean}")
+        if paid_rec is not None:
+            paid_rec.late_capture_flagged = True
+        incident_flagged = True
+        record_order_status_change(db, order, prev, "CANCELLED_INCIDENT_FLAGGED", staff.id, f"Kitchen exception incident: {reason_clean}")
         notify_user(
             db,
             order.user_id,
             "order_status",
-            "Order cancelled due to kitchen issue — refund initiated",
-            f"We could not fulfill order #{order.order_number or order.id} ({reason_clean}). Your full refund has been initiated.",
+            "Order unfulfilled due to kitchen issue — flagged for resolution",
+            f"We could not fulfill order #{order.order_number or order.id} ({reason_clean}). Your payment record is preserved and flagged for authorized administrative resolution at the canteen counter.",
             entity_type="order",
             entity_id=order.id,
         )
@@ -414,9 +399,9 @@ def report_staff_order_exception_v1(
     )
     out = serialize_order_v1(order, include_customer=True, include_history=True)
     stage_outbox_event(db, "kitchen.order.exception", out, counter_id=order.counter_id, target_user_id=order.user_id)
-    record_audit(db, "staff.order_exception", "order", order.id, staff.id, {"reason": reason_clean, "cancel_and_refund": payload.cancelAndRefund})
+    record_audit(db, "staff.order_exception", "order", order.id, staff.id, {"reason": reason_clean, "incident_flagged": incident_flagged})
     commit_and_flush_outbox(db)
-    return ok(request, {"order": out, "refund": refund_info})
+    return ok(request, {"order": out, "incidentFlagged": incident_flagged})
 
 
 @router.patch("/menu-items/{item_id}/availability")
@@ -745,7 +730,6 @@ def get_staff_completed_order_history_v1(
                 OrderStatus.COMPLETED,
                 OrderStatus.COLLECTED,
                 OrderStatus.CANCELLED,
-                OrderStatus.REFUND_PENDING,
             ])
         )
     )
@@ -826,13 +810,13 @@ def get_staff_daily_performance_v1(
         u_dt = as_utc(o.created_at)
         if u_dt:
             hr = u_dt.astimezone(tz).hour
-            if hr in hourly_buckets and o.payment_status in {PaymentStatus.PAID, PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED}:
+            if hr in hourly_buckets and o.payment_status == PaymentStatus.PAID:
                 hourly_buckets[hr] += 1
         if o.payment_status == PaymentStatus.PAID:
             paid_cnt += 1
         if o.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED}:
             completed_cnt += 1
-        elif o.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+        elif o.status == OrderStatus.CANCELLED:
             rejected_cnt += 1
         elif o.payment_status == PaymentStatus.PAID and o.status in {OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.ACCEPTED, OrderStatus.PREPARING}:
             active_cnt += 1

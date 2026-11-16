@@ -10,7 +10,7 @@ This phase adds repeatable smoke checks for the public student entry point, API 
 4. Complete a test order, follow it through kitchen status transitions, and verify the pickup token.
 5. Test payment pending, failed, duplicate webhook, delayed webhook, and browser refresh scenarios.
 6. Verify stock cannot be oversold with simultaneous orders and that staff stock adjustments appear in the inventory ledger.
-7. Confirm the refund policy: student-initiated order cancellation is disallowed once food preparation begins to prevent cafeteria waste. However, automatic 100% UPI refunds on kitchen decline and administrative gateway refunds via Razorpay are fully active. Payment errors and duplicate charges are reconciled idempotently.
+7. Confirm the strict no-refunds policy: paid orders cannot be cancelled or refunded. If a paid order cannot be fulfilled or a late payment webhook is captured on an expired reservation, the payment record is preserved and the order is flagged for authorized administrative incident resolution. Payment errors and duplicate charges are reconciled idempotently.
 8. Test database backup restoration in staging before any real launch.
 9. Obtain canteen staff and a small group of student testers' sign-off before expanding access.
 
@@ -26,4 +26,4 @@ node --check frontend/js/app.js
 
 ## Launch gate
 
-Do not call the app production-ready until browser end-to-end tests, real staging payment verification, load/concurrency tests, restore drills, accessibility review, and deployment security review have been completed. Kitchen staff decline refunds and authorized admin gateway refunds are verified and active via Razorpay.
+Do not call the app production-ready until browser end-to-end tests, real staging payment verification, load/concurrency tests, restore drills, accessibility review, and deployment security review have been completed. Strict no-refunds enforcement and operational incident reconciliation are active.

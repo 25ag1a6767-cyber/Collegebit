@@ -2,7 +2,7 @@
 
 Verifies:
   1. Three dedicated portals (/, /staff, /admin) + strict CSP compliance + strict RBAC isolation.
-  2. Granular staff permissions, staff order rejection (with stock restoration & auto-refund), history & performance.
+  2. Granular staff permissions, staff order rejection (with stock restoration & incident flagging), history & performance.
   3. Customer digital receipts (JSON & PDF 1.4) with cross-student privacy isolation + /users/me/change-password.
   4. Suppliers, Purchase Orders -> automated FEFO batch/stock/expense receiving, Operational Expenses, Admin order override & Feedback.
   5. Advanced Admin BI Dashboard: all 10 KPI cards, all 16 interactive graph datasets, 11 filters & 4 period comparisons.
@@ -41,7 +41,6 @@ from app.models import (
     Product,
     ProductBatch,
     RefreshSession,
-    Refund,
     TemporaryApiLog,
     User,
     UserCounterAssignment,
@@ -249,7 +248,7 @@ def test_staff_reject_permissions_history_and_performance():
         )
         assert denied.status_code == 403
 
-        # Re-enable canRejectOrders -> reject succeeds, restores stock from 18 back to 20, initiates refund
+        # Re-enable canRejectOrders -> reject succeeds, restores stock from 18 back to 20, flags incident
         client.put(
             f"/api/v1/admin/users/{staff_id}/permissions",
             headers=_hdr(adm_tok),
@@ -269,8 +268,8 @@ def test_staff_reject_permissions_history_and_performance():
         )
         assert rej.status_code == 200, rej.text
         rej_data = rej.json()["data"]
-        assert rej_data["order"]["status"].upper() == "REFUND_PENDING"
-        assert rej_data["refund"] is not None
+        assert rej_data["order"]["status"].upper() == "CANCELLED"
+        assert rej_data["incidentFlagged"] is True
 
         with SessionLocal() as db:
             p = db.get(Product, item_id)
@@ -512,7 +511,7 @@ def test_all_14_reports_pdf_xlsx_csv_and_daily_runner():
         "supplier_purchase",
         "staff_performance",
         "customer_activity",
-        "refunds",
+        "payment_incidents",
         "profit_expense",
     ]
 

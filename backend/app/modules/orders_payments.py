@@ -1,4 +1,4 @@
-"""/api/v1 Orders, Quotes, UPI Payments, Webhooks (with late-capture safety), Refunds & QR Pickup."""
+"""/api/v1 Orders, Quotes, UPI Payments, Webhooks (with late-capture incident flagging) & QR Pickup."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
@@ -42,7 +42,6 @@ from app.models import (
     Pickup,
     PickupToken,
     Product,
-    Refund,
     User,
     UserRole,
     paise_to_rupees,
@@ -212,100 +211,6 @@ def release_expired_reservations_v1(db: Session) -> int:
     return expired_count
 
 
-def _initiate_gateway_refund(
-    db: Session,
-    order: Order,
-    payment_record: Payment | None,
-    *,
-    amount_paise: int,
-    reason: str,
-    actor_user_id: int | None = None,
-) -> Refund:
-    """Call Razorpay refund API when credentials exist, persisting an auditable Refund row."""
-    cfg = get_settings()
-    provider_payment_id = (payment_record.provider_payment_id if payment_record else None) or order.gateway_payment_id
-    refund = Refund(
-        order_id=order.id,
-        payment_record_id=payment_record.id if payment_record else None,
-        payment_id=provider_payment_id,
-        amount=paise_to_rupees(amount_paise),
-        amount_paise=amount_paise,
-        status="PENDING",
-        reason=reason[:255],
-        actor_user_id=actor_user_id,
-    )
-    db.add(refund)
-    db.flush()
-
-    if payment_record is not None and payment_record.provider == "campusbite_wallet":
-        record_wallet_movement(
-            db,
-            order.user_id,
-            amount_paise,
-            "refund",
-            f"Prepaid wallet refund for order #{order.id}",
-            f"refund:{refund.id}:wallet-credit",
-            order_id=order.id,
-            actor_user_id=actor_user_id,
-        )
-        refund.status = "PROCESSED"
-    elif provider_payment_id and cfg.razorpay_key_id and cfg.razorpay_key_secret:
-        try:
-            resp = httpx.post(
-                f"https://api.razorpay.com/v1/payments/{provider_payment_id}/refund",
-                auth=(cfg.razorpay_key_id, cfg.razorpay_key_secret),
-                json={
-                    "amount": amount_paise,
-                    "notes": {"order_id": str(order.id), "reason": reason[:120]},
-                },
-                timeout=15.0,
-            )
-            resp.raise_for_status()
-            gw_data = resp.json()
-            refund.provider_refund_id = gw_data.get("id")
-            gw_status = str(gw_data.get("status", "pending")).lower()
-            refund.status = "PROCESSED" if gw_status == "processed" else "PENDING"
-        except Exception as exc:
-            logger.warning("Gateway refund request failed for order %s: %s", order.id, type(exc).__name__)
-            refund.status = "PENDING_MANUAL_REVIEW"
-    else:
-        refund.status = "PENDING_MANUAL_REVIEW"
-
-    db.flush()
-
-    # Synchronize payment & order refund states
-    total_order_paise = order.effective_total_paise
-    processed_paise = sum(
-        int(r.amount_paise or rupees_to_paise(r.amount))
-        for r in db.scalars(select(Refund).where(Refund.order_id == order.id, Refund.status == "PROCESSED")).all()
-    )
-    if refund.status == "PROCESSED":
-        if processed_paise >= total_order_paise:
-            order.payment_status = PaymentStatus.REFUNDED
-            if order.status == OrderStatus.REFUND_PENDING:
-                order.status = OrderStatus.CANCELLED
-            if payment_record is not None:
-                payment_record.status = "REFUNDED"
-        else:
-            order.payment_status = PaymentStatus.PARTIALLY_REFUNDED
-            if payment_record is not None:
-                payment_record.status = "PARTIALLY_REFUNDED"
-    else:
-        order.payment_status = PaymentStatus.REFUND_PENDING
-        if payment_record is not None:
-            payment_record.status = "REFUND_PENDING"
-
-    record_audit(
-        db,
-        "payment.refund_initiated",
-        "order",
-        order.id,
-        actor_user_id,
-        {"refund_id": refund.id, "amount_paise": amount_paise, "status": refund.status, "provider_refund_id": refund.provider_refund_id},
-    )
-    return refund
-
-
 def handle_late_captured_payment(
     db: Session,
     order: Order,
@@ -313,14 +218,14 @@ def handle_late_captured_payment(
     provider_payment_id: str,
     amount_paise: int,
     currency: str,
-) -> Refund:
-    """Safety handler when a UPI payment is captured after reservation expiry/cancellation."""
+) -> Payment:
+    """Safety handler when a payment is captured after reservation expiry or cancellation.
+
+    Under the strict no-refunds policy, never silently mark as refunded or initiate a gateway refund.
+    Preserve the financial transaction record, flag the incident for authorized administrative resolution,
+    and communicate the actual status truthfully to the student.
+    """
     pay_row = db.scalar(select(Payment).where(Payment.provider_order_id == provider_order_id))
-    existing_refund = db.scalar(select(Refund).where(Refund.order_id == order.id, Refund.payment_id == provider_payment_id))
-    if existing_refund is not None:
-        if pay_row is not None:
-            pay_row.late_capture_flagged = True
-        return existing_refund
     if pay_row is None:
         pay_row = Payment(
             order_id=order.id,
@@ -329,7 +234,7 @@ def handle_late_captured_payment(
             provider_payment_id=provider_payment_id,
             amount_paise=amount_paise,
             currency=currency,
-            status="REFUND_PENDING",
+            status="SUCCESS",
             late_capture_flagged=True,
         )
         db.add(pay_row)
@@ -337,33 +242,28 @@ def handle_late_captured_payment(
     else:
         pay_row.provider_payment_id = provider_payment_id
         pay_row.late_capture_flagged = True
-        pay_row.status = "REFUND_PENDING"
+        pay_row.status = "SUCCESS"
 
     order.gateway_payment_id = provider_payment_id
-    order.status = OrderStatus.REFUND_PENDING
-    order.payment_status = PaymentStatus.REFUND_PENDING
+    order.status = OrderStatus.CANCELLED
+    order.payment_status = PaymentStatus.PAID
+    order.exception_reason = (
+        f"Late payment captured ({provider_payment_id}) after reservation expiry — flagged for administrative resolution"
+    )[:255]
     record_order_status_change(
         db,
         order,
         "CANCELLED",
-        "REFUND_PENDING",
+        "INCIDENT_FLAGGED",
         None,
-        "Late payment capture arrived after checkout expiry; automatic refund initiated",
-    )
-    refund = _initiate_gateway_refund(
-        db,
-        order,
-        pay_row,
-        amount_paise=amount_paise,
-        reason="Automatic refund: payment captured after order reservation expired",
-        actor_user_id=None,
+        "Late payment capture arrived after checkout expiry; financial record preserved and flagged for administrative resolution",
     )
     notify_user(
         db,
         order.user_id,
         "payment",
-        "Late payment detected — refund initiated",
-        f"Your payment for expired order #{order.order_number or order.id} arrived after the reservation window closed. A refund of ₹{paise_to_rupees(amount_paise)} has been initiated.",
+        "Late payment recorded — administrative resolution required",
+        f"Your payment of ₹{paise_to_rupees(amount_paise)} for expired order #{order.order_number or order.id} arrived after the reservation window closed. The financial transaction ({provider_payment_id}) is preserved and flagged for authorized administrative resolution at the canteen counter.",
         entity_type="order",
         entity_id=order.id,
     )
@@ -371,8 +271,8 @@ def handle_late_captured_payment(
         db,
         order.counter_id,
         "payment_alert",
-        "Late payment capture flagged",
-        f"Order #{order.id} received late payment {provider_payment_id} after expiry. Refund status: {refund.status}.",
+        "Late payment incident flagged for admin resolution",
+        f"Order #{order.id} received late payment {provider_payment_id} (₹{paise_to_rupees(amount_paise)}) after expiry. Transaction preserved and flagged for administrative resolution.",
         entity_type="order",
         entity_id=order.id,
     )
@@ -382,9 +282,9 @@ def handle_late_captured_payment(
         "order",
         order.id,
         None,
-        {"provider_payment_id": provider_payment_id, "amount_paise": amount_paise, "refund_status": refund.status},
+        {"provider_payment_id": provider_payment_id, "amount_paise": amount_paise, "resolution_status": "FLAGGED_FOR_ADMIN_RESOLUTION"},
     )
-    return refund
+    return pay_row
 
 
 # --- Request Schemas ---
@@ -422,11 +322,6 @@ class VerifyPaymentV1In(BaseModel):
     razorpay_order_id: str | None = Field(default=None, max_length=100)
     razorpay_payment_id: str | None = Field(default=None, max_length=100)
     razorpay_signature: str | None = Field(default=None, max_length=200)
-
-
-class RefundRequestIn(BaseModel):
-    amountPaise: int | None = Field(default=None, gt=0)
-    reason: str = Field(min_length=3, max_length=255)
 
 
 class VerifyPickupIn(BaseModel):
@@ -923,18 +818,6 @@ def get_order_v1(
         }
         for p in sorted(order.payments, key=lambda x: x.id)
     ]
-    refunds = db.scalars(select(Refund).where(Refund.order_id == order.id).order_by(Refund.created_at.asc())).all()
-    data["refunds"] = [
-        {
-            "id": r.id,
-            "amountPaise": r.amount_paise or rupees_to_paise(r.amount),
-            "status": r.status,
-            "reason": r.reason,
-            "providerRefundId": r.provider_refund_id,
-            "createdAt": as_utc(r.created_at),
-        }
-        for r in refunds
-    ]
     pickup = db.scalar(select(Pickup).where(Pickup.order_id == order.id))
     data["pickup"] = (
         {"collectedAt": as_utc(pickup.collected_at), "collectedByUserId": pickup.collected_by}
@@ -1008,11 +891,17 @@ def cancel_order_v1(
     if user.role == UserRole.STUDENT:
         if order.user_id != user.id:
             raise ApiError(403, "FORBIDDEN", "You can only cancel your own orders.")
-        if order.status not in {OrderStatus.PENDING, OrderStatus.CONFIRMED} or order.collected_at is not None:
-            raise ApiError(409, "CANCELLATION_NOT_ALLOWED", "Order preparation has already started and can no longer be cancelled by student.")
+        if order.payment_status == PaymentStatus.PAID:
+            raise ApiError(
+                409,
+                "CANCELLATION_NOT_ALLOWED",
+                "Paid orders cannot be cancelled under the strict no-refunds policy.",
+            )
+        if order.status != OrderStatus.PENDING or order.collected_at is not None:
+            raise ApiError(409, "CANCELLATION_NOT_ALLOWED", "Order can no longer be cancelled by student.")
     else:
         assert_counter_access(db, user, order.counter_id)
-        if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+        if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED, OrderStatus.CANCELLED}:
             raise ApiError(409, "CANCELLATION_NOT_ALLOWED", f"Order in state '{order.status.value}' cannot be cancelled.")
 
     now = datetime.now(timezone.utc)
@@ -1021,24 +910,24 @@ def cancel_order_v1(
 
     prev_status = order.status.value
     order.cancelled_at = now
+    order.status = OrderStatus.CANCELLED
 
-    refund_info = None
+    incident_flagged = False
     if order.payment_status == PaymentStatus.PAID:
-        order.status = OrderStatus.REFUND_PENDING
-        order.payment_status = PaymentStatus.REFUND_PENDING
-        paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
-        refund = _initiate_gateway_refund(
+        incident_flagged = True
+        order.exception_reason = f"Unfulfilled paid order flagged for administrative resolution: {reason_clean}"[:255]
+        for p in order.payments:
+            if p.status == "SUCCESS":
+                p.late_capture_flagged = True
+        record_order_status_change(
             db,
             order,
-            paid_rec,
-            amount_paise=order.effective_total_paise,
-            reason=reason_clean,
-            actor_user_id=user.id,
+            prev_status,
+            "CANCELLED_INCIDENT_FLAGGED",
+            user.id,
+            f"Unfulfilled paid order incident logged (payment record preserved): {reason_clean}",
         )
-        refund_info = {"refundId": refund.id, "status": refund.status, "amountPaise": refund.amount_paise}
-        record_order_status_change(db, order, prev_status, order.status.value.upper(), user.id, f"Cancelled with refund: {reason_clean}")
     else:
-        order.status = OrderStatus.CANCELLED
         for p in order.payments:
             if p.status == "PENDING":
                 p.status = "CANCELLED"
@@ -1049,24 +938,28 @@ def cancel_order_v1(
         order.user_id,
         "order_status",
         "Order cancelled",
-        f"Order #{order.order_number or order.id} has been cancelled." + (" Refund has been initiated." if refund_info else ""),
+        (
+            f"Order #{order.order_number or order.id} could not be fulfilled ({reason_clean}). Your payment record is preserved and flagged for authorized administrative resolution at the canteen counter."
+            if incident_flagged
+            else f"Order #{order.order_number or order.id} has been cancelled."
+        ),
         entity_type="order",
         entity_id=order.id,
     )
     stage_outbox_event(
         db,
         "order.cancelled",
-        {"orderId": order.id, "status": order.status.value, "counterId": order.counter_id},
+        {"orderId": order.id, "status": order.status.value, "counterId": order.counter_id, "incidentFlagged": incident_flagged},
         counter_id=order.counter_id,
         target_user_id=order.user_id,
     )
-    record_audit(db, "order.cancelled_v1", "order", order.id, user.id, {"reason": reason_clean, "refund": refund_info})
+    record_audit(db, "order.cancelled_v1", "order", order.id, user.id, {"reason": reason_clean, "incident_flagged": incident_flagged})
     commit_and_flush_outbox(db)
     db.refresh(order)
-    return ok(request, {"order": serialize_order_v1(order, include_history=True), "refund": refund_info})
+    return ok(request, {"order": serialize_order_v1(order, include_history=True), "incidentFlagged": incident_flagged})
 
 
-# --- UPI Payment Intent, Verification, Lookup, Webhooks & Refunds ---
+# --- UPI Payment Intent, Verification, Lookup & Webhooks ---
 @router.post("/payments/upi/intent", status_code=201)
 def create_upi_payment_intent_v1(
     payload: UpiIntentIn,
@@ -1087,7 +980,7 @@ def create_upi_payment_intent_v1(
         raise ApiError(403, "FORBIDDEN", "You can only pay for your own orders.")
     if order.payment_status == PaymentStatus.PAID:
         raise ApiError(409, "ORDER_ALREADY_PAID", "This order has already been paid.")
-    if order.status != OrderStatus.PENDING or order.payment_status in {PaymentStatus.EXPIRED, PaymentStatus.REFUNDED, PaymentStatus.REFUND_PENDING}:
+    if order.status != OrderStatus.PENDING or order.payment_status == PaymentStatus.EXPIRED:
         raise ApiError(409, "ORDER_NOT_PAYABLE", "This order has expired or been cancelled. Place a fresh order.")
 
     idem_key = (idempotency_header or payload.idempotencyKey or "").strip()[:120] or None
@@ -1289,7 +1182,7 @@ def verify_payment_v1(
         raise ApiError(409, "DUPLICATE_PAYMENT_CONFLICT", "Order was already paid using a different payment transaction.")
 
     if order.status == OrderStatus.CANCELLED or order.payment_status in {PaymentStatus.EXPIRED, PaymentStatus.FAILED}:
-        refund = handle_late_captured_payment(
+        pay_row = handle_late_captured_payment(
             db,
             order,
             gw_order_id,
@@ -1300,9 +1193,9 @@ def verify_payment_v1(
         commit_and_flush_outbox(db)
         raise ApiError(
             409,
-            "ORDER_EXPIRED_REFUND_INITIATED",
-            "Order reservation had already expired. Your payment was flagged and an automatic refund has been initiated.",
-            details={"refundId": refund.id, "refundStatus": refund.status},
+            "ORDER_EXPIRED_INCIDENT_FLAGGED",
+            "Order reservation had already expired. Your payment transaction was recorded and flagged for authorized administrative resolution at the canteen counter.",
+            details={"paymentId": pay_row.id, "incidentFlagged": True},
         )
 
     _mark_order_paid_and_notify(db, order, pay_rec, gw_payment_id, gw_sig, user.id, "client_verify")
@@ -1332,7 +1225,7 @@ def get_payment_status_v1(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    pay_rec = db.scalar(select(Payment).options(joinedload(Payment.order).joinedload(Order.items), joinedload(Payment.refunds)).where(Payment.id == payment_id))
+    pay_rec = db.scalar(select(Payment).options(joinedload(Payment.order).joinedload(Order.items)).where(Payment.id == payment_id))
     if pay_rec is None or pay_rec.order is None:
         raise ApiError(404, "PAYMENT_NOT_FOUND", "Payment record not found.")
     order = pay_rec.order
@@ -1374,16 +1267,6 @@ def get_payment_status_v1(
             "currency": pay_rec.currency,
             "status": pay_rec.status,
             "lateCaptureFlagged": pay_rec.late_capture_flagged,
-            "refunds": [
-                {
-                    "id": r.id,
-                    "amountPaise": r.amount_paise or rupees_to_paise(r.amount),
-                    "status": r.status,
-                    "providerRefundId": r.provider_refund_id,
-                    "reason": r.reason,
-                }
-                for r in pay_rec.refunds
-            ],
         },
     )
 
@@ -1438,7 +1321,6 @@ async def payment_webhook_v1(
         return ok(request, {"received": True, "duplicate": True, "eventId": webhook_id})
 
     payment_entity = event.get("payload", {}).get("payment", {}).get("entity", {}) if isinstance(event, dict) else {}
-    refund_entity = event.get("payload", {}).get("refund", {}).get("entity", {}) if isinstance(event, dict) else {}
 
     if event_name in {"payment.captured", "payment.failed"} and payment_entity.get("order_id"):
         gw_order_id = str(payment_entity["order_id"])
@@ -1456,8 +1338,8 @@ async def payment_webhook_v1(
         if order is not None:
             if event_name == "payment.captured" and gw_pay_id:
                 if (
-                    order.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}
-                    or order.payment_status in {PaymentStatus.EXPIRED, PaymentStatus.FAILED, PaymentStatus.REFUNDED, PaymentStatus.REFUND_PENDING, PaymentStatus.PARTIALLY_REFUNDED}
+                    order.status == OrderStatus.CANCELLED
+                    or order.payment_status in {PaymentStatus.EXPIRED, PaymentStatus.FAILED}
                     or (pay_rec is not None and pay_rec.late_capture_flagged)
                 ):
                     handle_late_captured_payment(db, order, gw_order_id, gw_pay_id, amt_paise, curr)
@@ -1507,110 +1389,10 @@ async def payment_webhook_v1(
                         entity_id=order.id,
                     )
 
-    elif event_name in {"refund.processed", "refund.failed"}:
-        gw_refund_id = str(refund_entity.get("id") or "")
-        gw_pay_id = str(refund_entity.get("payment_id") or "")
-        ref_row = None
-        if gw_refund_id:
-            ref_row = db.scalar(select(Refund).where(Refund.provider_refund_id == gw_refund_id).with_for_update())
-        if ref_row is None and gw_pay_id:
-            ref_row = db.scalar(select(Refund).where(Refund.payment_id == gw_pay_id, Refund.status != "PROCESSED").order_by(Refund.id.desc()).with_for_update())
-        if ref_row is not None:
-            order = db.get(Order, ref_row.order_id)
-            pay_rec = db.get(Payment, ref_row.payment_record_id) if ref_row.payment_record_id else None
-            if gw_refund_id:
-                ref_row.provider_refund_id = gw_refund_id
-            if event_name == "refund.processed":
-                ref_row.status = "PROCESSED"
-                if order is not None:
-                    total_refunded = sum(
-                        int(r.amount_paise or rupees_to_paise(r.amount))
-                        for r in db.scalars(select(Refund).where(Refund.order_id == order.id, Refund.status == "PROCESSED")).all()
-                    )
-                    if total_refunded >= order.effective_total_paise:
-                        order.payment_status = PaymentStatus.REFUNDED
-                        if order.status == OrderStatus.REFUND_PENDING:
-                            order.status = OrderStatus.CANCELLED
-                        if pay_rec:
-                            pay_rec.status = "REFUNDED"
-                    else:
-                        order.payment_status = PaymentStatus.PARTIALLY_REFUNDED
-                        if pay_rec:
-                            pay_rec.status = "PARTIALLY_REFUNDED"
-                    notify_user(
-                        db,
-                        order.user_id,
-                        "payment",
-                        "Refund processed",
-                        f"Refund of ₹{paise_to_rupees(ref_row.amount_paise or rupees_to_paise(ref_row.amount))} for order #{order.order_number or order.id} has been processed.",
-                        entity_type="order",
-                        entity_id=order.id,
-                    )
-            else:
-                ref_row.status = "FAILED"
-
     wh_row.processing_status = "processed"
     wh_row.processed_at = datetime.now(timezone.utc)
     commit_and_flush_outbox(db)
     return ok(request, {"received": True, "duplicate": False, "eventId": webhook_id})
-
-
-@router.post("/payments/{payment_id}/refunds", status_code=201)
-def create_refund_v1(
-    payment_id: int,
-    payload: RefundRequestIn,
-    request: Request,
-    admin: User = Depends(require_roles("admin")),
-    db: Session = Depends(get_db),
-):
-    pay_rec = db.scalar(select(Payment).options(joinedload(Payment.order), joinedload(Payment.refunds)).where(Payment.id == payment_id).with_for_update())
-    if pay_rec is None or pay_rec.order is None:
-        raise ApiError(404, "PAYMENT_NOT_FOUND", "Payment record not found.")
-    if pay_rec.status not in {"SUCCESS", "PARTIALLY_REFUNDED", "REFUND_PENDING"}:
-        raise ApiError(409, "PAYMENT_NOT_REFUNDABLE", f"Payment in status '{pay_rec.status}' cannot be refunded.")
-
-    existing_refunded = sum(
-        int(r.amount_paise or rupees_to_paise(r.amount))
-        for r in pay_rec.refunds
-        if r.status in {"PROCESSED", "PENDING", "PENDING_MANUAL_REVIEW"}
-    )
-    remaining_paise = max(0, int(pay_rec.amount_paise) - existing_refunded)
-    req_paise = payload.amountPaise if payload.amountPaise is not None else remaining_paise
-    if req_paise <= 0 or req_paise > remaining_paise:
-        raise ApiError(409, "REFUND_EXCEEDS_PAYMENT", f"Requested refund ({req_paise} paise) exceeds refundable balance ({remaining_paise} paise).")
-
-    refund = _initiate_gateway_refund(
-        db,
-        pay_rec.order,
-        pay_rec,
-        amount_paise=req_paise,
-        reason=payload.reason.strip(),
-        actor_user_id=admin.id,
-    )
-    notify_user(
-        db,
-        pay_rec.order.user_id,
-        "payment",
-        "Refund initiated",
-        f"A refund of ₹{paise_to_rupees(req_paise)} was initiated for order #{pay_rec.order.order_number or pay_rec.order.id}.",
-        entity_type="order",
-        entity_id=pay_rec.order.id,
-    )
-    commit_and_flush_outbox(db)
-    db.refresh(refund)
-    return ok(
-        request,
-        {
-            "id": refund.id,
-            "paymentId": pay_rec.id,
-            "orderId": pay_rec.order.id,
-            "amountPaise": refund.amount_paise or req_paise,
-            "status": refund.status,
-            "providerRefundId": refund.provider_refund_id,
-            "reason": refund.reason,
-        },
-        status_code=201,
-    )
 
 
 # --- Short-lived Opaque QR Pickup Token & Single-Use Atomic Handover ---
@@ -1628,7 +1410,7 @@ def issue_pickup_token_v1(
         raise ApiError(409, "PAYMENT_PENDING", "Order payment must be confirmed before generating a pickup QR code.")
     if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or order.collected_at is not None:
         raise ApiError(409, "ORDER_ALREADY_COLLECTED", "This order has already been collected.")
-    if order.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+    if order.status == OrderStatus.CANCELLED:
         raise ApiError(409, "ORDER_CANCELLED", "Cancelled orders cannot be collected.")
 
     if not order.manual_pickup_code:
@@ -1806,7 +1588,7 @@ def inspect_pickup_order_v1(
     is_ready = (order.status in {OrderStatus.READY, OrderStatus.PARTIALLY_COLLECTED})
     is_partially_collected = (order.status == OrderStatus.PARTIALLY_COLLECTED)
     is_collected = (order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or (order.collected_at is not None and not is_partially_collected))
-    is_cancelled = bool(order.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING} or order.payment_status in {PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED})
+    is_cancelled = bool(order.status == OrderStatus.CANCELLED)
 
     eligible = bool(is_paid and is_ready and not is_collected and not is_cancelled)
     block_reason: str | None = None
@@ -1826,7 +1608,7 @@ def inspect_pickup_order_v1(
     elif not is_paid:
         block_reason = f"Payment status is {order.payment_status.value.upper()} (Unpaid order — do not handover food!)."
     elif is_cancelled:
-        block_reason = f"Order was cancelled ({order.exception_reason or 'Refund pending'})."
+        block_reason = f"Order was cancelled ({order.exception_reason or 'Unfulfilled incident flagged'})."
     elif not is_ready:
         block_reason = f"Order is currently '{order.status.value.upper()}' — kitchen has not marked it READY yet."
 
@@ -2169,7 +1951,7 @@ def list_and_search_tokens_v1(
         elif st_clean == "collected":
             stmt = stmt.where(Order.status.in_([OrderStatus.COMPLETED, OrderStatus.COLLECTED]))
         elif st_clean == "cancelled":
-            stmt = stmt.where(or_(Order.status.in_([OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING]), Order.payment_status.in_([PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED])))
+            stmt = stmt.where(Order.status == OrderStatus.CANCELLED)
 
     if search and search.strip():
         s = search.strip()

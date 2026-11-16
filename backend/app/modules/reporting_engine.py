@@ -13,7 +13,7 @@ Implements all 14 required reports over real relational records:
 10. supplier_purchase       — Supplier & purchase order report
 11. staff_performance       — Staff performance report
 12. customer_activity       — Customer activity report
-13. refunds                 — Refund report
+13. payment_incidents       — Payment incidents & exceptions report
 14. profit_expense          — Profit & expense report
 
 Supports:
@@ -61,7 +61,6 @@ from app.models import (
     Pickup,
     Product,
     PurchaseOrder,
-    Refund,
     StockMovement,
     Supplier,
     User,
@@ -80,7 +79,7 @@ REPORT_DEFINITIONS: dict[str, dict[str, str]] = {
     "daily_orders": {"title": "Daily Order Report", "cadence": "daily", "description": "Complete itemized log of orders placed, statuses, counters, and fulfillment times."},
     "daily_payments": {"title": "Daily Payment Report", "cadence": "daily", "description": "UPI / Razorpay payment intents, captures, failures, and gateway references."},
     "weekly_sales": {"title": "Weekly Sales Report", "cadence": "weekly", "description": "ISO week-by-week order volume, unique customers, AOV, and net revenue."},
-    "monthly_financial": {"title": "Monthly Financial Report", "cadence": "monthly", "description": "Monthly gross sales, discounts, taxes, refunds, COGS, expenses, and net profit."},
+    "monthly_financial": {"title": "Monthly Financial Report", "cadence": "monthly", "description": "Monthly gross sales, discounts, taxes, COGS, expenses, and net profit."},
     "yearly_performance": {"title": "Yearly Performance Report", "cadence": "yearly", "description": "Annual revenue, order volume, customer base, expenses, and net margin."},
     "best_selling_products": {"title": "Best-Selling Product Report", "cadence": "product", "description": "Top menu items ranked by units sold, revenue, COGS, and gross contribution."},
     "least_selling_products": {"title": "Least-Selling Product Report", "cadence": "product", "description": "Slowest-moving active menu items (including zero-sale items) for menu optimization."},
@@ -88,8 +87,8 @@ REPORT_DEFINITIONS: dict[str, dict[str, str]] = {
     "supplier_purchase": {"title": "Supplier & Purchase Order Report", "cadence": "procurement", "description": "Active suppliers, purchase orders, line counts, status, and total procurement spend."},
     "staff_performance": {"title": "Staff Performance Report", "cadence": "operational", "description": "Orders accepted/prepared/collected per staff member and average preparation speed."},
     "customer_activity": {"title": "Customer Activity Report", "cadence": "customer", "description": "Student ordering frequency, total spend, average basket value, and last order date."},
-    "refunds": {"title": "Refund Report", "cadence": "financial", "description": "Processed and pending refunds with gateway refund IDs, reasons, and amounts."},
-    "profit_expense": {"title": "Profit & Expense Report", "cadence": "financial", "description": "Comprehensive daily P&L combining net sales, COGS, wastage, refunds, and operating expenses."},
+    "payment_incidents": {"title": "Payment Incidents & Exceptions Report", "cadence": "financial", "description": "Flagged late-capture payments and unfulfilled paid orders requiring administrative resolution."},
+    "profit_expense": {"title": "Profit & Expense Report", "cadence": "financial", "description": "Comprehensive daily P&L combining net sales, COGS, wastage, and operating expenses."},
 }
 
 
@@ -474,7 +473,7 @@ def build_report_dataset(
             ("Total Orders", len(orders)),
             ("Paid Orders", len(paid_orders)),
             ("Completed/Collected", sum(1 for o in orders if o.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED})),
-            ("Cancelled", sum(1 for o in orders if o.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING})),
+            ("Cancelled", sum(1 for o in orders if o.status == OrderStatus.CANCELLED)),
         ]
 
     elif rt == "daily_payments":
@@ -531,8 +530,7 @@ def build_report_dataset(
     elif rt in {"monthly_financial", "yearly_performance"}:
         is_yearly = rt == "yearly_performance"
         expenses = db.scalars(select(OperationalExpense).where(OperationalExpense.expense_date >= start_d, OperationalExpense.expense_date <= end_d)).all()
-        refunds = db.scalars(select(Refund).where(Refund.created_at >= start_utc, Refund.created_at <= end_utc)).all()
-        buckets: dict[str, dict[str, int]] = defaultdict(lambda: {"orders": 0, "rev": 0, "disc": 0, "tax": 0, "cogs": 0, "exp": 0, "ref": 0})
+        buckets: dict[str, dict[str, int]] = defaultdict(lambda: {"orders": 0, "rev": 0, "disc": 0, "tax": 0, "cogs": 0, "exp": 0})
 
         for o in paid_orders:
             od = _local_day(o.created_at)
@@ -550,18 +548,12 @@ def build_report_dataset(
             k = f"{ex.expense_date.year:04d}" if is_yearly else f"{ex.expense_date.year:04d}-{ex.expense_date.month:02d}"
             buckets[k]["exp"] += int(ex.amount_paise)
 
-        for rf in refunds:
-            if rf.status in {"PROCESSED", "SUCCESS"}:
-                rd = _local_day(rf.created_at)
-                k = f"{rd.year:04d}" if is_yearly else f"{rd.year:04d}-{rd.month:02d}"
-                buckets[k]["ref"] += int(rf.amount_paise or rupees_to_paise(rf.amount))
-
-        columns = ["Year" if is_yearly else "Month", "Paid Orders", "Net Revenue (INR)", "COGS (INR)", "Operating Expenses (INR)", "Refunds (INR)", "Net Profit (INR)"]
+        columns = ["Year" if is_yearly else "Month", "Paid Orders", "Net Revenue (INR)", "COGS (INR)", "Operating Expenses (INR)", "Net Profit (INR)"]
         tot_rev = 0
         tot_prof = 0
         for k in sorted(buckets.keys(), reverse=True):
             b = buckets[k]
-            prof = b["rev"] - b["cogs"] - b["exp"] - b["ref"]
+            prof = b["rev"] - b["cogs"] - b["exp"]
             tot_rev += b["rev"]
             tot_prof += prof
             rows.append([
@@ -570,7 +562,6 @@ def build_report_dataset(
                 float(paise_to_rupees(b["rev"])),
                 float(paise_to_rupees(b["cogs"])),
                 float(paise_to_rupees(b["exp"])),
-                float(paise_to_rupees(b["ref"])),
                 float(paise_to_rupees(prof)),
             ])
         summary_pairs = [
@@ -770,35 +761,39 @@ def build_report_dataset(
             ("Repeat Customers (2+)", sum(1 for v in cust_stats.values() if v["orders"] >= 2)),
         ]
 
-    elif rt == "refunds":
-        refunds = db.scalars(select(Refund).options(joinedload(Refund.order)).where(Refund.created_at >= start_utc, Refund.created_at <= end_utc).order_by(Refund.created_at.desc())).all()
-        columns = ["Refund ID", "Order #", "Gateway Refund ID", "Status", "Reason", "Amount (INR)", "Created At"]
-        tot_ref = 0
-        for rf in refunds:
-            ap = int(rf.amount_paise or rupees_to_paise(rf.amount))
-            tot_ref += ap
-            c_dt = as_utc(rf.created_at)
+    elif rt == "payment_incidents":
+        flagged_payments = db.scalars(
+            select(Payment)
+            .options(joinedload(Payment.order))
+            .where(Payment.late_capture_flagged.is_(True), Payment.created_at >= start_utc, Payment.created_at <= end_utc)
+            .order_by(Payment.created_at.desc())
+        ).all()
+        columns = ["Payment ID", "Order #", "Gateway Payment ID", "Status", "Incident Reason", "Amount (INR)", "Created At"]
+        tot_inc = 0
+        for fp in flagged_payments:
+            ap = int(fp.amount_paise)
+            tot_inc += ap
+            c_dt = as_utc(fp.created_at)
             rows.append([
-                rf.id,
-                rf.order.order_number if rf.order else f"#{rf.order_id}",
-                rf.provider_refund_id or "-",
-                rf.status,
-                rf.reason,
+                fp.id,
+                fp.order.order_number if fp.order else f"#{fp.order_id}",
+                fp.provider_payment_id or "-",
+                fp.status,
+                (fp.order.exception_reason if fp.order and fp.order.exception_reason else "Late capture / unfulfilled order incident"),
                 float(paise_to_rupees(ap)),
                 c_dt.astimezone(tz).strftime("%Y-%m-%d %H:%M") if c_dt else "",
             ])
         summary_pairs = [
-            ("Total Refund Records", len(refunds)),
-            ("Total Refund Amount", _rupees_str(tot_ref)),
+            ("Total Flagged Incidents", len(flagged_payments)),
+            ("Total Incident Value", _rupees_str(tot_inc)),
         ]
 
     elif rt == "profit_expense":
         expenses = db.scalars(select(OperationalExpense).where(OperationalExpense.expense_date >= start_d, OperationalExpense.expense_date <= end_d)).all()
-        refunds = db.scalars(select(Refund).where(Refund.created_at >= start_utc, Refund.created_at <= end_utc)).all()
         p_waste = db.scalars(select(InventoryMovement).options(joinedload(InventoryMovement.product)).where(InventoryMovement.movement_type == InventoryMovementType.WASTE, InventoryMovement.created_at >= start_utc, InventoryMovement.created_at <= end_utc)).all()
         i_waste = db.scalars(select(StockMovement).options(joinedload(StockMovement.ingredient)).where(StockMovement.movement_type == "wastage", StockMovement.created_at >= start_utc, StockMovement.created_at <= end_utc)).all()
 
-        pnl_by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"rev": 0, "cogs": 0, "waste": 0, "exp": 0, "ref": 0})
+        pnl_by_day: dict[str, dict[str, int]] = defaultdict(lambda: {"rev": 0, "cogs": 0, "waste": 0, "exp": 0})
         for o in paid_orders:
             dk = _local_day(o.created_at).isoformat()
             pnl_by_day[dk]["rev"] += o.effective_total_paise
@@ -808,9 +803,6 @@ def build_report_dataset(
             if counter_id is not None and ex.counter_id is not None and ex.counter_id != counter_id:
                 continue
             pnl_by_day[ex.expense_date.isoformat()]["exp"] += int(ex.amount_paise)
-        for rf in refunds:
-            if rf.status in {"PROCESSED", "SUCCESS"}:
-                pnl_by_day[_local_day(rf.created_at).isoformat()]["ref"] += int(rf.amount_paise or rupees_to_paise(rf.amount))
         for mv in p_waste:
             u_cost = unit_costs.get(mv.product_id, 0) or (mv.product.effective_price_paise if mv.product else 0)
             pnl_by_day[_local_day(mv.created_at).isoformat()]["waste"] += abs(int(mv.quantity_delta)) * u_cost
@@ -818,11 +810,11 @@ def build_report_dataset(
             if sm.ingredient and sm.ingredient.cost_per_unit is not None:
                 pnl_by_day[_local_day(sm.created_at).isoformat()]["waste"] += rupees_to_paise(abs(Decimal(sm.quantity_delta)) * Decimal(sm.ingredient.cost_per_unit))
 
-        columns = ["Date", "Net Sales (INR)", "COGS (INR)", "Wastage Loss (INR)", "Operating Expenses (INR)", "Refunds (INR)", "Net Profit (INR)"]
+        columns = ["Date", "Net Sales (INR)", "COGS (INR)", "Wastage Loss (INR)", "Operating Expenses (INR)", "Net Profit (INR)"]
         tot_rev = tot_exp_all = tot_prof = 0
         for dk in sorted(pnl_by_day.keys(), reverse=True):
             b = pnl_by_day[dk]
-            exp_sum = b["cogs"] + b["waste"] + b["exp"] + b["ref"]
+            exp_sum = b["cogs"] + b["waste"] + b["exp"]
             prof = b["rev"] - exp_sum
             tot_rev += b["rev"]
             tot_exp_all += exp_sum
@@ -833,7 +825,6 @@ def build_report_dataset(
                 float(paise_to_rupees(b["cogs"])),
                 float(paise_to_rupees(b["waste"])),
                 float(paise_to_rupees(b["exp"])),
-                float(paise_to_rupees(b["ref"])),
                 float(paise_to_rupees(prof)),
             ])
         summary_pairs = [

@@ -378,7 +378,7 @@
     $("reason-action-kind").value = kind;
     $("reason-text-input").value = "";
     $("reason-modal-title").textContent =
-      kind === "reject" ? `Reject Order #${orderId} & Initiate Full Refund` : `Flag Kitchen Exception on Order #${orderId}`;
+      kind === "reject" ? `Reject Order #${orderId} & Flag Incident` : `Flag Kitchen Exception on Order #${orderId}`;
     $("staff-reason-modal").hidden = false;
     $("reason-text-input").focus();
   }
@@ -946,9 +946,9 @@
       try {
         if (kind === "reject") {
           await api(`/staff/orders/${oid}/reject`, { method: "POST", body: { reason } });
-          showBanner(`Order #${oid} rejected; stock restored & full refund initiated.`, "success");
+          showBanner(`Order #${oid} rejected; stock restored & flagged for administrative resolution.`, "success");
         } else {
-          await api(`/staff/orders/${oid}/exception`, { method: "POST", body: { reason, cancelAndRefund: false } });
+          await api(`/staff/orders/${oid}/exception`, { method: "POST", body: { reason, cancelOrder: false } });
           showBanner(`Kitchen exception logged on Order #${oid}.`, "success");
         }
         await loadQueue();

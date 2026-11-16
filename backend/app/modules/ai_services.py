@@ -568,6 +568,52 @@ class ForecastOverrideIn(BaseModel):
     reason: str = Field(min_length=3, max_length=255)
 
 
+FIXED_ACADEMIC_HOLIDAYS_MM_DD = {
+    (1, 1),    # New Year's Day
+    (1, 26),   # Republic Day
+    (8, 15),   # Independence Day
+    (10, 2),   # Gandhi Jayanti
+    (12, 25),  # Christmas
+}
+
+
+def _classify_calendar_context(target_date: date) -> dict[str, Any]:
+    mm_dd = (target_date.month, target_date.day)
+    is_holiday = mm_dd in FIXED_ACADEMIC_HOLIDAYS_MM_DD
+    is_weekend = target_date.weekday() >= 5
+    if is_holiday:
+        day_type = "HOLIDAY"
+        schedule = "HOLIDAY_BREAK"
+        schedule_factor = 0.25
+    elif is_weekend:
+        day_type = "WEEKEND"
+        schedule = "WEEKEND_REDUCED"
+        schedule_factor = 0.45
+    elif target_date.month in (5, 12):
+        day_type = "WEEKDAY"
+        schedule = "EXAM_PERIOD"
+        schedule_factor = 0.85
+    else:
+        day_type = "WEEKDAY"
+        schedule = "REGULAR_CLASSES"
+        schedule_factor = 1.0
+    return {
+        "date": target_date.isoformat(),
+        "weekday": target_date.strftime("%A"),
+        "dayType": day_type,
+        "isWeekend": is_weekend,
+        "isHoliday": is_holiday,
+        "academicSchedule": schedule,
+        "scheduleFactor": schedule_factor,
+    }
+
+
+def _interval_15m_label(dt: datetime) -> str:
+    minute_bucket = (dt.minute // 15) * 15
+    end_dt = dt.replace(minute=minute_bucket, second=0, microsecond=0) + timedelta(minutes=15)
+    return f"{dt.hour:02d}:{minute_bucket:02d}-{end_dt.hour:02d}:{end_dt.minute:02d}"
+
+
 def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: int | None) -> ForecastRun:
     tz = ZoneInfo(get_settings().canteen_timezone)
     lookback_days = 56
@@ -585,8 +631,10 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
         .where(Order.payment_status == PaymentStatus.PAID, Order.created_at >= since_utc)
     ).all()
 
-    # Aggregate daily slot sales: history[(product_id, slot_label)][local_date] = qty
+    # Aggregate daily slot sales & 15-minute interval sales
     history: dict[tuple[int, str], dict[date, int]] = defaultdict(lambda: defaultdict(int))
+    interval_history: dict[str, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+    item_interval_history: dict[tuple[int, str], dict[date, int]] = defaultdict(lambda: defaultdict(int))
     observed_dates: set[date] = set()
     for pid, qty, created_at in paid_lines:
         dt_utc = as_utc(created_at)
@@ -598,14 +646,24 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
             continue
         observed_dates.add(d_local)
         slot_lbl = _slot_label_for_hour(local_dt.hour)
-        history[(int(pid), slot_lbl)][d_local] += int(qty or 0)
+        q_int = int(qty or 0)
+        history[(int(pid), slot_lbl)][d_local] += q_int
+        if 8 <= local_dt.hour < 18:
+            iv_lbl = _interval_15m_label(local_dt)
+            interval_history[iv_lbl][d_local] += q_int
+            item_interval_history[(int(pid), iv_lbl)][d_local] += q_int
 
     sorted_dates = sorted(observed_dates)
     active_days_count = len(sorted_dates)
     target_weekday = target_date.weekday()
+    cal_ctx = _classify_calendar_context(target_date)
+    sched_factor = float(cal_ctx["scheduleFactor"])
 
-    # Compute genuine rolling 1-step backtest MAE & WAPE on observed historical days
-    abs_errors: list[float] = []
+    # Compute genuine rolling 1-step backtest MAE & WAPE on observed historical days:
+    # Compare Primary Model (weekday-conditioned recency-weighted moving average)
+    # against Baseline Model (unweighted historical mean across all prior days).
+    abs_errors_primary: list[float] = []
+    abs_errors_baseline: list[float] = []
     actual_sum = 0.0
     if len(sorted_dates) >= 2:
         for idx in range(1, len(sorted_dates)):
@@ -618,22 +676,120 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
                     series = history.get((p.id, slot_lbl), {})
                     if not series:
                         continue
-                    pred_bt = sum(series.get(d, 0) for d in ref_days) / max(1, len(ref_days))
+                    # Primary weighted prediction
+                    weights_bt = [float(i + 1) for i in range(len(ref_days))]
+                    pred_primary = sum(series.get(d, 0) * w for d, w in zip(ref_days, weights_bt)) / max(1.0, sum(weights_bt))
+                    # Naive baseline prediction (simple average over all prior days)
+                    pred_baseline = sum(series.get(d, 0) for d in prior_days) / max(1, len(prior_days))
                     act_bt = float(series.get(eval_day, 0))
-                    abs_errors.append(abs(act_bt - pred_bt))
+                    abs_errors_primary.append(abs(act_bt - pred_primary))
+                    abs_errors_baseline.append(abs(act_bt - pred_baseline))
                     actual_sum += act_bt
 
-    mae = round(sum(abs_errors) / len(abs_errors), 3) if abs_errors else None
-    wape_pct = round((sum(abs_errors) / actual_sum) * 100.0, 2) if abs_errors and actual_sum > 0 else None
+    mae = round(sum(abs_errors_primary) / len(abs_errors_primary), 3) if abs_errors_primary else None
+    wape_pct = round((sum(abs_errors_primary) / actual_sum) * 100.0, 2) if abs_errors_primary and actual_sum > 0 else None
+    baseline_mae = round(sum(abs_errors_baseline) / len(abs_errors_baseline), 3) if abs_errors_baseline else None
+    baseline_wape_pct = round((sum(abs_errors_baseline) / actual_sum) * 100.0, 2) if abs_errors_baseline and actual_sum > 0 else None
+    improvement_pct = (
+        round(((baseline_mae - mae) / baseline_mae) * 100.0, 2)
+        if (mae is not None and baseline_mae is not None and baseline_mae > 0)
+        else None
+    )
+
+    if active_days_count == 0:
+        forecast_status = "UNAVAILABLE_NO_HISTORY"
+    elif active_days_count < 7:
+        forecast_status = "PROVISIONAL_INSUFFICIENT_HISTORY"
+    else:
+        forecast_status = "MEASURED"
+
+    same_weekday_dates = [d for d in sorted_dates if d.weekday() == target_weekday]
+    ref_dates_global = same_weekday_dates if len(same_weekday_dates) >= 2 else sorted_dates[-14:]
+
+    # Build 15-minute time interval forecasts (08:00 to 18:00)
+    intervals_15m: list[dict[str, Any]] = []
+    for hr in range(8, 18):
+        for mn in (0, 15, 30, 45):
+            end_hr = hr + 1 if mn == 45 else hr
+            end_mn = 0 if mn == 45 else mn + 15
+            iv_lbl = f"{hr:02d}:{mn:02d}-{end_hr:02d}:{end_mn:02d}"
+            iv_series = interval_history.get(iv_lbl, {})
+            iv_samples = [float(iv_series.get(d, 0)) for d in ref_dates_global] if ref_dates_global else []
+            if iv_samples:
+                iv_weights = [float(i + 1) for i in range(len(iv_samples))]
+                iv_mean = (sum(s * w for s, w in zip(iv_samples, iv_weights)) / sum(iv_weights)) * sched_factor
+                iv_var = sum((s - iv_mean) ** 2 for s in iv_samples) / max(1, len(iv_samples))
+                iv_std = math.sqrt(iv_var)
+            else:
+                iv_mean = 0.0
+                iv_std = 0.0
+            iv_pred = max(0, int(round(iv_mean)))
+            iv_margin = max(1, int(round(1.28 * iv_std))) if iv_pred > 0 else 0
+            # Top item for this 15-min interval
+            top_item_name = None
+            top_item_qty = 0
+            for p in products:
+                p_iv_series = item_interval_history.get((p.id, iv_lbl), {})
+                if p_iv_series and ref_dates_global:
+                    p_avg = (sum(p_iv_series.get(d, 0) for d in ref_dates_global) / len(ref_dates_global)) * sched_factor
+                    p_q = int(round(p_avg))
+                    if p_q > top_item_qty:
+                        top_item_qty = p_q
+                        top_item_name = p.name
+            intervals_15m.append({
+                "interval": iv_lbl,
+                "predictedUnits": iv_pred,
+                "lowerBound": max(0, iv_pred - iv_margin),
+                "upperBound": iv_pred + iv_margin,
+                "topItemName": top_item_name,
+                "topItemPredictedUnits": top_item_qty,
+                "isSpike": False,
+            })
+
+    nonzero_iv = [x["predictedUnits"] for x in intervals_15m if x["predictedUnits"] > 0]
+    mean_iv = (sum(nonzero_iv) / len(nonzero_iv)) if nonzero_iv else 0.0
+    demand_spikes: list[dict[str, Any]] = []
+    for iv_entry in intervals_15m:
+        if mean_iv > 0 and iv_entry["predictedUnits"] >= max(3, math.ceil(mean_iv * 1.5)):
+            iv_entry["isSpike"] = True
+            demand_spikes.append({
+                "type": "INTERVAL_SPIKE_15M",
+                "interval": iv_entry["interval"],
+                "predictedUnits": iv_entry["predictedUnits"],
+                "baselineIntervalMean": round(mean_iv, 2),
+                "topItemName": iv_entry["topItemName"],
+                "recommendation": f"Pre-stage batch prep 15 minutes before {iv_entry['interval'].split('-')[0]} break surge.",
+            })
 
     metrics = {
-        "method": "weekday_slot_weighted_moving_average_v1",
+        "method": "weekday_schedule_weighted_moving_average_v3",
         "lookbackDays": lookback_days,
         "observedActiveDays": active_days_count,
+        "forecastStatus": forecast_status,
         "mae": mae,
         "wapePct": wape_pct,
         "backtestStatus": "measured" if mae is not None else "insufficient_history_for_backtest",
-        "note": "Forecasts are statistical estimates with empirical intervals, not guarantees.",
+        "calendarContext": cal_ctx,
+        "modelComparison": {
+            "primaryModel": {
+                "name": "weekday-schedule-wma-v3",
+                "mae": mae,
+                "wapePct": wape_pct,
+            },
+            "baselineModel": {
+                "name": "naive-unweighted-mean-v1",
+                "mae": baseline_mae,
+                "wapePct": baseline_wape_pct,
+            },
+            "improvementOverBaselinePct": improvement_pct,
+        },
+        "intervals15Min": intervals_15m,
+        "demandSpikes": demand_spikes,
+        "note": (
+            "Provisional cold-start/low-history estimate — collect at least 7 active days of transactions for calibrated accuracy."
+            if forecast_status != "MEASURED"
+            else "Forecasts evaluated on genuine historical transactions using rolling 1-step backtesting."
+        ),
     }
 
     run = ForecastRun(
@@ -645,8 +801,6 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
     db.add(run)
     db.flush()
 
-    same_weekday_dates = [d for d in sorted_dates if d.weekday() == target_weekday]
-
     for p in products:
         for slot_lbl, _, _ in SERVICE_SLOTS:
             series = history.get((p.id, slot_lbl), {})
@@ -654,22 +808,22 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
             samples = [float(series.get(d, 0)) for d in ref_dates]
 
             if samples:
-                # Linearly weight recent observations higher
+                # Linearly weight recent observations higher and adjust for schedule factor
                 weights = [float(i + 1) for i in range(len(samples))]
-                w_mean = sum(s * w for s, w in zip(samples, weights)) / sum(weights)
+                w_mean = (sum(s * w for s, w in zip(samples, weights)) / sum(weights)) * sched_factor
                 variance = sum((s - w_mean) ** 2 for s in samples) / max(1, len(samples))
                 std_dev = math.sqrt(variance)
             else:
-                # Cold-start baseline explicitly flagged as low-confidence
-                w_mean = 3.0 if slot_lbl.startswith("Lunch") else 2.0
-                std_dev = 2.0
+                # Cold-start baseline explicitly flagged as low-confidence/provisional
+                w_mean = (3.0 if slot_lbl.startswith("Lunch") else 2.0) * sched_factor if active_days_count > 0 else 0.0
+                std_dev = 2.0 if active_days_count > 0 else 0.0
 
             pred_qty = max(0, int(round(w_mean)))
-            margin = max(1, int(round(1.28 * std_dev)))
+            margin = max(1, int(round(1.28 * std_dev))) if (samples or active_days_count > 0) else 0
             lower = max(0, pred_qty - margin)
             upper = pred_qty + margin
             low_conf = active_days_count < 7 or len(samples) < 3
-            conf_score = Decimal(str(round(min(0.90, 0.35 + min(active_days_count, 28) * 0.02), 2)))
+            conf_score = Decimal(str(round(min(0.90, 0.35 + min(active_days_count, 28) * 0.02), 2))) if active_days_count > 0 else Decimal("0.00")
             rec_prep = pred_qty if low_conf else min(upper, int(round(pred_qty + 0.35 * std_dev)))
 
             db.add(
@@ -692,20 +846,48 @@ def generate_demand_forecast_run(db: Session, target_date: date, actor_user_id: 
         feature="demand_forecast",
         model_version=run.model_version,
         raw_input_for_hash=target_date.isoformat(),
-        metadata={"forecast_date": target_date.isoformat(), "active_days": active_days_count, "mae": mae, "wape_pct": wape_pct},
+        metadata={"forecast_date": target_date.isoformat(), "active_days": active_days_count, "mae": mae, "wape_pct": wape_pct, "status": forecast_status},
     )
     db.commit()
     db.refresh(run)
     return run
 
 
+def _item_slot_intervals_15min(slot_label: str, predicted_qty: int) -> list[dict[str, Any]]:
+    start_hour = 12
+    for lbl, sh, _ in SERVICE_SLOTS:
+        if lbl == slot_label:
+            start_hour = sh
+            break
+    weights = [0.08, 0.12, 0.16, 0.18, 0.18, 0.12, 0.10, 0.06]
+    out: list[dict[str, Any]] = []
+    for idx, w in enumerate(weights):
+        h = start_hour + (idx // 4)
+        m = (idx % 4) * 15
+        end_m = m + 15
+        end_h = h + (1 if end_m == 60 else 0)
+        end_m = 0 if end_m == 60 else end_m
+        q = int(round(predicted_qty * w))
+        out.append({
+            "interval": f"{h:02d}:{m:02d}-{end_h:02d}:{end_m:02d}",
+            "predictedUnits": q,
+        })
+    return out
+
+
 def _serialize_forecast_run(run: ForecastRun) -> dict[str, Any]:
+    metrics = parse_json_safe(run.metrics_json, {})
     return {
         "runId": run.id,
         "forecastDate": run.forecast_date.isoformat(),
         "modelVersion": run.model_version,
         "isEstimate": True,
-        "metrics": parse_json_safe(run.metrics_json, {}),
+        "forecastStatus": metrics.get("forecastStatus", "PROVISIONAL_INSUFFICIENT_HISTORY"),
+        "calendarContext": metrics.get("calendarContext", _classify_calendar_context(run.forecast_date)),
+        "modelComparison": metrics.get("modelComparison", {}),
+        "intervals15Min": metrics.get("intervals15Min", []),
+        "demandSpikes": metrics.get("demandSpikes", []),
+        "metrics": metrics,
         "createdAt": as_utc(run.created_at),
         "items": [
             {
@@ -717,7 +899,11 @@ def _serialize_forecast_run(run: ForecastRun) -> dict[str, Any]:
                 "lowerBound": fi.lower_bound,
                 "upperBound": fi.upper_bound,
                 "recommendedPrep": fi.recommended_prep,
+                "currentStock": fi.product.stock_quantity if fi.product else 0,
+                "stockConstrained": bool(fi.product and fi.product.stock_quantity < fi.recommended_prep),
+                "recommendedAdditionalPrep": max(0, int(fi.recommended_prep) - int(fi.product.stock_quantity if fi.product else 0)),
                 "effectivePrepPlan": fi.staff_approved_quantity if fi.staff_approved_quantity is not None else fi.recommended_prep,
+                "intervals15Min": _item_slot_intervals_15min(fi.time_slot, fi.predicted_quantity),
                 "confidenceScore": float(fi.confidence_score),
                 "lowConfidenceWarning": bool(fi.low_confidence_warning),
                 "staffApprovedQuantity": fi.staff_approved_quantity,

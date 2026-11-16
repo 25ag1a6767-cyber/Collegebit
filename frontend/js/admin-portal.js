@@ -332,7 +332,7 @@
       { label: "4. Failed Payments", val: String(c.failedPayments || 0), sub: "Declined or expired intents" },
       { label: "5. Pending Orders", val: String(c.pendingOrders || 0), sub: "Awaiting prep / kitchen queue" },
       { label: "6. Completed Orders", val: String(c.completedOrders || 0), sub: "Picked up & closed" },
-      { label: "7. Cancelled Orders", val: String(c.cancelledOrders || 0), sub: "Cancelled or refund pending" },
+      { label: "7. Cancelled Orders", val: String(c.cancelledOrders || 0), sub: "Cancelled or incident flagged" },
       { label: "8. Average Order Value", val: formatINRFromPaise(c.averageOrderValuePaise), sub: "Mean paid basket" },
       { label: "9. Active Customers", val: String(c.activeCustomers || 0), sub: (c.registeredActiveStudents || 0) + " registered students" },
       { label: "10. Estimated Profit", val: formatINRFromPaise(c.estimatedProfitPaise), sub: "Expenses + COGS: " + formatINRFromPaise(c.totalExpensesPaise) }
@@ -1044,7 +1044,7 @@
   }
 
   // ============================================================================
-  // TAB 7: ORDERS, PAYMENTS, REFUNDS & CUSTOMER FEEDBACK
+  // TAB 7: ORDERS, PAYMENTS, INCIDENTS & CUSTOMER FEEDBACK
   // ============================================================================
   async function loadOperationsModule() {
     const oq = new URLSearchParams();
@@ -1625,24 +1625,8 @@
       }
     });
 
-    // Operations & Refunds
+    // Operations & Incident Reconciliation
     $("btn-ord-filter").addEventListener("click", () => loadOperationsModule());
-    $("refund-create-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try {
-        const payId = Number($("ref-payment-id").value);
-        const amtVal = $("ref-amount").value ? Math.round(Number($("ref-amount").value) * 100) : null;
-        await apiFetch("/api/v1/payments/" + payId + "/refunds", {
-          method: "POST",
-          body: { amountPaise: amtVal, reason: $("ref-reason").value.trim() }
-        });
-        e.target.reset();
-        showAlert("Gateway refund initiated.", "success");
-        await loadOperationsModule();
-      } catch (err) {
-        showAlert(err.message, "error");
-      }
-    });
 
     // Settings & Counters
     $("global-settings-form").addEventListener("submit", async (e) => {

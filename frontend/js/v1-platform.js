@@ -680,7 +680,7 @@
       const res = await v1Fetch("/api/v1/users/me/orders?limit=10");
       const orders = Array.isArray(res) ? res : (res?.items || []);
       panel.replaceChildren();
-      const active = orders.filter(o => !["completed", "collected", "cancelled", "refunded", "refund_pending"].includes(String(o.status).toLowerCase()));
+      const active = orders.filter(o => !["completed", "collected", "cancelled"].includes(String(o.status).toLowerCase()));
       for (const o of active) {
         const payLower = String(o.paymentStatus || "").toLowerCase();
         const statusNorm = String(o.rawStatus || o.status || "").toLowerCase().replace("pending_payment", "pending");
@@ -1147,14 +1147,14 @@
           const exBtn = document.createElement("button");
           exBtn.type = "button";
           exBtn.className = "cancel-order-button";
-          exBtn.textContent = "Exception / Refund";
+          exBtn.textContent = "Flag Kitchen Incident";
           exBtn.addEventListener("click", async () => {
             const reason = window.prompt("Kitchen exception reason (e.g. ingredient stockout):", "Item unavailable in kitchen");
             if (!reason) return;
             try {
               await v1Fetch(`/api/v1/staff/orders/${o.id}/exception`, {
                 method: "POST",
-                body: JSON.stringify({ reason, cancelAndRefund: true })
+                body: JSON.stringify({ reason, cancelOrder: true })
               });
               await loadStaffKds();
             } catch (err) {
@@ -1470,26 +1470,6 @@
         body: JSON.stringify({ taxRateBps: bps })
       });
       msg.textContent = `Tax rate updated to ${(bps / 100).toFixed(2)}%.`;
-      msg.className = "management-message success";
-    } catch (err) {
-      msg.textContent = err.message;
-      msg.className = "management-message error";
-    }
-  });
-
-  $("#v1-refund-form")?.addEventListener("submit", async e => {
-    e.preventDefault();
-    const msg = $("#v1-refund-msg");
-    try {
-      const pid = Number($("#v1-refund-payment-id").value);
-      const amtStr = $("#v1-refund-amount").value;
-      const body = { reason: $("#v1-refund-reason").value.trim() };
-      if (amtStr) body.amountPaise = Math.round(Number(amtStr) * 100);
-      const res = await v1Fetch(`/api/v1/payments/${pid}/refunds`, {
-        method: "POST",
-        body: JSON.stringify(body)
-      });
-      msg.textContent = `Refund #${res.id} (${res.status}) recorded for ${paise(res.amountPaise)}.`;
       msg.className = "management-message success";
     } catch (err) {
       msg.textContent = err.message;

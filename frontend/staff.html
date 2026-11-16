@@ -287,12 +287,12 @@
   <!-- Reject / Exception Reason Modal -->
   <div id="staff-reason-modal" class="modal-backdrop" hidden>
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="reason-modal-title">
-      <h3 id="reason-modal-title">Reject Order &amp; Initiate Full Refund</h3>
+      <h3 id="reason-modal-title">Reject Order &amp; Flag Incident</h3>
       <form id="staff-reason-form">
         <input type="hidden" id="reason-order-id">
         <input type="hidden" id="reason-action-kind">
         <label>Reason shown to student (required)
-          <input id="reason-text-input" type="text" minlength="3" maxlength="220" required placeholder="e.g. Ingredient sold out — full UPI refund initiated">
+          <input id="reason-text-input" type="text" minlength="3" maxlength="220" required placeholder="e.g. Ingredient sold out — flagged for administrative resolution">
         </label>
         <div class="inline-row">
           <button type="submit" class="btn btn-danger" id="reason-confirm-btn">Confirm</button>

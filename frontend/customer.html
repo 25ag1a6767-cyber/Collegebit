@@ -325,12 +325,12 @@
         </div>
       </div>
 
-      <!-- A01–A08 Enterprise Admin Hub: Counters, Discounts, Refunds & AI Forecasting -->
+      <!-- A01–A08 Enterprise Admin Hub: Counters, Discounts, Payment Incidents & AI Forecasting -->
       <div class="v1-hub-panel" id="v1-admin-enterprise-hub" hidden>
         <div class="management-list-head">
           <div>
             <p class="eyebrow">A01–A08 · ENTERPRISE ADMIN CONTROLS &amp; AI INSIGHTS</p>
-            <h3>Counters, Discounts, Gateway Refunds &amp; AI Demand Forecasts</h3>
+            <h3>Counters, Discounts, Payment Incidents &amp; AI Demand Forecasts</h3>
           </div>
           <div class="inline-toolbar-row">
             <button type="button" class="primary-button" id="v1-run-forecast-btn">Run AI Demand Forecast</button>
@@ -390,15 +390,6 @@
               <button type="button" class="secondary-button" id="v1-set-tax-btn">Set GST / Tax Rate</button>
             </div>
             <p id="v1-disc-msg" class="management-message" role="status"></p>
-          </form>
-
-          <form class="v1-mini-card" id="v1-refund-form">
-            <h4>A04 · Authorized Gateway Refund</h4>
-            <label>Payment ID<input id="v1-refund-payment-id" type="number" min="1" required placeholder="Payment record ID"></label>
-            <label>Refund amount in ₹ (leave blank for full refund)<input id="v1-refund-amount" type="number" min="1" step="0.01" placeholder="Full captured amount"></label>
-            <label>Reason<input id="v1-refund-reason" required minlength="3" maxlength="200" placeholder="e.g. Kitchen stockout / late capture"></label>
-            <button type="submit" class="secondary-button">Initiate Gateway Refund</button>
-            <p id="v1-refund-msg" class="management-message" role="status"></p>
           </form>
         </div>
 
@@ -463,7 +454,7 @@
         </div>
       </div>
 
-      <div class="management-card management-list" id="order-queue-panel"><div class="management-list-head"><h3>Incoming orders &amp; live queue</h3><div><button class="secondary-button" id="refresh-order-queue" type="button">Refresh queue</button><select id="queue-status-filter" aria-label="Filter queue"><option value="">All statuses</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="preparing">Preparing</option><option value="ready">Ready</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select><select id="queue-payment-filter" aria-label="Filter payment status"><option value="">All payments</option><option value="pending">Payment pending</option><option value="paid">Paid</option><option value="failed">Payment failed</option><option value="refunded">Refund status</option></select></div></div><p class="management-message" id="order-queue-message" role="status">Admin register includes all orders and payment exceptions; staff see paid operational orders.</p><div id="order-queue-list"></div></div>
+      <div class="management-card management-list" id="order-queue-panel"><div class="management-list-head"><h3>Incoming orders &amp; live queue</h3><div><button class="secondary-button" id="refresh-order-queue" type="button">Refresh queue</button><select id="queue-status-filter" aria-label="Filter queue"><option value="">All statuses</option><option value="pending">Pending</option><option value="confirmed">Confirmed</option><option value="preparing">Preparing</option><option value="ready">Ready</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select><select id="queue-payment-filter" aria-label="Filter payment status"><option value="">All payments</option><option value="pending">Payment pending</option><option value="paid">Paid</option><option value="failed">Payment failed</option></select></div></div><p class="management-message" id="order-queue-message" role="status">Admin register includes all orders and payment exceptions; staff see paid operational orders.</p><div id="order-queue-list"></div></div>
 
       <div class="management-grid">
         <form class="management-card" id="product-form">
@@ -665,7 +656,7 @@
       <div class="admin-order-toolbar">
         <label>Search orders<input id="admin-order-search" type="search" maxlength="120" placeholder="Order ID, customer, email or gateway ID"></label>
         <label>Order status<select id="admin-order-status"><option value="">All statuses</option><option>pending</option><option>confirmed</option><option>preparing</option><option>ready</option><option>completed</option><option>cancelled</option></select></label>
-        <label>Payment status<select id="admin-payment-status"><option value="">All payments</option><option>pending</option><option>paid</option><option>failed</option><option>refunded</option></select></label>
+        <label>Payment status<select id="admin-payment-status"><option value="">All payments</option><option>pending</option><option>paid</option><option>failed</option></select></label>
         <button type="button" id="admin-refresh-orders">Refresh orders</button>
         <button type="button" class="secondary-button" id="admin-export-orders">Export CSV</button>
       </div>

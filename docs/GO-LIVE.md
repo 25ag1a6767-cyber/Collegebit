@@ -3,7 +3,7 @@
 Follow these steps in order when deploying ACE Canteen to serve live campus breaks.
 
 ## 0. Merchant & Infrastructure Prerequisites
-- **Razorpay Merchant Account:** Complete business KYC and enable **UPI Intent / Collect** + **Webhooks** + **Refunds API**.
+- **Razorpay Merchant Account:** Complete business KYC and enable **UPI Intent / Collect** + **Webhooks** (`payment.captured`, `payment.failed`).
 - **PostgreSQL 15+ & Redis (optional):** Managed PostgreSQL for transactional stock reservations, payments, and outbox events; Redis recommended for multi-worker throttling.
 - **HTTPS Domain & SMTP:** Public TLS domain (e.g. `https://canteen.yourcampus.edu`) and transactional SMTP for password resets, email verification, and payment receipts.
 
@@ -30,16 +30,16 @@ curl -fsS http://127.0.0.1:8000/api/ready
 ## 3. Reverse Proxy, TLS & WebSockets
 Copy `deploy/nginx-https-example.conf`, configure Let's Encrypt TLS (`certbot --nginx`), and ensure WebSocket upgrade headers (`Upgrade` and `Connection "upgrade"`) are forwarded for `/api/v1/ws` and `/ws/events`. Set `HTTPS_TERMINATED=true` only after verifying HTTPS.
 
-## 4. Razorpay UPI, Webhooks & Refunds
+## 4. Razorpay UPI, Webhooks & Incident Reconciliation (Strict No-Refunds Policy)
 1. Configure Razorpay webhook URL: `https://canteen.yourcampus.edu/api/v1/webhooks/payments/razorpay` (legacy `/api/payments/webhook` also remains active) with `RAZORPAY_WEBHOOK_SECRET`.
-2. Subscribe to `payment.captured`, `payment.failed`, `refund.processed`, and `refund.failed`.
-3. **Late-Capture Protection:** If a `payment.captured` webhook arrives after an unpaid reservation expired or was cancelled, the backend automatically flags `late_capture_flagged=true`, moves the order to `REFUND_PENDING`, and initiates a gateway refund so students never lose money on unreserved stock.
-4. **Authorized Refunds:** Administrators can issue full or partial refunds directly from **A04 · Authorized Gateway Refund** (`POST /api/v1/payments/{id}/refunds`) and audit discrepancies via `/api/v1/admin/payments/reconciliation`.
+2. Subscribe to `payment.captured` and `payment.failed`.
+3. **Late-Capture Incident Flagging:** If a `payment.captured` webhook arrives after an unpaid reservation expired or was cancelled, the backend preserves the financial payment record (`Payment.status = "SUCCESS"`, `Order.payment_status = "paid"`), flags `late_capture_flagged=true`, and logs an administrative reconciliation alert for authorized resolution without initiating any refund.
+4. **Reconciliation & Incident Management:** Administrators audit discrepancies and flagged incidents via `/api/v1/admin/payments/reconciliation` and the `payment_incidents` report. Under the strict business rule, no refund APIs or refund workflows exist in the application.
 
 ## 5. Loyalty Rewards & Prepaid Wallet
-- Students earn 1 point per ₹10 after staff verifies full pickup; each point redeems for ₹0.10 at checkout. Reward transactions are ledgered, and points reserved at checkout are restored when an order is cancelled or expires.
+- Students earn 1 point per ₹10 after staff verifies full pickup; each point redeems for ₹0.10 at checkout. Reward transactions are ledgered, and points reserved at checkout are restored when an unpaid order is cancelled or expires.
 - Prepaid wallet credits are issued only by an administrator after verifying an in-person/campus payment. Do not issue credit based only on a student request. Every credit and wallet-paid order is ledgered and audited.
-- Wallet checkout currently requires the available balance to cover the full payable amount. Wallet refunds return to that same wallet. Keep the existing gateway flow for any remaining or partial balance.
+- Wallet checkout requires the available balance to cover the full payable amount. Paid orders cannot be cancelled or refunded under the strict no-refunds policy. Keep the existing gateway flow for any remaining or partial balance.
 - Verify student identity and payment receipt at the counter before submitting `/api/v1/admin/wallet/credit`. Never use wallet credits as a substitute for recording an unverified payment.
 
 ## 6. AI Services & Privacy Controls

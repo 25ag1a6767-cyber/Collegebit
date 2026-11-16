@@ -70,7 +70,7 @@ def _product() -> int:
         return product.id
 
 
-def test_prepaid_credit_wallet_order_and_internal_refund():
+def test_prepaid_credit_wallet_order_and_strict_no_refund_policy():
     student_id, student_token = _account(UserRole.STUDENT)
     _, admin_token = _account(UserRole.ADMIN)
     product_id = _product()
@@ -108,21 +108,23 @@ def test_prepaid_credit_wallet_order_and_internal_refund():
     assert wallet.status_code == 200
     assert wallet.json()["data"]["balancePaise"] == 3000
 
+    # Paid orders cannot be cancelled or refunded under the strict no-refunds policy
     cancelled = client.post(
         f"/api/v1/orders/{order['id']}/cancel",
         headers=student_headers,
-        json={"reason": "Test cancellation"},
+        json={"reason": "Attempt cancellation on paid order"},
     )
-    assert cancelled.status_code == 200, cancelled.text
-    wallet_after_refund = client.get("/api/v1/wallet/me", headers=student_headers)
-    assert wallet_after_refund.json()["data"]["balancePaise"] == 5000
+    assert cancelled.status_code == 409
+    assert cancelled.json()["error"]["code"] == "CANCELLATION_NOT_ALLOWED"
+    wallet_after = client.get("/api/v1/wallet/me", headers=student_headers)
+    assert wallet_after.json()["data"]["balancePaise"] == 3000
 
     with SessionLocal() as db:
         saved_order = db.get(Order, order["id"])
         assert saved_order is not None
-        assert saved_order.payment_status == PaymentStatus.REFUNDED
+        assert saved_order.payment_status == PaymentStatus.PAID
         assert db.scalar(select(Payment).where(Payment.order_id == saved_order.id)).provider == "campusbite_wallet"
-        assert db.scalar(select(WalletTransaction).where(WalletTransaction.order_id == saved_order.id, WalletTransaction.transaction_type == "refund")) is not None
+        assert db.scalar(select(WalletTransaction).where(WalletTransaction.order_id == saved_order.id, WalletTransaction.transaction_type == "order_payment")) is not None
 
 
 def test_reward_points_are_redeemed_server_side_and_restored_on_cancel():

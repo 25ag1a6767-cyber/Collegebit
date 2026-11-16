@@ -6,10 +6,10 @@ Covers:
   3. Strict student order isolation & counter-scoped staff RBAC (403 COUNTER_FORBIDDEN on unassigned counters).
   4. Verified menu items, customizations, recipe ingredient deduction & restoration, coupons, tax (taxRateBps), and idempotent checkout.
   5. UPI payment intent, gateway failure handling, HMAC signature verification, and raw-body webhook deduplication.
-  6. Late-capture safety: expired reservation receiving payment.captured flags late_capture_flagged and initiates automatic refund.
-  7. Authorized admin gateway refunds and reconciliation ledger.
+  6. Late-capture safety: expired reservation receiving payment.captured flags late_capture_flagged and preserves financial transaction record under strict no-refunds policy.
+  7. Payment reconciliation ledger and strict enforcement that refund APIs do not exist.
   8. Short-lived opaque QR pickup tokens (pk_...), expiry (410 PICKUP_TOKEN_EXPIRED), 6-char manual fallback code, and atomic single-use collection (409 ORDER_ALREADY_COLLECTED).
-  9. Counter-scoped staff kitchen lifecycle (accept -> start -> ready -> exception with refund) and ingredient wastage logging.
+  9. Counter-scoped staff kitchen lifecycle (accept -> start -> ready -> exception with incident flagging) and ingredient wastage logging.
   10. Grounded AI Menu Assistant (Gemini mock + deterministic fallback): strips hallucinated/over-budget/allergen-unsafe items, never auto-adds to cart, and stores zero PII prompts.
   11. AI Demand Forecasting (weighted moving average + intervals + measured rolling backtest MAE/WAPE + staff override) and predicted recipe ingredient shortage insights.
   12. Real-time WebSocket (/api/v1/ws) role & counter scoping.
@@ -375,7 +375,7 @@ def test_04_recipe_consumption_customizations_coupon_tax_and_cancellation_restor
             client.patch("/api/v1/admin/settings", json={"taxRateBps": 0}, headers=admin_h)
 
 
-def test_05_upi_payment_webhook_kitchen_lifecycle_qr_single_use_and_refund(monkeypatch):
+def test_05_upi_payment_webhook_kitchen_lifecycle_qr_single_use_and_no_refund_policy(monkeypatch):
     cfg = get_settings()
     monkeypatch.setattr(cfg, "razorpay_key_id", "rzp_test_prodspec")
     monkeypatch.setattr(cfg, "razorpay_key_secret", "secret_prodspec_key_123")
@@ -384,8 +384,6 @@ def test_05_upi_payment_webhook_kitchen_lifecycle_qr_single_use_and_refund(monke
     def fake_httpx_post(url: str, **kwargs: Any) -> _DummyResponse:
         if url.endswith("/v1/orders"):
             return _DummyResponse(200, {"id": f"order_{uuid.uuid4().hex[:12]}", "status": "created"})
-        if "/refund" in url:
-            return _DummyResponse(200, {"id": f"rfnd_{uuid.uuid4().hex[:12]}", "status": "processed"})
         raise AssertionError(f"Unexpected external POST: {url}")
 
     monkeypatch.setattr(httpx, "post", fake_httpx_post)
@@ -479,16 +477,16 @@ def test_05_upi_payment_webhook_kitchen_lifecycle_qr_single_use_and_refund(monke
         assert duplicate_scan.status_code == 409
         assert duplicate_scan.json()["error"]["code"] == "ORDER_ALREADY_COLLECTED"
 
-        # Admin initiates partial/full refund via gateway
+        # Strict no-refunds policy: refund endpoint must not exist
         ref = client.post(
             f"/api/v1/payments/{payment_id}/refunds",
-            json={"amountPaise": 6000, "reason": "Quality goodwill refund"},
+            json={"amountPaise": 6000, "reason": "Test forbidden endpoint"},
             headers=admin_h,
         )
-        assert ref.status_code in (200, 201), ref.text
+        assert ref.status_code in (404, 405)
 
 
-def test_06_late_captured_webhook_on_expired_order_flags_and_auto_refunds(monkeypatch):
+def test_06_late_captured_webhook_on_expired_order_flags_incident_without_refund(monkeypatch):
     cfg = get_settings()
     monkeypatch.setattr(cfg, "razorpay_key_id", "rzp_test_latecap")
     monkeypatch.setattr(cfg, "razorpay_key_secret", "secret_latecap_123")
@@ -500,8 +498,6 @@ def test_06_late_captured_webhook_on_expired_order_flags_and_auto_refunds(monkey
     def fake_httpx_post(url: str, **kwargs: Any) -> _DummyResponse:
         if url.endswith("/v1/orders"):
             return _DummyResponse(200, {"id": gw_order_id, "status": "created"})
-        if "/refund" in url:
-            return _DummyResponse(200, {"id": f"rfnd_auto_{uuid.uuid4().hex[:8]}", "status": "processed"})
         raise AssertionError(url)
 
     monkeypatch.setattr(httpx, "post", fake_httpx_post)
@@ -563,8 +559,9 @@ def test_06_late_captured_webhook_on_expired_order_flags_and_auto_refunds(monkey
             ord_row = db.get(Order, order_id)
             assert pay_row is not None
             assert pay_row.late_capture_flagged is True
-            assert ord_row.payment_status in {PaymentStatus.REFUNDED, PaymentStatus.REFUND_PENDING}
-            assert ord_row.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}
+            assert pay_row.status == "SUCCESS"
+            assert ord_row.payment_status == PaymentStatus.PAID
+            assert ord_row.status == OrderStatus.CANCELLED
 
 
 def test_07_ai_assistant_grounding_privacy_and_demand_forecasting(monkeypatch):
@@ -641,14 +638,24 @@ def test_07_ai_assistant_grounding_privacy_and_demand_forecasting(monkeypatch):
             assert latest_ai.prompt is None
             assert len(latest_ai.input_hash or "") == 64
 
-        # Trigger AI demand forecast run & test staff override + waste insights
+        # Trigger AI demand forecast run & test 15-min intervals, calendar context, baseline comparison, staff override + waste insights
         fc_run = client.post("/api/v1/ai/forecasts/run", json={}, headers=admin_h)
         assert fc_run.status_code == 201, fc_run.text
         fc_data = fc_run.json()["data"]
         assert fc_data["isEstimate"] is True
+        assert fc_data["forecastStatus"] in {"MEASURED", "PROVISIONAL_INSUFFICIENT_HISTORY", "UNAVAILABLE_NO_HISTORY"}
+        assert "calendarContext" in fc_data
+        assert "academicSchedule" in fc_data["calendarContext"]
+        assert "modelComparison" in fc_data
         assert len(fc_data["items"]) >= 1
         first_fi = fc_data["items"][0]
         assert first_fi["lowerBound"] <= first_fi["predictedQuantity"] <= first_fi["upperBound"]
+        assert isinstance(fc_data.get("intervals15Min"), list)
+        assert len(fc_data["intervals15Min"]) == 40
+        assert isinstance(first_fi.get("intervals15Min"), list)
+        assert len(first_fi["intervals15Min"]) == 8
+        assert "currentStock" in first_fi
+        assert "recommendedAdditionalPrep" in first_fi
 
         ov = client.patch(
             f"/api/v1/ai/forecasts/items/{first_fi['id']}/override",

@@ -8,7 +8,7 @@ Implements:
      - Deletes ONLY eligible 4-day temporary records (expired sessions, expired QR tokens, old idempotency keys,
        delivered outbox events, old read non-financial notifications, temporary API logs, old AI telemetry hashes,
        expired temp export files).
-     - NEVER deletes orders, payments, refunds, receipts, customer accounts, inventory movements, suppliers,
+     - NEVER deletes orders, payments, receipts, customer accounts, inventory movements, suppliers,
        purchase orders, or audit logs.
      - Automatically HALTS destructive cleanup if backup health verification fails.
 """
@@ -54,7 +54,6 @@ from app.models import (
     PaymentStatus,
     PickupToken,
     RefreshSession,
-    Refund,
     RetentionCleanupRun,
     StockMovement,
     TemporaryApiLog,
@@ -76,7 +75,6 @@ PROTECTED_BUSINESS_TABLES = [
     "order_items",
     "order_status_history",
     "payments",
-    "refunds",
     "payment_webhook_events",
     "pickups",
     "inventory_movements",
@@ -447,7 +445,6 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
     target_end = up_to_date or datetime.now(tz).date()
 
     orders = db.scalars(select(Order).options(joinedload(Order.items).joinedload(Order.items.property.mapper.class_.product))).unique().all()
-    refunds = db.scalars(select(Refund).where(Refund.status == "PROCESSED")).all()
     prod_waste = db.scalars(select(InventoryMovement).options(joinedload(InventoryMovement.product)).where(InventoryMovement.movement_type == InventoryMovementType.WASTE)).all()
     ing_waste = db.scalars(select(StockMovement).options(joinedload(StockMovement.ingredient)).where(StockMovement.movement_type == "wastage")).all()
     op_expenses = db.scalars(select(OperationalExpense)).all()
@@ -460,14 +457,6 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
         if d <= target_end:
             dates_seen.add(d)
             orders_by_date.setdefault(d, []).append(o)
-
-    refund_by_date: dict[date, int] = {}
-    for r in refunds:
-        dt = as_utc(r.created_at)
-        d = dt.astimezone(tz).date() if dt else target_end
-        if d <= target_end:
-            dates_seen.add(d)
-            refund_by_date[d] = refund_by_date.get(d, 0) + int(r.amount_paise or rupees_to_paise(r.amount))
 
     waste_by_date: dict[date, int] = {}
     for mv in prod_waste:
@@ -497,7 +486,7 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
         day_orders = orders_by_date.get(d, [])
         paid = [o for o in day_orders if o.payment_status == PaymentStatus.PAID]
         completed = [o for o in day_orders if o.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED}]
-        cancelled = [o for o in day_orders if o.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}]
+        cancelled = [o for o in day_orders if o.status == OrderStatus.CANCELLED]
         uniq_cust = len({o.user_id for o in paid})
 
         gross_p = sum(int(o.subtotal_paise or rupees_to_paise(o.subtotal)) for o in paid)
@@ -511,10 +500,9 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
                 p_cost = int(it.product.cost_paise) if (it.product and it.product.cost_paise) else 0
                 cogs_p += p_cost * it.quantity
 
-        ref_p = refund_by_date.get(d, 0)
         wst_p = waste_by_date.get(d, 0)
         opex_p = exp_by_date.get(d, 0)
-        profit_p = net_p - tax_p - ref_p - cogs_p - wst_p - opex_p
+        profit_p = net_p - tax_p - cogs_p - wst_p - opex_p
 
         row = db.scalar(select(DailySalesArchive).where(DailySalesArchive.archive_date == d, DailySalesArchive.counter_key == 0))
         if row is None:
@@ -529,7 +517,6 @@ def archive_daily_sales_rollups(db: Session, *, up_to_date: date | None = None) 
         row.discount_paise = disc_p
         row.tax_paise = tax_p
         row.net_revenue_paise = net_p
-        row.refund_paise = ref_p
         row.cogs_paise = cogs_p
         row.wastage_loss_paise = wst_p
         row.operating_expense_paise = opex_p
@@ -608,7 +595,7 @@ def run_four_day_retention_cleanup(
         notif_cond = (
             (Notification.is_read.is_(True))
             & (Notification.created_at < cutoff)
-            & (Notification.notification_type.notin_(["payment", "payment_alert", "refund"]))
+            & (Notification.notification_type.notin_(["payment", "payment_alert"]))
         )
         api_log_cond = TemporaryApiLog.created_at < cutoff
         ai_cond = AIInteraction.created_at < cutoff

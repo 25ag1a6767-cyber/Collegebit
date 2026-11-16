@@ -54,7 +54,7 @@ test('staff can sign in and queue refreshes through HTTP polling', async ({ page
   await expect(page.locator('#kds-tickets')).toBeVisible();
 });
 
-test('admin, wallet, payment error, refund, and staff QR pickup journeys', async ({ request, page }) => {
+test('admin, wallet, payment error, no-refund enforcement, and staff QR pickup journeys', async ({ request, page }) => {
   const student = await login(request, accounts.student);
   const staff = await login(request, accounts.staff);
   const admin = await login(request, accounts.admin);
@@ -69,7 +69,7 @@ test('admin, wallet, payment error, refund, and staff QR pickup journeys', async
   expect(diagnosticsResponse.status()).toBe(200);
   const diagnostics = (await diagnosticsResponse.json()).data;
   expect(diagnostics.database.schemaReady).toBe(true);
-  expect(diagnostics.database.revision).toBe('0022_rewards_and_wallet');
+  expect(diagnostics.database.revision).toBe('0023_collegebits_v3_no_refunds');
   expect(diagnostics.secretsDisplayed).toBe(false);
 
   const creditResponse = await request.post('/api/v1/admin/wallet/credit', {
@@ -108,20 +108,20 @@ test('admin, wallet, payment error, refund, and staff QR pickup journeys', async
   });
   expect(canceledOnlineOrder.status()).toBe(200);
 
-  const refundOrderResponse = await request.post('/api/v1/orders', {
+  const paidWalletOrderResponse = await request.post('/api/v1/orders', {
     headers: studentHeaders,
     data: { items: [{ menuItemId, quantity: 1 }], payWithWallet: true },
   });
-  expect(refundOrderResponse.status(), await refundOrderResponse.text()).toBe(201);
-  const refundOrder = (await refundOrderResponse.json()).data.order;
-  const walletBeforeRefund = (await (await request.get('/api/v1/wallet/me', { headers: studentHeaders })).json()).data.balancePaise;
-  const canceledWalletOrder = await request.post(`/api/v1/orders/${refundOrder.id}/cancel`, {
+  expect(paidWalletOrderResponse.status(), await paidWalletOrderResponse.text()).toBe(201);
+  const paidWalletOrder = (await paidWalletOrderResponse.json()).data.order;
+  const walletBeforeCancelAttempt = (await (await request.get('/api/v1/wallet/me', { headers: studentHeaders })).json()).data.balancePaise;
+  const cancelPaidOrderAttempt = await request.post(`/api/v1/orders/${paidWalletOrder.id}/cancel`, {
     headers: studentHeaders,
-    data: { reason: 'E2E wallet refund verification' },
+    data: { reason: 'E2E paid order cancellation blocked under no-refund policy' },
   });
-  expect(canceledWalletOrder.status()).toBe(200);
-  const walletAfterRefund = (await (await request.get('/api/v1/wallet/me', { headers: studentHeaders })).json()).data.balancePaise;
-  expect(walletAfterRefund).toBeGreaterThan(walletBeforeRefund);
+  expect(cancelPaidOrderAttempt.status()).toBe(409);
+  const walletAfterCancelAttempt = (await (await request.get('/api/v1/wallet/me', { headers: studentHeaders })).json()).data.balancePaise;
+  expect(walletAfterCancelAttempt).toBe(walletBeforeCancelAttempt);
 
   const pickupOrderResponse = await request.post('/api/v1/orders', {
     headers: studentHeaders,

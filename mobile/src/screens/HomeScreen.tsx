@@ -49,7 +49,7 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
         );
         const list = Array.isArray(ord) ? ord : ord.items || [];
         const live = list.find(
-          x => !["completed", "collected", "cancelled", "refunded", "refund_pending"].includes(x.status.toLowerCase())
+          x => !["completed", "collected", "cancelled"].includes(x.status.toLowerCase())
         );
         setActiveOrder(live || null);
       }

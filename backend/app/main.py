@@ -210,13 +210,19 @@ async def lifespan(_: FastAPI):
                     conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
                     res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
                     if not res:
-                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0022_rewards_and_wallet')"))
+                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0023_collegebits_v3_no_refunds')"))
             except Exception as ale_err:
                 logger.warning("Could not stamp alembic_version: %s", ale_err)
             with SessionLocal() as db:
                 seed_demo_data(db)
             logger.info("Database schema and bootstrap accounts created successfully.")
         else:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("UPDATE orders SET status = 'cancelled' WHERE LOWER(status) = 'refund_pending'"))
+                    conn.execute(text("UPDATE orders SET payment_status = 'paid' WHERE LOWER(payment_status) IN ('refund_pending', 'partially_refunded', 'refunded')"))
+            except Exception:
+                pass
             with SessionLocal() as db:
                 admin_user = db.scalar(select(User).where(User.email == "25ag1a6767@aceec.ac.in"))
                 staff_user = db.scalar(select(User).where(User.email == "25ag1a6767@gmail.com"))
@@ -1150,7 +1156,7 @@ def admin_report_overview(start_date: str | None = Query(default=None), end_date
     all_orders = db.scalars(select(Order).where(Order.created_at >= start_dt, Order.created_at < end_dt)).all()
     by_status = {status.value: sum(o.status == status for o in all_orders) for status in OrderStatus}
     revenue = sum((Decimal(o.subtotal) for o in paid_orders), Decimal("0.00"))
-    return {"start_date": start.isoformat(), "end_date": end.isoformat(), "paid_revenue": str(revenue), "paid_orders": len(paid_orders), "all_orders": len(all_orders), "average_paid_order_value": str((revenue / len(paid_orders)).quantize(Decimal("0.01")) if paid_orders else Decimal("0.00")), "orders_by_status": by_status, "pending_payments": sum(o.payment_status == PaymentStatus.PENDING for o in all_orders), "failed_payments": sum(o.payment_status == PaymentStatus.FAILED for o in all_orders), "refunded_orders": sum(o.payment_status == PaymentStatus.REFUNDED for o in all_orders)}
+    return {"start_date": start.isoformat(), "end_date": end.isoformat(), "paid_revenue": str(revenue), "paid_orders": len(paid_orders), "all_orders": len(all_orders), "average_paid_order_value": str((revenue / len(paid_orders)).quantize(Decimal("0.01")) if paid_orders else Decimal("0.00")), "orders_by_status": by_status, "pending_payments": sum(o.payment_status == PaymentStatus.PENDING for o in all_orders), "failed_payments": sum(o.payment_status == PaymentStatus.FAILED for o in all_orders)}
 
 @app.get("/api/admin/reports/daily-sales", tags=["admin reporting"], summary="Daily paid sales for a date range")
 def admin_report_daily_sales(start_date: str | None = Query(default=None), end_date: str | None = Query(default=None), _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
@@ -1938,7 +1944,7 @@ def order_queue(status: str | None = Query(default=None, pattern="^(pending|conf
 @app.get("/api/admin/orders/all", tags=["admin order verification"], summary="Admin-only complete order register")
 def admin_all_orders(
     status: str | None = Query(default=None, pattern="^(pending|confirmed|preparing|ready|completed|cancelled)$"),
-    payment_status: str | None = Query(default=None, pattern="^(pending|paid|failed|refunded)$"),
+    payment_status: str | None = Query(default=None, pattern="^(pending|paid|failed|expired)$"),
     search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=500, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
@@ -1987,7 +1993,7 @@ def admin_dashboard_summary(_: User = Depends(require_roles("admin")), db: Sessi
 @app.get("/api/admin/orders/export.csv", tags=["admin order verification"], summary="Export order register as CSV")
 def admin_export_orders_csv(
     status: str | None = Query(default=None, pattern="^(pending|confirmed|preparing|ready|completed|cancelled)$"),
-    payment_status: str | None = Query(default=None, pattern="^(pending|paid|failed|refunded)$"),
+    payment_status: str | None = Query(default=None, pattern="^(pending|paid|failed|expired)$"),
     _: User = Depends(require_roles("admin")), db: Session = Depends(get_db),
 ):
     """Download a bounded CSV of orders for reconciliation; no payment secrets are exported."""

@@ -45,7 +45,6 @@ from app.models import (
     Pickup,
     Product,
     RecipeItem,
-    Refund,
     StockMovement,
     User,
     UserRole,
@@ -168,7 +167,6 @@ def _summarize_window(
     expenses: list[OperationalExpense],
     prod_waste: list[InventoryMovement],
     ing_waste: list[StockMovement],
-    refunds: list[Refund],
     unit_cost_map: dict[int, int],
     product_category_map: dict[int, int],
     product_price_map: dict[int, int],
@@ -217,17 +215,8 @@ def _summarize_window(
             pending_orders += 1
         elif o.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED}:
             completed_orders += 1
-        elif o.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}:
+        elif o.status == OrderStatus.CANCELLED:
             cancelled_orders += 1
-
-    refund_paise = 0
-    if category_id is None and product_id is None:
-        for rf in refunds:
-            rd = _local_date_of(rf.created_at, tz, start_d)
-            if start_d <= rd <= end_d and rf.status in {"PROCESSED", "SUCCESS"}:
-                if counter_id is not None and rf.order and rf.order.counter_id != counter_id:
-                    continue
-                refund_paise += int(rf.amount_paise or rupees_to_paise(rf.amount))
 
     op_exp_paise = 0
     if category_id is None and product_id is None:
@@ -255,7 +244,7 @@ def _summarize_window(
             if start_d <= sd <= end_d and sm.ingredient and sm.ingredient.cost_per_unit is not None:
                 waste_paise += rupees_to_paise(abs(Decimal(sm.quantity_delta)) * Decimal(sm.ingredient.cost_per_unit))
 
-    total_expenses_paise = cogs_paise + op_exp_paise + waste_paise + refund_paise
+    total_expenses_paise = cogs_paise + op_exp_paise + waste_paise
     profit_paise = rev_paise - total_expenses_paise
     aov_paise = int(round(rev_paise / paid_orders)) if paid_orders > 0 else 0
 
@@ -275,7 +264,6 @@ def _summarize_window(
         "cogsPaise": cogs_paise,
         "operatingExpensePaise": op_exp_paise,
         "wastageLossPaise": waste_paise,
-        "refundPaise": refund_paise,
         "totalExpensesPaise": total_expenses_paise,
         "estimatedProfitPaise": profit_paise,
     }
@@ -348,10 +336,6 @@ def get_admin_bi_dashboard_v1(
         select(Payment).options(joinedload(Payment.order)).where(Payment.created_at >= earliest_utc)
     ).unique().all()
 
-    all_refunds = db.scalars(
-        select(Refund).options(joinedload(Refund.order)).where(Refund.created_at >= earliest_utc)
-    ).all()
-
     all_expenses = db.scalars(
         select(OperationalExpense).where(OperationalExpense.expense_date >= earliest_needed)
     ).all()
@@ -372,12 +356,12 @@ def get_admin_bi_dashboard_v1(
 
     # 1. Compute Today's exact KPIs + Filtered Window KPIs
     today_summary = _summarize_window(
-        all_orders, all_expenses, prod_waste, ing_waste, all_refunds,
+        all_orders, all_expenses, prod_waste, ing_waste,
         unit_cost_map, product_category_map, product_price_map,
         tz, today_local, today_local, categoryId, productId, counterId,
     )
     window_summary = _summarize_window(
-        all_orders, all_expenses, prod_waste, ing_waste, all_refunds,
+        all_orders, all_expenses, prod_waste, ing_waste,
         unit_cost_map, product_category_map, product_price_map,
         tz, start_d, end_d, categoryId, productId, counterId,
     )
@@ -386,8 +370,8 @@ def get_admin_bi_dashboard_v1(
     succ_payments_cnt = 0
     fail_payments_cnt = 0
     pend_payments_cnt = 0
-    refund_payments_cnt = 0
-    payment_daily: dict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failed": 0, "pending": 0, "refunded": 0})
+    flagged_payments_cnt = 0
+    payment_daily: dict[str, dict[str, int]] = defaultdict(lambda: {"success": 0, "failed": 0, "pending": 0, "flagged": 0})
 
     for pay in all_payments:
         pd = _local_date_of(pay.created_at, tz, start_d)
@@ -401,15 +385,15 @@ def get_admin_bi_dashboard_v1(
                 continue
         dk = pd.isoformat()
         st = (pay.status or "").upper()
+        if pay.late_capture_flagged:
+            flagged_payments_cnt += 1
+            payment_daily[dk]["flagged"] += 1
         if st == "SUCCESS":
             succ_payments_cnt += 1
             payment_daily[dk]["success"] += 1
         elif st in {"FAILED", "EXPIRED", "CANCELLED"}:
             fail_payments_cnt += 1
             payment_daily[dk]["failed"] += 1
-        elif st in {"REFUNDED", "PARTIALLY_REFUNDED", "REFUND_PENDING"}:
-            refund_payments_cnt += 1
-            payment_daily[dk]["refunded"] += 1
         else:
             pend_payments_cnt += 1
             payment_daily[dk]["pending"] += 1
@@ -433,6 +417,7 @@ def get_admin_bi_dashboard_v1(
         "filteredTotalOrders": window_summary["totalOrders"],
         "successfulPayments": succ_payments_cnt,
         "failedPayments": fail_payments_cnt,
+        "flaggedPaymentIncidents": flagged_payments_cnt,
         "pendingOrders": window_summary["pendingOrders"],
         "completedOrders": window_summary["completedOrders"],
         "cancelledOrders": window_summary["cancelledOrders"],
@@ -446,7 +431,6 @@ def get_admin_bi_dashboard_v1(
         "cogsPaise": window_summary["cogsPaise"],
         "wastageLossPaise": window_summary["wastageLossPaise"],
         "operatingExpensePaise": window_summary["operatingExpensePaise"],
-        "refundPaise": window_summary["refundPaise"],
     }
 
     # 2. Compute all 4 Period Comparisons from real DB records
@@ -463,7 +447,7 @@ def get_admin_bi_dashboard_v1(
 
     def _sum_range(s: date, e: date) -> dict[str, Any]:
         return _summarize_window(
-            all_orders, all_expenses, prod_waste, ing_waste, all_refunds,
+            all_orders, all_expenses, prod_waste, ing_waste,
             unit_cost_map, product_category_map, product_price_map,
             tz, s, e, categoryId, productId, counterId,
         )
@@ -799,7 +783,7 @@ def get_admin_bi_dashboard_v1(
                 {"status": "SUCCESS", "count": succ_payments_cnt},
                 {"status": "FAILED", "count": fail_payments_cnt},
                 {"status": "PENDING", "count": pend_payments_cnt},
-                {"status": "REFUNDED", "count": refund_payments_cnt},
+                {"status": "FLAGGED_INCIDENT", "count": flagged_payments_cnt},
             ],
             "dailySeries": [
                 {"date": dk, **payment_daily[dk]}

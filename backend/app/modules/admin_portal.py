@@ -41,7 +41,6 @@ from app.models import (
     PaymentWebhookEvent,
     Product,
     RecipeItem,
-    Refund,
     StockMovement,
     User,
     UserCounterAssignment,
@@ -96,7 +95,7 @@ def get_admin_overview_v1(
     paid_orders = db.scalar(select(func.count(Order.id)).where(Order.payment_status == PaymentStatus.PAID)) or 0
     pending_orders = db.scalar(select(func.count(Order.id)).where(Order.payment_status == PaymentStatus.PENDING)) or 0
     failed_payments = db.scalar(select(func.count(Order.id)).where(Order.payment_status.in_([PaymentStatus.FAILED, PaymentStatus.EXPIRED]))) or 0
-    refund_pending = db.scalar(select(func.count(Order.id)).where(Order.payment_status == PaymentStatus.REFUND_PENDING)) or 0
+    incident_orders = db.scalar(select(func.count(Order.id)).where(Order.status == OrderStatus.CANCELLED, Order.payment_status == PaymentStatus.PAID)) or 0
     late_captures = db.scalar(select(func.count(Payment.id)).where(Payment.late_capture_flagged.is_(True))) or 0
 
     paid_rows = db.scalars(select(Order).where(Order.payment_status == PaymentStatus.PAID)).all()
@@ -147,7 +146,7 @@ def get_admin_overview_v1(
             "paidOrders": int(paid_orders),
             "pendingOrders": int(pending_orders),
             "failedPayments": int(failed_payments),
-            "refundPendingOrders": int(refund_pending),
+            "incidentFlaggedOrders": int(incident_orders),
             "lateCaptureAlerts": int(late_captures),
             "activeQueueOrders": len(active_queue),
             "overdueOrders": overdue_count,
@@ -908,30 +907,35 @@ def patch_admin_discount_v1(discount_id: int, payload: DiscountPatchIn, request:
     return ok(request, _serialize_discount(d))
 
 
-# --- A04 Payment Management & Reconciliation ---
+# --- A04 Payment Management, Incident Resolution & Reconciliation ---
 @router.get("/payments/reconciliation")
 def get_admin_payment_reconciliation_v1(
     request: Request,
     _: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
-    payments = db.scalars(select(Payment).options(joinedload(Payment.order), joinedload(Payment.refunds)).order_by(Payment.created_at.desc()).limit(300)).unique().all()
-    refunds = db.scalars(select(Refund).order_by(Refund.created_at.desc()).limit(200)).all()
+    payments = db.scalars(select(Payment).options(joinedload(Payment.order)).order_by(Payment.created_at.desc()).limit(300)).unique().all()
     webhooks = db.scalars(select(PaymentWebhookEvent).order_by(PaymentWebhookEvent.received_at.desc()).limit(100)).all()
 
     discrepancies = []
+    incidents = []
     for p in payments:
         ord_obj = p.order
         if p.late_capture_flagged:
-            discrepancies.append({
-                "type": "LATE_CAPTURE_AFTER_EXPIRY",
+            incident_entry = {
+                "type": "UNFULFILLED_OR_LATE_CAPTURED_PAYMENT",
                 "paymentId": p.id,
                 "orderId": p.order_id,
+                "orderNumber": ord_obj.order_number if ord_obj else None,
                 "providerPaymentId": p.provider_payment_id,
                 "amountPaise": p.amount_paise,
                 "status": p.status,
-            })
-        elif ord_obj is not None and p.status == "SUCCESS" and ord_obj.payment_status not in {PaymentStatus.PAID, PaymentStatus.REFUND_PENDING, PaymentStatus.PARTIALLY_REFUNDED, PaymentStatus.REFUNDED}:
+                "reason": (ord_obj.exception_reason if ord_obj and ord_obj.exception_reason else "Late payment capture or unfulfilled order flagged for administrative resolution"),
+                "createdAt": as_utc(p.created_at),
+            }
+            discrepancies.append(incident_entry)
+            incidents.append(incident_entry)
+        elif ord_obj is not None and p.status == "SUCCESS" and ord_obj.payment_status != PaymentStatus.PAID:
             discrepancies.append({
                 "type": "ORDER_NOT_MARKED_PAID",
                 "paymentId": p.id,
@@ -959,19 +963,7 @@ def get_admin_payment_reconciliation_v1(
                 }
                 for p in payments
             ],
-            "refunds": [
-                {
-                    "id": r.id,
-                    "orderId": r.order_id,
-                    "paymentRecordId": r.payment_record_id,
-                    "providerRefundId": r.provider_refund_id,
-                    "amountPaise": r.amount_paise or rupees_to_paise(r.amount),
-                    "status": r.status,
-                    "reason": r.reason,
-                    "createdAt": as_utc(r.created_at),
-                }
-                for r in refunds
-            ],
+            "incidents": incidents,
             "discrepancies": discrepancies,
             "recentWebhookEvents": [
                 {
@@ -1151,7 +1143,7 @@ def get_admin_orders_kpi_report_v1(
     orders = db.scalars(select(Order).where(Order.created_at >= start_dt, Order.created_at <= end_dt)).all()
     total = len(orders)
     collected = [o for o in orders if o.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED}]
-    cancelled = [o for o in orders if o.status in {OrderStatus.CANCELLED, OrderStatus.REFUND_PENDING}]
+    cancelled = [o for o in orders if o.status == OrderStatus.CANCELLED]
     prep_mins = []
     for o in orders:
         c_at = as_utc(o.created_at)

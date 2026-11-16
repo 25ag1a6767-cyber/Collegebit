@@ -1,5 +1,5 @@
 """Production specification v1 schema: counters, sessions/MFA, paise fields,
-carts, discounts, payments/refunds, short-lived pickup tokens, recipes/ingredients,
+carts, discounts, payments, short-lived pickup tokens, recipes/ingredients,
 forecasts, privacy-safe AI telemetry, web push and outbox events.
 """
 from alembic import op
@@ -114,13 +114,6 @@ def upgrade():
         sa.Column("unit_price_paise", big_int, nullable=True),
         sa.Column("customizations_json", sa.Text(), nullable=True),
         sa.Column("line_total_paise", big_int, nullable=True),
-    ])
-
-    _ensure_columns(bind, "refunds", [
-        sa.Column("payment_record_id", sa.Integer(), nullable=True),
-        sa.Column("amount_paise", big_int, nullable=True),
-        sa.Column("actor_user_id", sa.Integer(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
     ])
 
     _ensure_columns(bind, "payment_webhook_events", [
