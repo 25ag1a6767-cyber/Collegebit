@@ -217,6 +217,8 @@ async def lifespan(_: FastAPI):
                 seed_demo_data(db)
             logger.info("Database schema and bootstrap accounts created successfully.")
         else:
+            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables:
+                Base.metadata.create_all(bind=engine)
             try:
                 with engine.begin() as conn:
                     conn.execute(text("UPDATE orders SET status = 'cancelled' WHERE LOWER(status) = 'refund_pending'"))
@@ -2293,6 +2295,7 @@ from app.modules import (
     ai_services,
     analytics_bi,
     auth_profile,
+    bulk_orders_v3,
     menu_cart,
     orders_payments,
     reporting_engine,
@@ -2305,6 +2308,7 @@ v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_profile.router)
 v1_router.include_router(menu_cart.router)
 v1_router.include_router(orders_payments.router)
+v1_router.include_router(bulk_orders_v3.router)
 v1_router.include_router(rewards_wallet.router)
 v1_router.include_router(staff_ops.router)
 v1_router.include_router(admin_portal.router)

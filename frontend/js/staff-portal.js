@@ -957,6 +957,61 @@
       }
     });
 
+    async function loadKitchenBatches() {
+      const tbody = $("staff-kitchen-batches-tbody");
+      if (!tbody || !state.accessToken) return;
+      try {
+        const res = await api("/kitchen/dashboard");
+        const batches = res.confirmedItemBatches || [];
+        tbody.replaceChildren();
+        batches.forEach((b) => {
+          const tr = document.createElement("tr");
+          [
+            b.productName,
+            String(b.individualConfirmedQty),
+            String(b.bulkConfirmedQty),
+            String(b.totalConfirmedMeals),
+            String(b.packedQty),
+            String(b.readyForPickupQty),
+            String(b.collectedQty),
+            String(b.remainingInventory)
+          ].forEach((val) => {
+            const td = document.createElement("td");
+            td.textContent = val;
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    $("btn-refresh-kitchen-batches")?.addEventListener("click", loadKitchenBatches);
+
+    $("staff-group-pickup-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const counterId = Number($("group-pickup-counter").value || 1);
+        const tokens = $("group-pickup-tokens").value
+          .split(/\r?\n|,/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+        const res = await api("/pickup/group-verify", {
+          method: "POST",
+          body: { counterId, qrTokens: tokens }
+        });
+        showBanner(
+          `Counter ${counterId} Group Handover: ${res.collectedCount} verified & collected, ${res.rejectedCount} rejected.`,
+          res.collectedCount > 0 ? "success" : "error"
+        );
+        e.target.reset();
+        await loadKitchenBatches();
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
     window.addEventListener("online", checkBackendConnectivity);
     window.addEventListener("offline", () => setWsStatus(false, "No Internet"));
     document.addEventListener("visibilitychange", () => {
@@ -967,6 +1022,7 @@
 
     if (state.accessToken) {
       bootstrapAuthenticated();
+      loadKitchenBatches();
     }
   });
 })();

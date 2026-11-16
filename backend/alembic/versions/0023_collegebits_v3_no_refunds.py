@@ -9,6 +9,9 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import inspect, text
 
+from app.database import Base
+from app import models  # noqa: F401
+
 revision = "0023_collegebits_v3_no_refunds"
 down_revision = "0022_rewards_and_wallet"
 branch_labels = None
@@ -17,6 +20,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    Base.metadata.create_all(bind=bind)
     insp = inspect(bind)
     tables = set(insp.get_table_names())
 

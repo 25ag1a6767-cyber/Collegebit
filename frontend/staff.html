@@ -89,6 +89,31 @@
           </div>
           <div id="kds-tickets" class="kds-grid"></div>
         </div>
+
+        <div class="panel-card" id="staff-batch-prep-card">
+          <div class="panel-head">
+            <h2>Confirmed Batch Preparation &amp; Bulk Order Packing (6-Stage Workflow)</h2>
+            <button type="button" class="btn btn-outline" id="btn-refresh-kitchen-batches">Refresh Batch Demand</button>
+          </div>
+          <p class="muted">Displays ONLY verified/paid demand across individual orders and bulk allocations. Unpaid drafts are excluded.</p>
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Menu Item</th>
+                  <th>Individual Paid</th>
+                  <th>Bulk Paid</th>
+                  <th>Total Confirmed</th>
+                  <th>Packed</th>
+                  <th>Ready</th>
+                  <th>Collected</th>
+                  <th>Stock Left</th>
+                </tr>
+              </thead>
+              <tbody id="staff-kitchen-batches-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 2: QR Scanning & Dedicated Order Verification Screen -->
@@ -144,6 +169,24 @@
               <!-- Populated dynamically by staff-portal.js -->
             </div>
           </div>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-head">
+            <h2>3. Two-Counter Bulk &amp; Representative Group QR Collection</h2>
+          </div>
+          <form id="staff-group-pickup-form" class="staff-form-group">
+            <label>Physical Counter
+              <select id="group-pickup-counter">
+                <option value="1">Counter 1 — Express &amp; Pre-Packed Pickup</option>
+                <option value="2">Counter 2 — Bulk &amp; Representative Dispatch</option>
+              </select>
+            </label>
+            <label>Individual Recipient QR Tokens (one <code>bmt_...</code> token per line — each validated atomically)
+              <textarea id="group-pickup-tokens" rows="4" required placeholder="bmt_1_1_...&#10;bmt_1_2_..."></textarea>
+            </label>
+            <button type="submit" class="btn btn-primary">Verify &amp; Record Group Handover</button>
+          </form>
         </div>
       </section>
 

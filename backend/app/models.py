@@ -895,6 +895,260 @@ class TemporaryApiLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class PickupSlot(Base):
+    """Scheduled pickup slot capacity per physical counter (Counter 1 & Counter 2)."""
+    __tablename__ = "pickup_slots"
+    __table_args__ = (
+        UniqueConstraint("counter_id", "slot_date", "slot_label", name="uq_pickup_slot_counter_date_label"),
+        Index("ix_pickup_slots_date_counter", "slot_date", "counter_id"),
+        CheckConstraint("max_capacity > 0", name="ck_pickup_slots_capacity_positive"),
+        CheckConstraint("reserved_count >= 0", name="ck_pickup_slots_reserved_nonnegative"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    counter_id: Mapped[int] = mapped_column(ForeignKey("canteen_counters.id", ondelete="CASCADE"), nullable=False)
+    slot_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    slot_label: Mapped[str] = mapped_column(String(60), nullable=False)
+    max_capacity: Mapped[int] = mapped_column(Integer, default=250, nullable=False)
+    reserved_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class BulkOrder(Base):
+    """Master bulk order supporting 1 to 3,000+ recipients with centralized or individual payments."""
+    __tablename__ = "bulk_orders"
+    __table_args__ = (
+        Index("ix_bulk_orders_coord_created", "coordinator_id", "created_at"),
+        Index("ix_bulk_orders_pickup_date_status", "pickup_date", "status"),
+        CheckConstraint("total_paise >= 0", name="ck_bulk_orders_total_nonnegative"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    coordinator_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    department_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    event_title: Mapped[str] = mapped_column(String(160), nullable=False, default="Department Meal Order")
+    pickup_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
+    pickup_slot: Mapped[str] = mapped_column(String(60), nullable=False, default="12:30-13:00")
+    counter_id: Mapped[int | None] = mapped_column(ForeignKey("canteen_counters.id", ondelete="SET NULL"), nullable=True)
+    cutoff_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    payment_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="centralized")  # centralized | individual
+    distribution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="individual")  # individual | representative
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="draft")  # draft | verified | reserved | preparing | packing | ready | partially_collected | collected | cancelled
+    payment_status: Mapped[str] = mapped_column(String(30), nullable=False, default="pending")  # pending | partially_paid | paid | failed
+    total_recipients: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_meal_units: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    paid_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    paid_recipients_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tokens_generated_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    collected_recipients_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    inventory_reserved: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    coordinator: Mapped[User] = relationship(foreign_keys=[coordinator_id])
+    items: Mapped[list["BulkOrderItem"]] = relationship(back_populates="bulk_order", cascade="all, delete-orphan")
+    recipients: Mapped[list["BulkOrderRecipient"]] = relationship(back_populates="bulk_order", cascade="all, delete-orphan")
+    payments: Mapped[list["BulkOrderPayment"]] = relationship(back_populates="bulk_order", cascade="all, delete-orphan")
+
+
+class BulkOrderItem(Base):
+    """Menu item line and batch preparation/packing state inside a master bulk order."""
+    __tablename__ = "bulk_order_items"
+    __table_args__ = (
+        Index("ix_bulk_order_items_bulk_product", "bulk_order_id", "product_id"),
+        CheckConstraint("quantity > 0", name="ck_bulk_order_items_qty_positive"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    unit_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    packed_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    ready_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    collected_quantity: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    prep_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | preparing | packing | ready | collected
+    bulk_order: Mapped[BulkOrder] = relationship(back_populates="items")
+
+
+class BulkOrderRecipient(Base):
+    """Individual recipient inside a master bulk order (supports 1 to 3,000+ recipients)."""
+    __tablename__ = "bulk_order_recipients"
+    __table_args__ = (
+        UniqueConstraint("bulk_order_id", "recipient_identifier", name="uq_bulk_recipient_order_ident"),
+        Index("ix_bulk_recipients_order_status", "bulk_order_id", "payment_status", "pickup_status"),
+        Index("ix_bulk_recipients_user_id", "user_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recipient_identifier: Mapped[str] = mapped_column(String(120), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    department: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | paid | failed
+    pickup_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | eligible | collected | cancelled
+    collected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    collected_counter_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    bulk_order: Mapped[BulkOrder] = relationship(back_populates="recipients")
+    allocations: Mapped[list["BulkOrderAllocation"]] = relationship(back_populates="recipient", cascade="all, delete-orphan")
+
+
+class BulkOrderAllocation(Base):
+    """Specific meal item allocation assigned to a bulk order recipient."""
+    __tablename__ = "bulk_order_allocations"
+    __table_args__ = (
+        Index("ix_bulk_allocations_order_recipient", "bulk_order_id", "recipient_id"),
+        CheckConstraint("quantity > 0", name="ck_bulk_allocations_qty_positive"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("bulk_order_recipients.id", ondelete="CASCADE"), nullable=False)
+    bulk_order_item_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_order_items.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    unit_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+
+    recipient: Mapped[BulkOrderRecipient] = relationship(back_populates="allocations")
+
+
+class BulkOrderPayment(Base):
+    """Payment record for either a centralized master bulk order or an individual recipient allocation."""
+    __tablename__ = "bulk_order_payments"
+    __table_args__ = (
+        Index("ix_bulk_payments_order_recipient", "bulk_order_id", "recipient_id", "status"),
+        CheckConstraint("amount_paise >= 0", name="ck_bulk_payments_amount_nonnegative"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    recipient_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_order_recipients.id", ondelete="SET NULL"), nullable=True)
+    payer_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    provider: Mapped[str] = mapped_column(String(40), default="razorpay", nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    provider_order_id: Mapped[str | None] = mapped_column(String(120), unique=True, index=True, nullable=True)
+    provider_payment_id: Mapped[str | None] = mapped_column(String(120), unique=True, index=True, nullable=True)
+    signature_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="INR", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="CREATED", nullable=False)  # CREATED | PENDING | SUCCESS | FAILED
+    late_capture_flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    bulk_order: Mapped[BulkOrder] = relationship(back_populates="payments")
+
+
+class BulkMealToken(Base):
+    """Cryptographic QR pickup token for a single bulk order recipient. Stores ONLY token_hash (SHA-256) in DB."""
+    __tablename__ = "bulk_meal_tokens"
+    __table_args__ = (
+        Index("ix_bulk_meal_tokens_order_recipient", "bulk_order_id", "recipient_id", "status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("bulk_order_recipients.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    key_nonce: Mapped[str] = mapped_column(String(64), nullable=False)
+    distribution_mode: Mapped[str] = mapped_column(String(20), default="individual", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active | redeemed | revoked | expired
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    distributed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    redeemed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    redeemed_by_staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    redeemed_counter_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class BulkPickupRecord(Base):
+    """Immutable audit record of each redeemed bulk meal token at Counter 1 or Counter 2."""
+    __tablename__ = "bulk_pickup_records"
+    __table_args__ = (
+        Index("ix_bulk_pickup_records_order_time", "bulk_order_id", "picked_up_at"),
+        Index("ix_bulk_pickup_records_counter_time", "counter_id", "picked_up_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bulk_order_id: Mapped[int] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=False)
+    recipient_id: Mapped[int] = mapped_column(ForeignKey("bulk_order_recipients.id", ondelete="CASCADE"), nullable=False)
+    token_id: Mapped[int] = mapped_column(ForeignKey("bulk_meal_tokens.id", ondelete="CASCADE"), unique=True, nullable=False)
+    counter_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    staff_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    collected_via: Mapped[str] = mapped_column(String(30), default="individual_qr", nullable=False)  # individual_qr | representative_batch | manual_override
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    picked_up_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class InventoryReservation(Base):
+    """Temporary or committed stock reservation with automatic expiry tracking."""
+    __tablename__ = "inventory_reservations"
+    __table_args__ = (
+        Index("ix_inv_reservations_product_status", "product_id", "status", "expires_at"),
+        CheckConstraint("quantity > 0", name="ck_inv_reservations_qty_positive"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=True)
+    bulk_order_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active", nullable=False)  # active | committed | released | expired
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PaymentIncident(Base):
+    """Permanent financial/fulfilment incident ledger under the strict no-refunds policy."""
+    __tablename__ = "payment_incidents"
+    __table_args__ = (
+        Index("ix_payment_incidents_status_created", "status", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    bulk_order_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_orders.id", ondelete="SET NULL"), nullable=True)
+    recipient_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_order_recipients.id", ondelete="SET NULL"), nullable=True)
+    payment_id: Mapped[int | None] = mapped_column(ForeignKey("payments.id", ondelete="SET NULL"), nullable=True)
+    bulk_payment_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_order_payments.id", ondelete="SET NULL"), nullable=True)
+    incident_type: Mapped[str] = mapped_column(String(50), nullable=False)  # late_capture | kitchen_unfulfilled | bulk_allocation_exception
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False)  # open | under_review | resolved
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    resolution_notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    flagged_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BulkBackgroundJob(Base):
+    """Tracks asynchronous/batched background jobs for large CSV imports, token generation, and exports."""
+    __tablename__ = "bulk_background_jobs"
+    __table_args__ = (
+        Index("ix_bulk_bg_jobs_order_status", "bulk_order_id", "status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_key: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    bulk_order_id: Mapped[int | None] = mapped_column(ForeignKey("bulk_orders.id", ondelete="CASCADE"), nullable=True)
+    job_type: Mapped[str] = mapped_column(String(40), nullable=False)  # csv_import | token_generation | token_export | reservation_cleanup
+    status: Mapped[str] = mapped_column(String(30), default="queued", nullable=False)  # queued | running | completed | failed
+    total_items: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed_items: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    result_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 # --- Automatic Decimal <-> integer paise synchronization ---
 @event.listens_for(Product, "before_insert")
 @event.listens_for(Product, "before_update")

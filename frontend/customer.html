@@ -255,6 +255,72 @@
         <p id="my-orders-message" class="management-message" role="status"></p>
         <div id="my-orders-list"></div>
       </div>
+
+      <!-- Bulk Order Coordinator & Recipient Token Hub -->
+      <div class="management-card" id="v1-bulk-order-hub">
+        <div class="management-list-head">
+          <div>
+            <p class="eyebrow">BULK ORDERS (1 TO 3,000+ RECIPIENTS)</p>
+            <h3>Department &amp; Event Bulk Ordering Hub</h3>
+          </div>
+          <button class="secondary-button" id="v1-refresh-bulk-orders" type="button">Refresh Bulk Orders</button>
+        </div>
+        <p class="muted">Create department/event bulk orders with Centralized or Individual payments and Individual or Representative QR token distribution. Strict no-refunds policy applies to all verified payments.</p>
+
+        <div class="v1-subgrid">
+          <form class="v1-mini-card" id="v1-bulk-create-form">
+            <h4>1. Create Master Bulk Order</h4>
+            <label>Department / Organization<input id="v1-bulk-dept" required maxlength="140" placeholder="e.g. CSE Department"></label>
+            <label>Event / Meal Title<input id="v1-bulk-title" required maxlength="160" value="Annual Symposium Lunch"></label>
+            <div class="form-pair">
+              <label>Pickup Slot<input id="v1-bulk-slot" required maxlength="60" value="12:30-13:00"></label>
+              <label>Counter
+                <select id="v1-bulk-counter">
+                  <option value="1">Counter 1 (Pre-Packed)</option>
+                  <option value="2">Counter 2 (Bulk Dispatch)</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-pair">
+              <label>Payment Mode
+                <select id="v1-bulk-pay-mode">
+                  <option value="centralized">Centralized (Coordinator Pays)</option>
+                  <option value="individual">Individual (Each Recipient Pays)</option>
+                </select>
+              </label>
+              <label>Token Distribution
+                <select id="v1-bulk-dist-mode">
+                  <option value="representative">Representative (CSV/PDF Export)</option>
+                  <option value="individual">Individual (Recipient Account)</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-pair">
+              <label>Menu Item ID<input id="v1-bulk-item-id" type="number" min="1" required value="1"></label>
+              <label>Total Quantity<input id="v1-bulk-item-qty" type="number" min="1" max="5000" required value="50"></label>
+            </div>
+            <button type="submit" class="primary-button">Create Master Bulk Order</button>
+            <p id="v1-bulk-create-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-bulk-csv-form">
+            <h4>2. Import Recipients CSV &amp; Generate QR Tokens</h4>
+            <label>Bulk Order ID<input id="v1-bulk-target-id" type="number" min="1" required placeholder="Enter Bulk Order ID"></label>
+            <label>CSV Rows (<code>recipient_identifier,full_name,email,department</code>)
+              <textarea id="v1-bulk-csv-text" rows="4" required placeholder="recipient_identifier,full_name,email,department&#10;25AG1A01,Aarav Sharma,aarav@college.edu,CSE&#10;25AG1A02,Diya Nair,diya@college.edu,CSE"></textarea>
+            </label>
+            <div class="inline-toolbar-row">
+              <button type="submit" class="primary-button">Import CSV Batch</button>
+              <button type="button" class="secondary-button" id="v1-bulk-gen-tokens-btn">Generate QR Tokens</button>
+              <button type="button" class="secondary-button" id="v1-bulk-export-csv-btn">Export CSV</button>
+              <button type="button" class="secondary-button" id="v1-bulk-export-pdf-btn">Export PDF</button>
+            </div>
+            <p id="v1-bulk-csv-msg" class="management-message" role="status"></p>
+          </form>
+        </div>
+
+        <div id="v1-bulk-orders-list"></div>
+      </div>
     </section>
 
     <section class="orders-section" id="pickup-queue-section" aria-labelledby="pickup-queue-heading">

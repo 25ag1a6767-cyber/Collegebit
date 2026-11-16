@@ -250,6 +250,17 @@ def handle_late_captured_payment(
     order.exception_reason = (
         f"Late payment captured ({provider_payment_id}) after reservation expiry — flagged for administrative resolution"
     )[:255]
+    from app.models import PaymentIncident
+    db.add(
+        PaymentIncident(
+            order_id=order.id,
+            payment_id=pay_row.id,
+            incident_type="late_capture",
+            amount_paise=amount_paise,
+            status="open",
+            description=f"Late payment {provider_payment_id} captured on expired/cancelled order #{order.order_number or order.id}. Preserved under strict no-refunds policy.",
+        )
+    )
     record_order_status_change(
         db,
         order,
@@ -795,6 +806,25 @@ def _load_authorized_order(db: Session, order_id: int, user: User) -> Order:
     return order
 
 
+@router.get("/orders/my-orders")
+def list_my_orders_alias_v1(
+    request: Request,
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(
+        select(Order)
+        .options(joinedload(Order.items))
+        .where(Order.user_id == user.id)
+        .order_by(Order.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    ).unique().all()
+    return ok(request, {"items": [serialize_order_v1(o) for o in rows], "total": len(rows)})
+
+
 @router.get("/orders/{order_id}")
 def get_order_v1(
     order_id: int,
@@ -1172,6 +1202,12 @@ def verify_payment_v1(
         .with_for_update()
     )
     if order is None:
+        from app.models import BulkOrderPayment
+        from app.modules.bulk_orders_v3 import verify_and_apply_bulk_payment
+        bulk_pay = db.scalar(select(BulkOrderPayment).where(BulkOrderPayment.provider_order_id == gw_order_id).with_for_update())
+        if bulk_pay is not None:
+            res = verify_and_apply_bulk_payment(db, bulk_pay, gw_payment_id, gw_sig, actor_user_id=user.id, verify_hmac=True)
+            return ok(request, {"verified": True, "bulkPayment": res})
         raise ApiError(404, "ORDER_NOT_FOUND", "Order matching this payment intent was not found.")
     if user.role == UserRole.STUDENT and order.user_id != user.id:
         raise ApiError(403, "FORBIDDEN", "You can only verify payments for your own orders.")
@@ -1271,6 +1307,22 @@ def get_payment_status_v1(
     )
 
 
+@router.post("/payments/webhooks")
+async def payment_webhook_default_alias_v1(
+    request: Request,
+    x_razorpay_signature: str | None = Header(default=None),
+    x_razorpay_event_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    return await payment_webhook_v1(
+        provider="razorpay",
+        request=request,
+        x_razorpay_signature=x_razorpay_signature,
+        x_razorpay_event_id=x_razorpay_event_id,
+        db=db,
+    )
+
+
 @router.post("/webhooks/payments/{provider}")
 async def payment_webhook_v1(
     provider: str,
@@ -1335,7 +1387,21 @@ async def payment_webhook_v1(
             .where(or_(Order.gateway_order_id == gw_order_id, Order.id == (pay_rec.order_id if pay_rec else -1)))
             .with_for_update()
         )
-        if order is not None:
+        if order is None:
+            from app.models import BulkOrderPayment
+            from app.modules.bulk_orders_v3 import verify_and_apply_bulk_payment
+            bulk_pay = db.scalar(select(BulkOrderPayment).where(BulkOrderPayment.provider_order_id == gw_order_id).with_for_update())
+            if bulk_pay is not None:
+                if event_name == "payment.captured" and gw_pay_id:
+                    verify_and_apply_bulk_payment(db, bulk_pay, gw_pay_id, None, actor_user_id=None, verify_hmac=False)
+                elif event_name == "payment.failed":
+                    bulk_pay.status = "FAILED"
+                    if bulk_pay.recipient_id:
+                        from app.models import BulkOrderRecipient
+                        rec_row = db.get(BulkOrderRecipient, bulk_pay.recipient_id)
+                        if rec_row and rec_row.payment_status != "paid":
+                            rec_row.payment_status = "failed"
+        elif order is not None:
             if event_name == "payment.captured" and gw_pay_id:
                 if (
                     order.status == OrderStatus.CANCELLED

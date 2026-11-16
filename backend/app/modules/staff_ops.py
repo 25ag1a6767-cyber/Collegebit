@@ -233,6 +233,19 @@ def reject_staff_order_v1(
     paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
     if paid_rec is not None:
         paid_rec.late_capture_flagged = True
+    from app.models import PaymentIncident
+    if order.payment_status == PaymentStatus.PAID or paid_rec is not None:
+        db.add(
+            PaymentIncident(
+                order_id=order.id,
+                payment_id=paid_rec.id if paid_rec else None,
+                incident_type="kitchen_unfulfilled",
+                amount_paise=order.effective_total_paise,
+                status="open",
+                description=f"Paid order #{order.order_number or order.id} declined by kitchen ({reason_clean}). Payment preserved under strict no-refunds policy.",
+                flagged_by_user_id=staff.id,
+            )
+        )
 
     record_order_status_change(db, order, prev, "REJECTED_INCIDENT_FLAGGED", staff.id, reason_clean)
     notify_user(
@@ -365,6 +378,19 @@ def report_staff_order_exception_v1(
         paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
         if paid_rec is not None:
             paid_rec.late_capture_flagged = True
+        from app.models import PaymentIncident
+        if order.payment_status == PaymentStatus.PAID or paid_rec is not None:
+            db.add(
+                PaymentIncident(
+                    order_id=order.id,
+                    payment_id=paid_rec.id if paid_rec else None,
+                    incident_type="kitchen_unfulfilled",
+                    amount_paise=order.effective_total_paise,
+                    status="open",
+                    description=f"Paid order #{order.order_number or order.id} unfulfilled due to kitchen exception ({reason_clean}). Payment preserved under strict no-refunds policy.",
+                    flagged_by_user_id=staff.id,
+                )
+            )
         incident_flagged = True
         record_order_status_change(db, order, prev, "CANCELLED_INCIDENT_FLAGGED", staff.id, f"Kitchen exception incident: {reason_clean}")
         notify_user(

@@ -1,0 +1,120 @@
+# CollegeBits 3.0 — Production High-Concurrency Deployment Topology (3,000+ Students in 5 Minutes)
+# - 4 Stateless FastAPI API Instances (8 vCPU / 16 GB RAM target per instance)
+# - Nginx Reverse Proxy & Load Balancer
+# - PostgreSQL 16 Primary + Standby Replica (16 vCPU / 32-64 GB RAM target) + PgBouncer Transaction Pooler
+# - Redis 7 (2-4 GB allocation for rate limiting, caching & short-lived coordination — never authoritative ledger)
+# - Dedicated Background Worker (CSV imports, 3,000+ QR token generation, PDF/CSV exports, reservation cleanup)
+
+services:
+  nginx-lb:
+    image: nginx:1.27-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-https-example.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api-1
+      - api-2
+      - api-3
+      - api-4
+
+  api-1: &api-node
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: always
+    env_file: ../.env
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://collegebits:${POSTGRES_PASSWORD}@pgbouncer:6432/collegebits
+      DB_USE_PGBOUNCER_TRANSACTION_POOL: "true"
+      REDIS_URL: redis://redis:6379/0
+    deploy:
+      resources:
+        limits:
+          cpus: "8.0"
+          memory: 16G
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      - pgbouncer
+      - redis
+
+  api-2:
+    <<: *api-node
+  api-3:
+    <<: *api-node
+  api-4:
+    <<: *api-node
+
+  background-worker:
+    <<: *api-node
+    command: ["python", "-m", "scripts.run_retention_cleanup"]
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.0-p1
+    restart: always
+    environment:
+      DB_HOST: postgres-primary
+      DB_PORT: 5432
+      DB_USER: collegebits
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 2000
+      DEFAULT_POOL_SIZE: 80
+    ports:
+      - "6432:6432"
+    depends_on:
+      - postgres-primary
+
+  postgres-primary:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: collegebits
+      POSTGRES_USER: collegebits
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_primary_data:/var/lib/postgresql/data
+      - ./postgres-college/postgresql-college.conf:/etc/postgresql/postgresql.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "16.0"
+          memory: 32G
+
+  postgres-standby:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: collegebits
+      POSTGRES_USER: collegebits
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_standby_data:/var/lib/postgresql/data
+    depends_on:
+      - postgres-primary
+
+  redis:
+    image: redis:7.4-alpine
+    restart: always
+    command: ["redis-server", "--maxmemory", "3gb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+volumes:
+  pg_primary_data:
+  pg_standby_data:

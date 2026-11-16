@@ -1494,6 +1494,121 @@
   });
   $("#v1-refresh-admin-hub")?.addEventListener("click", loadAdminAiHub);
 
+  // ============================================================================
+  // BULK ORDERS & RECIPIENT TOKEN HUB (1 TO 3,000+ RECIPIENTS)
+  // ============================================================================
+  async function loadBulkOrdersHub() {
+    const listEl = $("#v1-bulk-orders-list");
+    if (!listEl || !window.aceCanteenToken) return;
+    try {
+      const res = await v1Fetch("/api/v1/bulk-orders?limit=15");
+      const items = res?.items || [];
+      listEl.replaceChildren();
+      for (const bo of items) {
+        const card = document.createElement("div");
+        card.className = "v1-order-card";
+        const head = document.createElement("div");
+        head.className = "management-list-head";
+        const title = document.createElement("strong");
+        title.textContent = `Bulk #${bo.id} (${bo.bulkOrderNumber}) · ${bo.departmentName} · ${bo.eventTitle}`;
+        const badge = document.createElement("span");
+        badge.className = `badge-tag ${bo.paymentStatus === "paid" ? "badge-green" : "badge-amber"}`;
+        badge.textContent = `${bo.paymentMode.toUpperCase()} · ${bo.paymentStatus.toUpperCase()} · ${bo.status.toUpperCase()}`;
+        head.append(title, badge);
+
+        const meta = document.createElement("p");
+        meta.className = "muted";
+        meta.textContent = `Slot: ${bo.pickupDate} ${bo.pickupSlot} (Counter ${bo.counterId}) · Recipients: ${bo.totalRecipients} · Paid: ${bo.paidRecipientsCount} · Tokens: ${bo.tokensGeneratedCount} · Collected: ${bo.collectedRecipientsCount} (${bo.pickupProgressPct}%) · Total: ${paise(bo.totalPaise)}`;
+        card.append(head, meta);
+        listEl.append(card);
+      }
+    } catch {
+      // Non-blocking if unauthenticated
+    }
+  }
+
+  $("#v1-refresh-bulk-orders")?.addEventListener("click", loadBulkOrdersHub);
+
+  $("#v1-bulk-create-form")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#v1-bulk-create-msg");
+    try {
+      const bo = await v1Fetch("/api/v1/bulk-orders", {
+        method: "POST",
+        body: JSON.stringify({
+          departmentName: $("#v1-bulk-dept").value.trim(),
+          eventTitle: $("#v1-bulk-title").value.trim(),
+          pickupSlot: $("#v1-bulk-slot").value.trim(),
+          counterId: Number($("#v1-bulk-counter").value || 1),
+          paymentMode: $("#v1-bulk-pay-mode").value,
+          distributionMode: $("#v1-bulk-dist-mode").value,
+          items: [
+            {
+              menuItemId: Number($("#v1-bulk-item-id").value || 1),
+              quantity: Number($("#v1-bulk-item-qty").value || 50)
+            }
+          ]
+        })
+      });
+      if ($("#v1-bulk-target-id")) $("#v1-bulk-target-id").value = String(bo.id);
+      msg.textContent = `Created Master Bulk Order #${bo.id} (${bo.bulkOrderNumber}) for ${paise(bo.totalPaise)}.`;
+      msg.className = "management-message success";
+      await loadBulkOrdersHub();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
+  $("#v1-bulk-csv-form")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#v1-bulk-csv-msg");
+    const bid = Number($("#v1-bulk-target-id").value);
+    try {
+      const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/recipients/import`, {
+        method: "POST",
+        body: JSON.stringify({
+          csvContent: $("#v1-bulk-csv-text").value,
+          runInBackground: true
+        })
+      });
+      msg.textContent = `Job ${res.jobKey}: Imported ${res.importedCount} recipients (${res.duplicateCount} duplicates skipped). Total recipients: ${res.totalRecipients}.`;
+      msg.className = "management-message success";
+      await loadBulkOrdersHub();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
+  $("#v1-bulk-gen-tokens-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-bulk-csv-msg");
+    const bid = Number($("#v1-bulk-target-id")?.value);
+    if (!bid) return;
+    try {
+      const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/tokens/generate`, {
+        method: "POST",
+        body: JSON.stringify({ regenerate: false })
+      });
+      msg.textContent = `Generated ${res.generatedCount} unique cryptographic QR tokens (${res.distributionMode} mode).`;
+      msg.className = "management-message success";
+      await loadBulkOrdersHub();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
+  $("#v1-bulk-export-csv-btn")?.addEventListener("click", () => {
+    const bid = Number($("#v1-bulk-target-id")?.value);
+    if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=csv`, "_blank");
+  });
+
+  $("#v1-bulk-export-pdf-btn")?.addEventListener("click", () => {
+    const bid = Number($("#v1-bulk-target-id")?.value);
+    if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=pdf`, "_blank");
+  });
+
   function syncV1ForAuth(user) {
     connectRealtimeWs();
     loadRecommendations();
@@ -1501,6 +1616,7 @@
     if (adminHub) adminHub.hidden = user?.role !== "admin";
     if (!user) return;
     loadUserProfileV1();
+    loadBulkOrdersHub();
     if (user.role === "student") loadStudentActiveOrders();
     if (["staff", "admin"].includes(user.role)) {
       loadStaffKds();
