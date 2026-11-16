@@ -48,7 +48,7 @@ jobs:
 
       - name: Install dependencies & typecheck
         run: |
-          npm ci
+          npm ci --include=dev
           npm run typecheck
 
       - name: Prebuild native Android project

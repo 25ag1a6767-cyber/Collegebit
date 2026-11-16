@@ -1,49 +1,41 @@
-# CollegeBits — Mobile Application for Android & iPhone (iOS)
-*(Expo + React Native + TypeScript)*
+# CollegeBits — Native Mobile App for Android & iPhone (iOS)
+*(Expo + React Native + TypeScript — one codebase, both platforms)*
 
-This mobile client is dedicated for students and customers, connecting to the shared CollegeBits backend (`/api/v1` REST API and `/api/v1/ws` WebSocket hub). Menus, real-time stock reservations, UPI payments, formatted pickup tokens, and live order tracking stay 100% synchronized with the kitchen displays.
+The student app connects to the shared CollegeBits backend (/api/v1 REST + /api/v1/ws). Menus, stock reservations, UPI payments, pickup tokens and live order tracking stay synchronized with the kitchen.
 
-## 1. Running on Android & iPhone
+## 1. How students install the app
 
-### Option A: Direct Local Run on iPhone or Android (via Expo Go)
-1. Install **Expo Go** from the **Apple App Store** (for iPhone) or **Google Play Store** (for Android).
-2. From the repository root, start the mobile dev server:
-   ```powershell
-   Set-Location mobile
-   npm install
-   npx expo start
-   ```
-3. Scan the terminal QR code:
-   - **iPhone:** Open the native **Camera** app, tap the QR code banner to open in Expo Go.
-   - **Android:** Scan inside the **Expo Go** app.
+| Platform | Install method | Cost |
+| --- | --- | --- |
+| Android | Direct APK: https://app-sai-e3e1.vercel.app/download/app.apk | Free |
+| Android | Chrome → /customer/ → Install app (PWA) | Free |
+| iPhone | Safari → /customer/ → Share → Add to Home Screen (PWA) | Free |
+| iPhone | TestFlight / App Store (native IPA) | Apple Developer Program, US\/year |
+| iPhone | Sideload unsigned IPA with Sideloadly/AltStore + free Apple ID | Free, re-sign every 7 days |
 
-### Option B: Build Standalone Binaries (EAS Build)
-- **Android Standalone APK:**
-  ```powershell
-  npx eas build --platform android --profile preview
-  ```
-- **iPhone (iOS) Build / IPA:**
-  ```powershell
-  npx eas build --platform ios --profile preview
-  ```
+## 2. Automated builds (GitHub Actions)
+- **Android** — .github/workflows/android-build.yml builds CollegeBits-Customer.apk and publishes it to the customer-app-latest release.
+- **iOS** — .github/workflows/ios-build.yml builds the native iOS app on macOS and publishes CollegeBits-iOS-unsigned.ipa to the same release.
+- **iOS TestFlight (optional)** — the same workflow runs a signed EAS build and auto-submits to TestFlight once the EXPO_TOKEN repository secret is set.
 
-### Option C: Instant Mobile PWA Installation (Zero App Store Required)
-Students can install the customer web app from its dedicated customer URL:
-- **On Android (Chrome / Brave / Edge):**
-  Open `https://app-sai-e3e1.vercel.app/customer/` and tap **"Install app"** (or browser menu ➔ *Install app*).
-- **On iPhone (Safari):**
-  Open `https://app-sai-e3e1.vercel.app/customer/` in Safari, tap the **Share** button (box with upward arrow), and select **"Add to Home Screen"**.
+### Enabling TestFlight / App Store
+1. Join the Apple Developer Program (developer.apple.com/programs).
+2. Create an Expo account and run 
+px eas-cli login then 
+px eas-cli build:configure inside mobile/.
+3. Run 
+px eas-cli credentials once to let EAS create the iOS certificate and provisioning profile.
+4. Create an App Store Connect app with bundle ID com.acecanteen.campus.
+5. Add an Expo access token as the GitHub secret EXPO_TOKEN. Every push to mobile/** then builds and submits to TestFlight.
+6. Share the public TestFlight link with students, or submit for App Store review.
 
-The staff/admin website is at the domain root, `/staff`, and `/admin`. The customer app is at `/customer/`; it can also be built as a standalone Android or iOS app with EAS. The native build profiles use the production HTTPS API. A native install link is available after an EAS build and distribution; no app-store listing is configured in this repository.
-
-### Option D: Direct Android APK
-After the **CollegeBits Customer Android APK** GitHub Actions workflow completes successfully, install the Android APK from:
-
-`https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk`
-
-On Android, open the link, download the file, then open it and allow your browser to install unknown apps if prompted. This is a sideloaded debug-signed APK, not a Play Store release. Installing a later build with a different signing key may require uninstalling the previous APK first.
-
-For local development, set `EXPO_PUBLIC_API_URL` to the backend URL before starting Expo. The default development fallback is Android emulator localhost.
+## 3. Local development
+`powershell
+Set-Location mobile
+npm install
+npx expo start   # scan QR with Expo Go (iPhone camera or Android Expo Go)
+`
+Set EXPO_PUBLIC_API_URL to the backend URL; the default fallback is the Android emulator localhost.
 
 ---
 

@@ -33,7 +33,7 @@ jobs:
 
       - name: Install dependencies & typecheck
         run: |
-          npm ci
+          npm ci --include=dev
           npm run typecheck
 
       - name: Prebuild native iOS project
@@ -115,7 +115,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.creds.outputs.enabled == 'true'
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Signed iOS build and submit to TestFlight
         if: steps.creds.outputs.enabled == 'true'
