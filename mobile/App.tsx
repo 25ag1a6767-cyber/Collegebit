@@ -1,6 +1,15 @@
 import { StatusBar } from "expo-status-bar";
 import React, { useState } from "react";
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from "react-native";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import { CartProvider, useCart } from "./src/context/CartContext";
 import { AIAssistantScreen } from "./src/screens/AIAssistantScreen";
@@ -30,7 +39,12 @@ const Shell: React.FC = () => {
     return (
       <SafeAreaView style={styles.root}>
         <StatusBar style="dark" />
-        <AuthScreen />
+        <KeyboardAvoidingView
+          style={styles.body}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <AuthScreen />
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -40,14 +54,17 @@ const Shell: React.FC = () => {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar style="dark" />
-      <View style={styles.body}>
+      <KeyboardAvoidingView
+        style={styles.body}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         {tab === "home" && <HomeScreen onNavigate={next => setTab(next)} />}
         {tab === "menu" && <MenuScreen />}
         {tab === "cart" && <CartCheckoutScreen onOrderCreated={() => setTab("orders")} />}
         {tab === "orders" && <OrdersTrackingScreen />}
         {tab === "ai" && <AIAssistantScreen />}
         {tab === "profile" && <ProfileScreen />}
-      </View>
+      </KeyboardAvoidingView>
 
       <View style={styles.tabBar}>
         {(

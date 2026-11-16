@@ -22,7 +22,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException,
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select, text, func, or_, cast, String
@@ -503,11 +503,105 @@ async def service_worker() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/customer/"})
 
 APK_RELEASE_URL = "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk"
+IOS_IPA_RELEASE_URL = os.getenv(
+    "IOS_IPA_RELEASE_URL",
+    "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-iOS-Bundle.zip",
+)
 
 @app.get("/download/app.apk", include_in_schema=False)
 @app.get("/app.apk", include_in_schema=False)
 async def download_android_apk() -> RedirectResponse:
     return RedirectResponse(url=APK_RELEASE_URL, status_code=302)
+
+
+def _build_ios_mobileconfig_xml(target_url: str) -> str:
+    icon_path = FRONTEND_DIR / "assets" / "icon-192.png"
+    icon_b64 = ""
+    if icon_path.exists():
+        icon_b64 = base64.b64encode(icon_path.read_bytes()).decode("ascii")
+    icon_block = (
+        f"      <key>Icon</key>\n      <data>{icon_b64}</data>\n" if icon_b64 else ""
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "  <key>PayloadContent</key>\n"
+        "  <array>\n"
+        "    <dict>\n"
+        "      <key>FullScreen</key>\n"
+        "      <true/>\n"
+        f"{icon_block}"
+        "      <key>IgnoreManifestScope</key>\n"
+        "      <false/>\n"
+        "      <key>IsRemovable</key>\n"
+        "      <true/>\n"
+        "      <key>Label</key>\n"
+        "      <string>CollegeBits</string>\n"
+        "      <key>PayloadDescription</key>\n"
+        "      <string>Installs the CollegeBits Campus Canteen app on your iPhone or iPad Home Screen.</string>\n"
+        "      <key>PayloadDisplayName</key>\n"
+        "      <string>CollegeBits Campus Ordering</string>\n"
+        "      <key>PayloadIdentifier</key>\n"
+        "      <string>com.acecanteen.campus.webclip</string>\n"
+        "      <key>PayloadType</key>\n"
+        "      <string>com.apple.webClip.managed</string>\n"
+        "      <key>PayloadUUID</key>\n"
+        "      <string>7A4E9C12-3B8D-4F2A-9E61-8C4D5B2A1F01</string>\n"
+        "      <key>PayloadVersion</key>\n"
+        "      <integer>1</integer>\n"
+        "      <key>Precomposed</key>\n"
+        "      <true/>\n"
+        "      <key>URL</key>\n"
+        f"      <string>{target_url}</string>\n"
+        "    </dict>\n"
+        "  </array>\n"
+        "  <key>PayloadDescription</key>\n"
+        "  <string>Installs the CollegeBits Campus Canteen Ordering application on your iPhone or iPad Home Screen with full-screen standalone launch.</string>\n"
+        "  <key>PayloadDisplayName</key>\n"
+        "  <string>CollegeBits iOS App Installer</string>\n"
+        "  <key>PayloadIdentifier</key>\n"
+        "  <string>com.acecanteen.campus.profile</string>\n"
+        "  <key>PayloadOrganization</key>\n"
+        "  <string>ACE Engineering College — CollegeBits</string>\n"
+        "  <key>PayloadRemovalDisallowed</key>\n"
+        "  <false/>\n"
+        "  <key>PayloadType</key>\n"
+        "  <string>Configuration</string>\n"
+        "  <key>PayloadUUID</key>\n"
+        "  <string>9F3B1D84-6C2A-4E19-B7D2-1A5E8F3C9B02</string>\n"
+        "  <key>PayloadVersion</key>\n"
+        "  <integer>1</integer>\n"
+        "</dict>\n"
+        "</plist>\n"
+    )
+
+
+@app.get("/download/ios.mobileconfig", include_in_schema=False)
+@app.get("/download/app.mobileconfig", include_in_schema=False)
+@app.get("/ios.mobileconfig", include_in_schema=False)
+async def download_ios_mobileconfig(request: Request) -> Response:
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "app-sai-e3e1.vercel.app").split(",")[0].strip()
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    if host not in ("localhost", "127.0.0.1", "testserver") and not host.startswith("127.0.0.1:") and not host.startswith("localhost:"):
+        proto = "https"
+    customer_url = f"{proto}://{host}/customer/"
+    xml_body = _build_ios_mobileconfig_xml(customer_url)
+    return Response(
+        content=xml_body.encode("utf-8"),
+        media_type="application/x-apple-aspen-config",
+        headers={
+            "Content-Disposition": 'attachment; filename="CollegeBits-iOS.mobileconfig"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/download/app.ipa", include_in_schema=False)
+@app.get("/app.ipa", include_in_schema=False)
+async def download_ios_ipa() -> RedirectResponse:
+    return RedirectResponse(url=IOS_IPA_RELEASE_URL, status_code=302)
 
 @app.get("/api/health", tags=["system"])
 async def health() -> dict[str, Any]:

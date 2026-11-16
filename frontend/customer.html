@@ -46,7 +46,8 @@
     </div>
     <div class="pwa-banner-buttons">
       <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">📲 Install</button>
-      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">Download APK</a>
+      <a class="pwa-banner-apk-btn" id="pwa-banner-ios-btn" href="/download/ios.mobileconfig">🍎 iPhone App</a>
+      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">🤖 Android APK</a>
       <button type="button" class="pwa-banner-close" id="pwa-banner-dismiss-btn" aria-label="Dismiss install prompt">✕</button>
     </div>
   </section>
@@ -741,18 +742,34 @@
       </div>
 
       <div class="pwa-modal-body">
+        <div class="pwa-platform-tabs" role="tablist" aria-label="Choose mobile platform">
+          <button type="button" class="pwa-platform-tab" id="pwa-tab-ios" data-platform="ios" role="tab">🍎 iPhone / iOS</button>
+          <button type="button" class="pwa-platform-tab" id="pwa-tab-android" data-platform="android" role="tab">🤖 Android</button>
+        </div>
+
+        <!-- Direct iPhone / iOS Installer Profile Button -->
+        <div class="pwa-apk-cta pwa-ios-cta" id="pwa-ios-section">
+          <a class="pwa-apk-btn" href="/download/ios.mobileconfig">
+            <span class="pwa-apk-icon">🍎</span>
+            <div class="pwa-apk-info">
+              <strong>Download iPhone &amp; iPad App (iOS)</strong>
+              <small>Direct iOS App Installer (Tap Allow &rarr; Settings &rarr; Profile Downloaded &rarr; Install)</small>
+            </div>
+          </a>
+        </div>
+
         <!-- Direct Android APK Download Button (Works on ANY Android phone) -->
         <div class="pwa-apk-cta" id="pwa-apk-section">
           <a class="pwa-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">
             <span class="pwa-apk-icon">🤖</span>
             <div class="pwa-apk-info">
               <strong>Download Android App (.APK)</strong>
-              <small>Direct install for Samsung, OnePlus, Vivo, Oppo, Realme, etc.</small>
+              <small>Direct install for Samsung, OnePlus, Vivo, Oppo, Realme, Xiaomi, etc.</small>
             </div>
           </a>
         </div>
 
-        <div class="pwa-divider" id="pwa-divider"><span>OR ADD TO HOME SCREEN</span></div>
+        <div class="pwa-divider" id="pwa-divider"><span>OR ADD DIRECTLY FROM BROWSER</span></div>
 
         <!-- iOS Instructions -->
         <div id="pwa-guide-ios" class="pwa-guide-steps" hidden>
@@ -763,22 +780,22 @@
           <div class="pwa-step">
             <span class="pwa-step-num">1</span>
             <div class="pwa-step-desc">
-              <strong>Tap the Share button in Safari</strong>
-              <p>At the bottom toolbar of Safari, tap the <strong>Share</strong> icon <span class="pwa-ios-step-icon">⎋</span> (square with an upward arrow).</p>
+              <strong>Option A — Tap "Download iPhone App" above</strong>
+              <p>Tap the <strong>🍎 Download iPhone &amp; iPad App</strong> button above, tap <strong>Allow</strong>, then open iPhone <strong>Settings &rarr; Profile Downloaded &rarr; Install</strong>.</p>
             </div>
           </div>
           <div class="pwa-step">
             <span class="pwa-step-num">2</span>
             <div class="pwa-step-desc">
-              <strong>Select "Add to Home Screen"</strong>
-              <p>Scroll down the share sheet and tap <strong>"Add to Home Screen"</strong> <span class="pwa-ios-step-icon">➕</span>.</p>
+              <strong>Option B — Safari "Add to Home Screen"</strong>
+              <p>Or tap the <strong>Share</strong> icon <span class="pwa-ios-step-icon">⎋</span> in Safari's toolbar and select <strong>"Add to Home Screen"</strong> <span class="pwa-ios-step-icon">➕</span>.</p>
             </div>
           </div>
           <div class="pwa-step">
             <span class="pwa-step-num">3</span>
             <div class="pwa-step-desc">
-              <strong>Tap "Add" in top-right corner</strong>
-              <p>Tap <strong>"Add"</strong> at the top right. CollegeBits will be installed on your iPhone home screen with standalone app performance!</p>
+              <strong>Launch CollegeBits from Home Screen</strong>
+              <p>Open the <strong>CollegeBits</strong> icon on your iPhone Home Screen for full-screen standalone ordering and live QR pickup tokens!</p>
             </div>
           </div>
         </div>

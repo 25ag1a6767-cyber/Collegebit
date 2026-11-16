@@ -797,6 +797,40 @@
   flex-direction: column;
   gap: 12px;
 }
+.pwa-platform-tabs {
+  display: flex;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 12px;
+}
+.pwa-platform-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.pwa-platform-tab.active {
+  background: #14532d;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(20, 83, 45, 0.25);
+}
+.pwa-ios-cta {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+.pwa-ios-cta .pwa-apk-info strong {
+  color: #1e3a8a;
+}
+.pwa-ios-cta .pwa-apk-info small {
+  color: #1d4ed8;
+}
 .pwa-guide-steps {
   display: flex;
   flex-direction: column;

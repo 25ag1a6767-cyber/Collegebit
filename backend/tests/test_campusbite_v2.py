@@ -155,6 +155,22 @@ def test_three_portals_and_strict_csp_compliance():
         assert "ACE Canteen" in r_cust.text
         assert "/staff" not in r_cust.text
         assert "/admin" not in r_cust.text
+        assert "/download/ios.mobileconfig" in r_cust.text
+        assert "/download/app.apk" in r_cust.text
+        assert not re.search(r'\sstyle\s*=', r_cust.text, re.IGNORECASE)
+
+        r_ios_cfg = client.get("/download/ios.mobileconfig")
+        assert r_ios_cfg.status_code == 200
+        assert "application/x-apple-aspen-config" in r_ios_cfg.headers.get("content-type", "")
+        assert "com.apple.webClip.managed" in r_ios_cfg.text
+        assert "/customer/" in r_ios_cfg.text
+
+        r_apk = client.get("/download/app.apk", follow_redirects=False)
+        assert r_apk.status_code == 302
+        assert "CollegeBits-Customer.apk" in r_apk.headers.get("location", "")
+
+        r_ipa = client.get("/download/app.ipa", follow_redirects=False)
+        assert r_ipa.status_code == 302
 
         r_home = client.get("/")
         assert r_home.status_code == 200

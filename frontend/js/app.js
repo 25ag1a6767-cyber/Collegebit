@@ -16,6 +16,7 @@
   let installPrompt = null;
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(navigator.userAgent);
   const isInApp = /FBAN|FBAV|Instagram|WhatsApp|Telegram|Line|Twitter|Snapchat|MicroMessenger/i.test(navigator.userAgent);
 
   function hideAllInstallPrompts() {
@@ -27,19 +28,38 @@
     if (installModal) installModal.hidden = true;
   }
 
-  function showInstallModal() {
-    const installModal = document.querySelector("#pwa-install-modal");
-    if (!installModal) return;
+  function selectInstallPlatform(platform) {
+    const showIos = platform === "ios";
+    const tabIos = document.querySelector("#pwa-tab-ios");
+    const tabAndroid = document.querySelector("#pwa-tab-android");
+    const iosSection = document.querySelector("#pwa-ios-section");
+    const apkSection = document.querySelector("#pwa-apk-section");
     const guideIos = document.querySelector("#pwa-guide-ios");
     const guideAndroid = document.querySelector("#pwa-guide-android");
-    const apkSection = document.querySelector("#pwa-apk-section");
     const pwaDivider = document.querySelector("#pwa-divider");
     const inAppAlert = document.querySelector("#pwa-ios-inapp-alert");
-    if (guideIos) guideIos.hidden = !isIOS;
-    if (guideAndroid) guideAndroid.hidden = isIOS;
-    if (apkSection) apkSection.hidden = isIOS;
-    if (pwaDivider) pwaDivider.hidden = isIOS;
-    if (inAppAlert) inAppAlert.hidden = !(isIOS && isInApp);
+
+    if (tabIos) {
+      tabIos.classList.toggle("active", showIos);
+      tabIos.setAttribute("aria-selected", showIos ? "true" : "false");
+    }
+    if (tabAndroid) {
+      tabAndroid.classList.toggle("active", !showIos);
+      tabAndroid.setAttribute("aria-selected", !showIos ? "true" : "false");
+    }
+    if (iosSection) iosSection.hidden = !showIos;
+    if (apkSection) apkSection.hidden = showIos;
+    if (guideIos) guideIos.hidden = !showIos;
+    if (guideAndroid) guideAndroid.hidden = showIos;
+    if (pwaDivider) pwaDivider.hidden = false;
+    if (inAppAlert) inAppAlert.hidden = !(showIos && isInApp);
+  }
+
+  function showInstallModal(preferredPlatform) {
+    const installModal = document.querySelector("#pwa-install-modal");
+    if (!installModal) return;
+    const defaultPlatform = preferredPlatform || (isIOS ? "ios" : "android");
+    selectInstallPlatform(defaultPlatform);
     installModal.hidden = false;
   }
 
@@ -49,7 +69,7 @@
   }
 
   async function triggerInstallFlow() {
-    if (installPrompt) {
+    if (installPrompt && !isIOS) {
       try {
         installPrompt.prompt();
         const choice = await installPrompt.userChoice;
@@ -62,8 +82,8 @@
         console.warn("Install prompt error:", err);
       }
     }
-    // Fallback: Show step-by-step guidance for iOS or browsers without deferred prompt
-    showInstallModal();
+    // Show step-by-step guidance & direct downloads for iOS and Android
+    showInstallModal(isIOS ? "ios" : "android");
   }
 
   function setupInstallUI() {
@@ -75,16 +95,20 @@
     const installButton = document.querySelector("#install-app-button");
     if (installButton) {
       installButton.hidden = false;
-      installButton.onclick = triggerInstallFlow;
+      installButton.onclick = () => triggerInstallFlow();
     }
 
     const installBanner = document.querySelector("#pwa-install-banner");
     const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
     const bannerDismissBtn = document.querySelector("#pwa-banner-dismiss-btn");
     const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
+    const bannerIosBtn = document.querySelector("#pwa-banner-ios-btn");
 
     if (bannerApkBtn && isIOS) {
       bannerApkBtn.hidden = true;
+    }
+    if (bannerIosBtn && isAndroid) {
+      bannerIosBtn.hidden = true;
     }
 
     let dismissed = false;
@@ -96,13 +120,18 @@
       installBanner.hidden = false;
     }
 
-    if (bannerInstallBtn) bannerInstallBtn.onclick = triggerInstallFlow;
+    if (bannerInstallBtn) bannerInstallBtn.onclick = () => triggerInstallFlow();
     if (bannerDismissBtn) {
       bannerDismissBtn.onclick = () => {
         if (installBanner) installBanner.hidden = true;
         try { sessionStorage.setItem("pwa_install_dismissed", "true"); } catch (_) {}
       };
     }
+
+    const tabIos = document.querySelector("#pwa-tab-ios");
+    const tabAndroid = document.querySelector("#pwa-tab-android");
+    if (tabIos) tabIos.onclick = () => selectInstallPlatform("ios");
+    if (tabAndroid) tabAndroid.onclick = () => selectInstallPlatform("android");
 
     const modalClose = document.querySelector("#pwa-modal-close");
     const modalConfirm = document.querySelector("#pwa-modal-confirm");
