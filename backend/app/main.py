@@ -60,7 +60,6 @@ _metrics = {"requests_total": 0, "requests_4xx_total": 0, "requests_5xx_total": 
             "request_duration_ms_sum": 0.0, "request_duration_ms_max": 0.0}
 
 
-
 def _record_stock_movement(db: Session, product: Product, delta: int, movement_type: InventoryMovementType, reason: str, actor_user_id: int | None = None, order_id: int | None = None, before: int | None = None) -> None:
     """Add an immutable audit record for a committed inventory quantity change."""
     old_quantity = product.stock_quantity if before is None else before
@@ -217,7 +216,7 @@ async def lifespan(_: FastAPI):
                 seed_demo_data(db)
             logger.info("Database schema and bootstrap accounts created successfully.")
         else:
-            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables:
+            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables or "saas_tenants" not in existing_tables:
                 Base.metadata.create_all(bind=engine)
             try:
                 with engine.begin() as conn:
@@ -723,7 +722,7 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
     retry_after = _check_login_rate(rate_key)
     if retry_after:
         raise HTTPException(status_code=429, detail="Too many login attempts. Try again later.", headers={"Retry-After": str(retry_after)})
-    
+
     email_clean = payload.email.strip().lower()
     user = db.scalar(select(User).where(func.lower(User.email) == email_clean))
     if user is None:
@@ -2301,14 +2300,16 @@ from app.modules import (
     reporting_engine,
     retention_backup,
     rewards_wallet,
+    saas_crowd_pos_v3,
     staff_ops,
 )
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_profile.router)
 v1_router.include_router(menu_cart.router)
-v1_router.include_router(orders_payments.router)
+v1_router.include_router(saas_crowd_pos_v3.router)
 v1_router.include_router(bulk_orders_v3.router)
+v1_router.include_router(orders_payments.router)
 v1_router.include_router(rewards_wallet.router)
 v1_router.include_router(staff_ops.router)
 v1_router.include_router(admin_portal.router)

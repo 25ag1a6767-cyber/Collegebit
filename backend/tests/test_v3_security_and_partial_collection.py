@@ -68,7 +68,7 @@ def test_stored_xss_sanitization_and_injection_immunity(monkeypatch):
 
         xss_payload = "<script>alert('pwned')</script><img src=x onerror=alert(1)>"
         stu_email = f"alice-xss-{uuid.uuid4().hex[:8]}@example.com"
-        
+
         # Register student with XSS payload in name
         reg_resp = client.post(
             "/api/v1/auth/register",

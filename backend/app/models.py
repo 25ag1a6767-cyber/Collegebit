@@ -1149,6 +1149,167 @@ class BulkBackgroundJob(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class WalkinPosOrder(Base):
+    """Staff-controlled walk-in POS cash order integrated with live inventory and daily settlements."""
+    __tablename__ = "walkin_pos_orders"
+    __table_args__ = (
+        Index("ix_walkin_pos_created", "created_at"),
+        CheckConstraint("total_paise >= 0", name="ck_walkin_pos_total_nonnegative"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    pos_receipt_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    counter_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    staff_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    customer_category: Mapped[str] = mapped_column(String(20), default="student", nullable=False)  # student | faculty | guest
+    customer_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    payment_method: Mapped[str] = mapped_column(String(20), default="cash", nullable=False)  # cash | upi_pos
+    total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    items_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GuestOtpChallenge(Base):
+    """OTP verification challenge for external guests, parents, and faculty/student email/mobile login."""
+    __tablename__ = "guest_otp_challenges"
+    __table_args__ = (
+        Index("ix_guest_otp_phone_created", "phone_or_email", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone_or_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role_category: Mapped[str] = mapped_column(String(20), default="guest", nullable=False)  # student | faculty | guest
+    otp_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasTenant(Base):
+    """Multi-college SaaS tenant (Platform -> College/Tenant -> Campus -> Canteen/Outlet)."""
+    __tablename__ = "saas_tenants"
+    __table_args__ = (
+        Index("ix_saas_tenants_status_plan", "status", "plan_tier"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_slug: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    college_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="onboarding", nullable=False)  # onboarding | active | suspended | offboarding
+    plan_tier: Mapped[str] = mapped_column(String(30), default="STARTER", nullable=False)  # STARTER | PROFESSIONAL | ENTERPRISE
+    brand_primary_color: Mapped[str] = mapped_column(String(20), default="#0f172a", nullable=False)
+    brand_accent_color: Mapped[str] = mapped_column(String(20), default="#f59e0b", nullable=False)
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    custom_domain: Mapped[str | None] = mapped_column(String(180), unique=True, nullable=True)
+    contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    onboarding_step: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    onboarding_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    max_campuses: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    max_outlets: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    max_staff_accounts: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    bulk_ordering_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    advanced_analytics_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    rate_limit_rpm: Mapped[int] = mapped_column(Integer, default=600, nullable=False)
+    encrypted_gateway_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class SaasCampus(Base):
+    """Physical campus belonging to a SaaS college tenant."""
+    __tablename__ = "saas_campuses"
+    __table_args__ = (
+        Index("ix_saas_campuses_tenant", "tenant_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    campus_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasOutlet(Base):
+    """Canteen or food court outlet inside a SaaS college campus."""
+    __tablename__ = "saas_outlets"
+    __table_args__ = (
+        Index("ix_saas_outlets_tenant_campus", "tenant_id", "campus_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    campus_id: Mapped[int] = mapped_column(ForeignKey("saas_campuses.id", ondelete="CASCADE"), nullable=False)
+    outlet_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    vendor_name: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasSubscription(Base):
+    """SaaS subscription & billing lifecycle (separate from student food payments)."""
+    __tablename__ = "saas_subscriptions"
+    __table_args__ = (
+        Index("ix_saas_subscriptions_tenant_status", "tenant_id", "status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    plan_tier: Mapped[str] = mapped_column(String(30), default="STARTER", nullable=False)
+    billing_cycle: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)  # monthly | annual
+    status: Mapped[str] = mapped_column(String(30), default="trial", nullable=False)  # trial | active | past_due | suspended | cancelled
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    invoice_number: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    current_period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    grace_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasTenantMember(Base):
+    """Authoritative membership binding a User to a specific SaaS College Tenant."""
+    __tablename__ = "saas_tenant_members"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", name="uq_saas_tenant_member_user"),
+        Index("ix_saas_tenant_members_user", "user_id", "tenant_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    tenant_role: Mapped[str] = mapped_column(String(30), default="student", nullable=False)  # college_admin | canteen_manager | staff | faculty | student
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasTenantOrder(Base):
+    """Tenant-isolated order record enforcing strict cross-college separation."""
+    __tablename__ = "saas_tenant_orders"
+    __table_args__ = (
+        Index("ix_saas_tenant_orders_tenant_created", "tenant_id", "created_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    item_summary: Mapped[str] = mapped_column(String(255), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(30), default="paid", nullable=False)
+    pickup_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="confirmed", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasApiKey(Base):
+    """Scoped API key & outbound webhook subscription for college ERP / SIS integrations."""
+    __tablename__ = "saas_api_keys"
+    __table_args__ = (
+        Index("ix_saas_api_keys_tenant", "tenant_id"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(20), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    scopes: Mapped[str] = mapped_column(String(255), default="orders:read,menu:read", nullable=False)
+    webhook_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 # --- Automatic Decimal <-> integer paise synchronization ---
 @event.listens_for(Product, "before_insert")
 @event.listens_for(Product, "before_update")

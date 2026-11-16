@@ -1,4 +1,3 @@
-
 // Phase 21: installable app shell. Offline mode never submits orders or caches API/private data.
 (() => {
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
@@ -595,7 +594,6 @@ if (productSearch && productType) {
   }
 })();
 
-
 // Phase 4: staff/admin catalogue management UI. The API remains the authority for permissions.
 (() => {
   const panel = document.querySelector('#catalogue-management');
@@ -811,7 +809,6 @@ if (productSearch && productType) {
   if (window.aceCanteenUser) syncRole(window.aceCanteenUser);
 })();
 
-
 // Phase 8: privacy-preserving public pickup board and daily token queue.
 async function loadPublicQueue() {
   const list = document.querySelector('#public-queue-list');
@@ -1021,7 +1018,6 @@ document.addEventListener('ace-auth-changed', event => {
   if (user?.role === 'student') loadMyOrders(); if (['admin', 'staff'].includes(user?.role)) { loadOrderQueue(); loadStaffWorkflow(); }
 });
 
-
 // Phase 7: refresh the staff queue periodically while a staff/admin session is active.
 window.setInterval(() => {
   loadPublicQueue();
@@ -1133,7 +1129,6 @@ window.setInterval(() => {
   window.setInterval(() => { if (canManage() && !document.hidden) refreshAll(); }, 30000);
 })();
 
-
 // Phase 12: administrator-only reports, CSV export and audit trail.
 (() => {
   const panel = document.querySelector('#admin-reporting');
@@ -1202,7 +1197,6 @@ window.setInterval(() => {
   document.addEventListener('ace-auth-changed', event => sync(event.detail)); if (window.aceCanteenUser) sync(window.aceCanteenUser);
 })();
 
-
 // Phase 13: durable in-app notifications for students and staff, with owner-scoped read actions.
 (() => {
   const panel = document.querySelector('#notification-center');
@@ -1241,7 +1235,6 @@ window.setInterval(() => {
   window.setInterval(() => { if (!document.hidden && window.aceCanteenUser) loadNotifications(); }, 20000);
   if (window.aceCanteenUser) loadNotifications();
 })();
-
 
 // Phase 45: visual admin control centre backed by the admin-only register APIs.
 (() => {
@@ -1345,7 +1338,6 @@ window.setInterval(() => {
   adminVisible();
 })();
 
-
 // Phase 49: canteen open/closed banner, pickup-time slots, and the staff ordering switch.
 (() => {
   const $ = id => document.querySelector(id);
@@ -1392,8 +1384,6 @@ window.setInterval(() => {
   window.setInterval(() => { if (!document.hidden) refresh(); }, 60000);
   refresh();
 })();
-
-
 
 // Phase 50-58: Procurement, Traceable Batches, Expiry, Demand Analytics & Reconciliation UI
 (() => {

@@ -20,10 +20,10 @@ The student app connects to the shared CollegeBits backend (/api/v1 REST + /api/
 
 ### Enabling TestFlight / App Store
 1. Join the Apple Developer Program (developer.apple.com/programs).
-2. Create an Expo account and run 
-px eas-cli login then 
+2. Create an Expo account and run
+px eas-cli login then
 px eas-cli build:configure inside mobile/.
-3. Run 
+3. Run
 px eas-cli credentials once to let EAS create the iOS certificate and provisioning profile.
 4. Create an App Store Connect app with bundle ID com.acecanteen.campus.
 5. Add an Expo access token as the GitHub secret EXPO_TOKEN. Every push to mobile/** then builds and submits to TestFlight.
