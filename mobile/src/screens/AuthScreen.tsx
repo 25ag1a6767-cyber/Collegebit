@@ -44,7 +44,7 @@ export const AuthScreen: React.FC = () => {
   return (
     <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
       <View style={styles.card}>
-        <Text style={styles.eyebrow}>ACE CANTEEN · ANDROID</Text>
+        <Text style={styles.eyebrow}>ACE CANTEEN · MOBILE</Text>
         <Text style={styles.title}>Order ahead. Skip the break queue.</Text>
         <Text style={styles.subtitle}>
           Shared menu, UPI checkout, and single-use QR pickup synced in real time with campus counters.

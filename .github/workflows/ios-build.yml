@@ -1,0 +1,122 @@
+name: CollegeBits Customer iOS App
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/ios-build.yml"
+
+jobs:
+  # Always runs: proves the native iOS app compiles and publishes an unsigned IPA
+  # that can be sideloaded with Sideloadly / AltStore using any Apple ID.
+  build-ios-unsigned:
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      EXPO_PUBLIC_API_URL: https://app-sai-e3e1.vercel.app
+      NODE_ENV: production
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies & typecheck
+        run: |
+          npm ci
+          npm run typecheck
+
+      - name: Prebuild native iOS project
+        run: npx expo prebuild --platform ios --non-interactive
+
+      - name: Install CocoaPods
+        working-directory: mobile/ios
+        run: pod install
+
+      - name: Build unsigned iOS release app
+        working-directory: mobile/ios
+        run: |
+          WORKSPACE=$(ls -d *.xcworkspace | head -n 1)
+          SCHEME="${WORKSPACE%.xcworkspace}"
+          echo "Building workspace=$WORKSPACE scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build | tail -n 200
+
+      - name: Package unsigned IPA
+        working-directory: mobile/ios
+        run: |
+          APP=$(ls -d build/Build/Products/Release-iphoneos/*.app | head -n 1)
+          test -d "$APP"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry /tmp/CollegeBits-iOS-unsigned.ipa Payload
+          ls -lh /tmp/CollegeBits-iOS-unsigned.ipa
+
+      - name: Publish unsigned IPA to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="customer-app-latest"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "CollegeBits Customer Mobile Apps" --notes "Latest Android APK and unsigned iOS IPA." --prerelease --latest=false
+          fi
+          gh release upload "$TAG" /tmp/CollegeBits-iOS-unsigned.ipa --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Upload IPA as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: collegebits-customer-ios-unsigned-ipa
+          path: /tmp/CollegeBits-iOS-unsigned.ipa
+          if-no-files-found: error
+
+  # Runs only when an Expo token is configured: signed build + TestFlight/App Store
+  # submission through EAS (requires an Apple Developer Program membership).
+  build-ios-testflight:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Check for Expo credentials
+        id: creds
+        working-directory: .
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then echo "enabled=true" >> "$GITHUB_OUTPUT"; else echo "enabled=false" >> "$GITHUB_OUTPUT"; echo "EXPO_TOKEN secret not set; skipping signed TestFlight build."; fi
+
+      - uses: actions/checkout@v4
+        if: steps.creds.outputs.enabled == 'true'
+
+      - name: Setup Node.js 20
+        if: steps.creds.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        if: steps.creds.outputs.enabled == 'true'
+        run: npm ci
+
+      - name: Signed iOS build and submit to TestFlight
+        if: steps.creds.outputs.enabled == 'true'
+        run: npx --yes eas-cli@latest build --platform ios --profile production --non-interactive --no-wait --auto-submit

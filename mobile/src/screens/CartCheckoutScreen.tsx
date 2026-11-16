@@ -98,9 +98,14 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
         });
 
         if (intent.upiIntentUri) {
-          const supported = await Linking.canOpenURL(intent.upiIntentUri);
-          if (supported) {
+          // iOS reports canOpenURL=false for undeclared schemes, so attempt the
+          // open directly and fall back to a clear message when no UPI app exists.
+          try {
             await Linking.openURL(intent.upiIntentUri);
+          } catch {
+            setStatusMessage(
+              "No UPI app found on this phone. Install Google Pay, PhonePe, Paytm or BHIM to complete payment."
+            );
           }
         }
       }

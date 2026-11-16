@@ -6,9 +6,19 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "scheme": "campusbite",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#faf9f5"
+    },
     "android": {
       "package": "com.acecanteen.campus",
       "versionCode": 200,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "INTERNET",
         "VIBRATE",
@@ -19,8 +29,21 @@
       "bundleIdentifier": "com.acecanteen.campus",
       "buildNumber": "200",
       "supportsTablet": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSCameraUsageDescription": "Camera is used to scan QR tokens for order pickups."
+        "NSCameraUsageDescription": "Camera is used to scan QR tokens for order pickups.",
+        "LSApplicationQueriesSchemes": [
+          "upi",
+          "phonepe",
+          "paytmmp",
+          "gpay",
+          "tez",
+          "bhim",
+          "credpay"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "plugins": [
@@ -29,6 +52,9 @@
         {
           "android": {
             "kotlinVersion": "1.9.25"
+          },
+          "ios": {
+            "deploymentTarget": "15.1"
           }
         }
       ]

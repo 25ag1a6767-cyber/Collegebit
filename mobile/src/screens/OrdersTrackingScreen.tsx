@@ -93,7 +93,7 @@ export const OrdersTrackingScreen: React.FC = () => {
     try {
       await apiRequest(`/api/v1/orders/${orderId}/cancel`, {
         method: "POST",
-        body: JSON.stringify({ reason: "Cancelled by student from Android app" })
+        body: JSON.stringify({ reason: "Cancelled by student from mobile app" })
       });
       await loadOrders();
     } catch (err) {
@@ -105,7 +105,7 @@ export const OrdersTrackingScreen: React.FC = () => {
     try {
       await apiRequest(`/api/v1/orders/${orderId}/review`, {
         method: "POST",
-        body: JSON.stringify({ rating, comment: "Rated from Android app" })
+        body: JSON.stringify({ rating, comment: "Rated from mobile app" })
       });
       setMessage(`Saved ${rating}/5 rating for Order #${orderId}.`);
     } catch (err) {
