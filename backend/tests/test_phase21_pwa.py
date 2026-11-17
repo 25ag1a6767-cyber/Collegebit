@@ -29,3 +29,29 @@ def test_service_worker_is_customer_scoped_and_does_not_cache_api():
         assert 'url.pathname.startsWith("/api/")' in response.text
         assert 'url.pathname !== "/customer"' in response.text
         assert 'url.pathname !== "/customer/"' in response.text
+
+
+def test_ios_pwa_meta_tags_opaque_apple_icon_splashes_and_safe_areas():
+    import struct
+    with TestClient(app) as client:
+        html = client.get("/customer/").text
+        assert "viewport-fit=cover" in html
+        assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
+        assert '<meta name="mobile-web-app-capable" content="yes">' in html
+        assert '<meta name="apple-mobile-web-app-status-bar-style" content="default">' in html
+        assert '<meta name="apple-mobile-web-app-title" content="CollegeBits">' in html
+        assert '<link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">' in html
+        assert 'rel="apple-touch-startup-image"' in html
+
+        icon = client.get("/assets/apple-touch-icon.png")
+        assert icon.status_code == 200
+        w, h, _depth, ctype = struct.unpack(">IIBB", icon.content[16:26])
+        assert (w, h) == (180, 180)
+        assert ctype == 2  # Opaque RGB (no alpha transparency)
+
+        splash = client.get("/assets/splash/apple-splash-1179-2556.png")
+        assert splash.status_code == 200
+
+        css = client.get("/css/style.css").text + client.get("/css/v1-platform.css").text
+        assert "env(safe-area-inset-top" in css
+        assert "env(safe-area-inset-bottom" in css

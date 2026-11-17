@@ -330,8 +330,8 @@
 /* S05 Floating AI Concierge Drawer */
 .v1-ai-fab {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  right: calc(22px + env(safe-area-inset-right, 0px));
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
   z-index: 950;
   border: 0;
   border-radius: 999px;
@@ -351,6 +351,8 @@
   right: 0;
   bottom: 0;
   width: min(430px, 100vw);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   background: #ffffff;
   border-left: 1px solid #d8e4dc;
   box-shadow: -16px 0 48px rgba(18, 55, 42, 0.16);
@@ -419,7 +421,7 @@
   gap: 5px;
 }
 .v1-drawer-foot {
-  padding: 14px 18px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid #e4ece6;
   display: flex;
   gap: 8px;
@@ -440,7 +442,7 @@
   z-index: 1050;
   display: grid;
   place-items: center;
-  padding: 18px;
+  padding: max(18px, env(safe-area-inset-top, 0px)) max(18px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
 }
 .v1-modal {
   background: #fff;
@@ -721,7 +723,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: max(20px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px)) max(20px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
   z-index: 1000;
 }
 .pwa-modal-backdrop[hidden] {

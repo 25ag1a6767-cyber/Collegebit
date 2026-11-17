@@ -90,6 +90,7 @@ def _png_chunk(tag: bytes, data: bytes) -> bytes:
 
 
 def encode_rgb_png(path: Path, width: int, height: int, rgb: bytearray | bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
     stride = width * 3
     scanlines = bytearray()
@@ -109,11 +110,16 @@ def compose_centered_icon(
     out_w: int,
     out_h: int,
     bg_rgb: tuple[int, int, int],
-    scale_ratio: float,
+    scale_ratio: float | None = None,
+    target_px: int | None = None,
 ) -> bytearray:
     br, bg, bb = bg_rgb
     out = bytearray([br, bg, bb]) * (out_w * out_h)
-    target_box = max(1, int(round(min(out_w, out_h) * scale_ratio)))
+    if target_px is not None:
+        target_box = max(1, min(out_w, out_h, target_px))
+    else:
+        ratio = 0.72 if scale_ratio is None else scale_ratio
+        target_box = max(1, int(round(min(out_w, out_h) * ratio)))
     x0 = (out_w - target_box) // 2
     y0 = (out_h - target_box) // 2
 
@@ -141,15 +147,39 @@ def compose_centered_icon(
     return out
 
 
+IPHONE_SPLASH_SIZES = [
+    (750, 1334),
+    (828, 1792),
+    (1125, 2436),
+    (1170, 2532),
+    (1179, 2556),
+    (1290, 2796),
+]
+
+
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     assets = root / "frontend" / "assets"
     src_w, src_h, src_rgba = decode_rgba_png(assets / "icon-512.png")
 
     # Maskable icon places artwork cleanly inside the 80% Android adaptive-icon safe zone.
-    maskable_rgb = compose_centered_icon(src_w, src_h, src_rgba, 512, 512, (18, 55, 42), 0.72)
+    maskable_rgb = compose_centered_icon(src_w, src_h, src_rgba, 512, 512, (18, 55, 42), scale_ratio=0.72)
     encode_rgb_png(assets / "icon-maskable-512.png", 512, 512, maskable_rgb)
     print("Generated", assets / "icon-maskable-512.png")
+
+    # iOS requires an opaque RGB (no alpha transparency) 180x180 Home Screen icon.
+    apple_icon_rgb = compose_centered_icon(src_w, src_h, src_rgba, 180, 180, (18, 55, 42), scale_ratio=0.80)
+    encode_rgb_png(assets / "apple-touch-icon.png", 180, 180, apple_icon_rgb)
+    print("Generated", assets / "apple-touch-icon.png")
+
+    # Compact portrait splash screens matching #faf9f5 light theme.
+    splash_dir = assets / "splash"
+    for w, h in IPHONE_SPLASH_SIZES:
+        badge_px = max(180, min(280, w // 4))
+        splash_rgb = compose_centered_icon(src_w, src_h, src_rgba, w, h, (250, 249, 245), target_px=badge_px)
+        out_path = splash_dir / f"apple-splash-{w}-{h}.png"
+        encode_rgb_png(out_path, w, h, splash_rgb)
+        print("Generated", out_path, out_path.stat().st_size, "bytes")
 
 
 if __name__ == "__main__":
