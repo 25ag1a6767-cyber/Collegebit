@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_version: str = "2.0.0"
     environment: str = "development"
     log_level: str = "INFO"
+    https_terminated: bool = False
+    expose_api_docs: bool | None = None
     # Primary deployment uses self-hosted PostgreSQL on college-owned hardware (or Neon Free PostgreSQL for cloud dev).
     # SQLite gives a zero-configuration local/test fallback.
     database_url: str = "sqlite:///./backend/ace_canteen.db"
@@ -21,7 +23,7 @@ class Settings(BaseSettings):
     auto_create_tables: bool = True
     seed_demo_data: bool = True
     secret_key: str = "change-this-development-secret-before-deployment"
-    access_token_minutes: int = 720
+    access_token_minutes: int = 30
     refresh_token_days: int = 14
     pickup_token_minutes: int = 20
     checkout_reservation_minutes: int = 30
@@ -41,7 +43,7 @@ class Settings(BaseSettings):
     object_storage_bucket: str = ""
     object_storage_public_url: str = ""
     # CORS origins for mobile / separate web builds (comma-separated; empty = same-origin only in production)
-    cors_origins: str = "https://www.collegebits.com,https://collegebits.com,https://app-sai-e3e1.vercel.app"
+    cors_origins: str = ""
     # Public base URL used in emailed links (no trailing slash), e.g. https://canteen.example.edu
     public_base_url: str = "https://www.collegebits.com"
     password_reset_minutes: int = 30
@@ -78,6 +80,14 @@ class Settings(BaseSettings):
     backup_keep_monthly: int = 3
     automated_daily_report_emails: str = ""
     model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
+
+    @property
+    def docs_enabled(self) -> bool:
+        if self.environment.lower() in {"production", "prod"}:
+            return False
+        if self.expose_api_docs is not None:
+            return bool(self.expose_api_docs)
+        return True
 
     @model_validator(mode="after")
     def validate_security_settings(self):
@@ -132,8 +142,16 @@ class Settings(BaseSettings):
                 raise ValueError("AUTO_CREATE_TABLES must be false in production; run Alembic migrations explicitly")
             if self.seed_demo_data:
                 raise ValueError("SEED_DEMO_DATA must be false in production")
+            if self.expose_api_docs is True:
+                raise ValueError("EXPOSE_API_DOCS must be false in production")
             if not self.public_base_url.startswith("https://"):
                 raise ValueError("PUBLIC_BASE_URL must be an https:// URL in production")
+            for raw_origin in self.cors_origins.split(","):
+                origin = raw_origin.strip()
+                if not origin:
+                    continue
+                if origin == "*" or not origin.startswith("https://"):
+                    raise ValueError("Production CORS_ORIGINS must only list explicit https:// origins")
         return self
 
 @lru_cache(maxsize=1)

@@ -17,6 +17,7 @@ from collections import defaultdict, deque
 from threading import Lock
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Header, WebSocket, WebSocketDisconnect, status
 from fastapi.encoders import jsonable_encoder
@@ -112,8 +113,6 @@ def _prune_login_attempts(now: float) -> None:
         _login_attempts.pop(key, None)
 
 def _check_login_rate(key: str) -> int:
-    if key.startswith("127.0.0.1") or "localhost" in key or "25ag1a6767" in key or "admin" in key or "staff" in key:
-        return 0
     if IS_PRODUCTION:
         shared = _get_redis()
         if shared is None:
@@ -196,55 +195,19 @@ async def lifespan(_: FastAPI):
     logger.info("Starting %s in %s mode", settings.app_name, settings.environment)
     hub.bind_loop(asyncio.get_running_loop())
 
-    # Self-healing database initialization: if tables do not exist (e.g. fresh cloud PostgreSQL or unmigrated DB)
-    try:
-        from sqlalchemy import inspect as sa_inspect
-        inspector = sa_inspect(engine)
-        existing_tables = set(inspector.get_table_names())
-        if "users" not in existing_tables:
-            logger.warning("Database tables missing; running Base.metadata.create_all to initialize schema...")
+    if IS_PRODUCTION:
+        # Production schema and users must come solely from Alembic migrations and CLI provisioning.
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        except Exception as exc:
+            logger.error("Database startup check failed: %s", exc, exc_info=True)
+    else:
+        if settings.auto_create_tables:
             Base.metadata.create_all(bind=engine)
-            try:
-                with engine.begin() as conn:
-                    conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
-                    res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
-                    if not res:
-                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0025_phase89_enterprise_intelligence')"))
-            except Exception as ale_err:
-                logger.warning("Could not stamp alembic_version: %s", ale_err)
+        if settings.seed_demo_data:
             with SessionLocal() as db:
                 seed_demo_data(db)
-            logger.info("Database schema and bootstrap accounts created successfully.")
-        else:
-            if (
-                "bulk_orders" not in existing_tables
-                or "payment_incidents" not in existing_tables
-                or "saas_tenants" not in existing_tables
-                or "support_tickets" not in existing_tables
-                or "admin_invitations" not in existing_tables
-                or "meal_credit_allocations" not in existing_tables
-            ):
-                Base.metadata.create_all(bind=engine)
-            try:
-                with engine.begin() as conn:
-                    conn.execute(text("UPDATE orders SET status = 'cancelled' WHERE LOWER(status) = 'refund_pending'"))
-                    conn.execute(text("UPDATE orders SET payment_status = 'paid' WHERE LOWER(payment_status) IN ('refund_pending', 'partially_refunded', 'refunded')"))
-            except Exception:
-                pass
-            with SessionLocal() as db:
-                admin_user = db.scalar(select(User).where(User.email == "25ag1a6767@aceec.ac.in"))
-                staff_user = db.scalar(select(User).where(User.email == "25ag1a6767@gmail.com"))
-                if admin_user is None or staff_user is None:
-                    logger.info("Ensuring default admin and staff accounts exist...")
-                    seed_demo_data(db)
-    except Exception as exc:
-        logger.error("Database startup check failed: %s", exc, exc_info=True)
-
-    if settings.auto_create_tables:
-        Base.metadata.create_all(bind=engine)
-    if settings.seed_demo_data:
-        with SessionLocal() as db:
-            seed_demo_data(db)
     yield
     logger.info("Stopping %s", settings.app_name)
 
@@ -255,21 +218,16 @@ app = FastAPI(
     version=settings.app_version,
     description="ACE Canteen: student accounts, food/stationery catalogue, verified Razorpay payments, daily pickup tokens, queue overview and order lifecycle.",
     lifespan=lifespan,
-    docs_url=None if IS_PRODUCTION else "/docs",
-    redoc_url=None if IS_PRODUCTION else "/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    debug=False,
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
 )
-_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-_official_origins = [
-    "https://www.collegebits.com",
-    "https://collegebits.com",
-    "http://www.collegebits.com",
-    "http://collegebits.com",
-    "https://app-sai-e3e1.vercel.app",
+_cors_origins = [
+    o.strip().rstrip("/")
+    for o in settings.cors_origins.split(",")
+    if o.strip() and o.strip() != "*" and (not IS_PRODUCTION or o.strip().startswith("https://"))
 ]
-for _o in _official_origins:
-    if _o not in _cors_origins:
-        _cors_origins.append(_o)
 
 if not IS_PRODUCTION:
     for _dev in [
@@ -288,8 +246,18 @@ if _cors_origins:
         CORSMiddleware,
         allow_origins=_cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Accept",
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Idempotency-Key",
+            "X-Request-ID",
+            "X-CSRF-Token",
+            "X-Enforce-Rate-Limit",
+        ],
+        expose_headers=["X-Request-ID", "Retry-After"],
     )
 app.mount("/css", StaticFiles(directory=FRONTEND_DIR / "css"), name="css")
 app.mount("/js", StaticFiles(directory=FRONTEND_DIR / "js"), name="js")
@@ -334,11 +302,18 @@ def _check_general_api_rate_limit(request: Request) -> int:
 
 @app.middleware("http")
 async def security_and_request_logging(request: Request, call_next):
-    # Enforce canonical custom domain (e.g. www.collegebits.com) when enabled
+    # Enforce canonical domain redirect when explicitly enabled.
     if os.getenv("ENFORCE_CANONICAL_DOMAIN", "false").lower() in ("true", "1", "yes"):
-        canonical_host = os.getenv("CANONICAL_DOMAIN", "www.collegebits.com").strip().lower()
+        default_host = urlparse(settings.public_base_url).netloc.lower()
+        canonical_host = os.getenv("CANONICAL_DOMAIN", default_host).strip().lower()
         req_host = (request.headers.get("host") or "").split(":")[0].lower()
-        if req_host in ("app-sai-e3e1.vercel.app",) and not request.url.path.startswith("/api/health"):
+        if (
+            canonical_host
+            and req_host
+            and req_host != canonical_host
+            and req_host not in ("localhost", "127.0.0.1", "testserver")
+            and not request.url.path.startswith("/api/health")
+        ):
             target_url = str(request.url).replace(f"://{req_host}", f"://{canonical_host}", 1)
             return RedirectResponse(url=target_url, status_code=308)
 
@@ -510,7 +485,11 @@ async def public_token_display_board_page() -> FileResponse:
 
 @app.get("/manifest.webmanifest", include_in_schema=False)
 async def web_app_manifest() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "manifest.webmanifest", media_type="application/manifest+json")
+    return FileResponse(
+        FRONTEND_DIR / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker() -> FileResponse:
@@ -596,7 +575,8 @@ def _build_ios_mobileconfig_xml(target_url: str) -> str:
 @app.get("/download/app.mobileconfig", include_in_schema=False)
 @app.get("/ios.mobileconfig", include_in_schema=False)
 async def download_ios_mobileconfig(request: Request) -> Response:
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "app-sai-e3e1.vercel.app").split(",")[0].strip()
+    default_host = urlparse(settings.public_base_url).netloc or "localhost:8000"
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or default_host).split(",")[0].strip()
     proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
     if host not in ("localhost", "127.0.0.1", "testserver") and not host.startswith("127.0.0.1:") and not host.startswith("localhost:"):
         proto = "https"
@@ -732,64 +712,7 @@ def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
 
     email_clean = payload.email.strip().lower()
     user = db.scalar(select(User).where(func.lower(User.email) == email_clean))
-    if user is None:
-        if email_clean in ("25ag1a6767", "admin", "aceadmin"):
-            user = db.scalar(select(User).where(User.email == "25ag1a6767@aceec.ac.in"))
-        elif email_clean in ("25ag1a6767staff", "staff", "acestaff"):
-            user = db.scalar(select(User).where(User.email == "25ag1a6767@gmail.com"))
     valid_pw = user is not None and verify_password(payload.password, user.password_hash)
-
-    if not valid_pw and user is not None:
-        pw_input = payload.password.strip()
-        pw_lower = pw_input.lower()
-        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
-        if user.email == "25ag1a6767@aceec.ac.in":
-            admin_accepted = {
-                "ace@25ag1a67676", "ace@25ag1a6767", "ace@6767admin", "admin", "admin123", "ace@25ag1a67676staff", "ace@25ag1a6767staff"
-            } | dev_fallbacks
-            if pw_input in admin_accepted or pw_lower in admin_accepted:
-                valid_pw = True
-                user.password_hash = hash_password(pw_input)
-                db.flush()
-        elif user.email == "25ag1a6767@gmail.com":
-            staff_accepted = {
-                "ace@25ag1a67676staff", "ace@25ag1a6767staff", "ace@25ag1a67676", "ace@25ag1a6767",
-                "ce@6767staff", "staff", "staff123"
-            } | dev_fallbacks
-            if pw_input in staff_accepted or pw_lower in staff_accepted:
-                valid_pw = True
-                user.password_hash = hash_password(pw_input)
-                db.flush()
-
-    if user is None:
-        pw_input = payload.password.strip()
-        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
-        if email_clean in ("25ag1a6767@aceec.ac.in", "25ag1a6767", "ace@6767admin", "admin", "aceadmin"):
-            admin_accepted = {"ace@25ag1a67676", "ace@25ag1a6767"} | dev_fallbacks
-            if pw_input in admin_accepted or pw_input.lower() in admin_accepted:
-                user = User(
-                    full_name="ACE Admin",
-                    email="25ag1a6767@aceec.ac.in",
-                    password_hash=hash_password(pw_input),
-                    role=UserRole.ADMIN,
-                    is_active=True,
-                )
-                db.add(user)
-                db.flush()
-                valid_pw = True
-        elif email_clean in ("25ag1a6767@gmail.com", "25ag1a6767staff", "ce@6767staff", "staff", "acestaff"):
-            staff_accepted = {"ace@25ag1a67676staff", "ace@25ag1a6767staff"} | dev_fallbacks
-            if pw_input in staff_accepted or pw_input.lower() in staff_accepted:
-                user = User(
-                    full_name="ACE Kitchen Staff",
-                    email="25ag1a6767@gmail.com",
-                    password_hash=hash_password(pw_input),
-                    role=UserRole.STAFF,
-                    is_active=True,
-                )
-                db.add(user)
-                db.flush()
-                valid_pw = True
 
     if user is None or not valid_pw:
         _record_failed_login(rate_key)

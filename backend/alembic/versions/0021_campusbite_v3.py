@@ -22,7 +22,7 @@ def upgrade() -> None:
     if "collected_quantity" not in existing_cols:
         op.add_column("order_items", sa.Column("collected_quantity", sa.Integer(), nullable=False, server_default="0"))
     if "is_collected" not in existing_cols:
-        op.add_column("order_items", sa.Column("is_collected", sa.Boolean(), nullable=False, server_default="0"))
+        op.add_column("order_items", sa.Column("is_collected", sa.Boolean(), nullable=False, server_default=sa.false()))
     if "collected_at" not in existing_cols:
         op.add_column("order_items", sa.Column("collected_at", sa.DateTime(timezone=True), nullable=True))
     if "collected_by_staff_id" not in existing_cols:

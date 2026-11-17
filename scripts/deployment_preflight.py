@@ -59,8 +59,12 @@ def run_checks(env: dict[str, str] | None = None, *, require_payment: bool = Fal
     gemini_configured = bool(e.get("GEMINI_API_KEY", "").strip())
     add("ai_provider_configuration", True, "Gemini API key configured for grounded menu assistant." if gemini_configured else "GEMINI_API_KEY not set; grounded deterministic menu assistant fallback will be used.", "info")
     if production:
-        cors_ok = bool(e.get("CORS_ORIGINS", "").strip()) and "*" not in e.get("CORS_ORIGINS", "")
-        add("production_cors_origins", cors_ok, "Explicit CORS_ORIGINS configured for web/mobile clients." if cors_ok else "Set explicit CORS_ORIGINS (without wildcards) if serving cross-origin web clients.", "warning")
+        raw_cors = e.get("CORS_ORIGINS", "").strip()
+        origins = [o.strip() for o in raw_cors.split(",") if o.strip()]
+        cors_configured = bool(origins) and "*" not in origins
+        cors_https_safe = all(o != "*" and o.startswith("https://") for o in origins)
+        add("production_cors_origins", cors_configured, "Explicit CORS_ORIGINS configured for web/mobile clients." if cors_configured else "Set explicit CORS_ORIGINS (without wildcards) if serving cross-origin web clients.", "warning")
+        add("production_cors_https_only", cors_https_safe, "All configured CORS_ORIGINS use HTTPS without wildcards." if cors_https_safe else "CORS_ORIGINS in production must not contain '*' or non-https:// origins.", "error")
     add("postgres_password", not production or len(e.get("POSTGRES_PASSWORD", "")) >= 24 and e.get("POSTGRES_PASSWORD", "") not in {"change-this-postgres-password-before-deployment", "postgres", "password"}, "Production database password meets the minimum length check." if not production or (len(e.get("POSTGRES_PASSWORD", "")) >= 24 and e.get("POSTGRES_PASSWORD", "") not in {"change-this-postgres-password-before-deployment", "postgres", "password"}) else "Set POSTGRES_PASSWORD to a unique value of at least 24 characters.")
     bkp_key = e.get("BACKUP_ENCRYPTION_KEY", "").strip()
     add("backup_encryption_key", not production or len(bkp_key) >= 24, "Dedicated BACKUP_ENCRYPTION_KEY configured for encrypted GFS backups." if len(bkp_key) >= 24 else "Set a dedicated BACKUP_ENCRYPTION_KEY (>= 24 chars) so off-host backups can be decrypted independently of SECRET_KEY.", "warning")

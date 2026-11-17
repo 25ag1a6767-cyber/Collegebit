@@ -1,7 +1,9 @@
 """Idempotent sample data for local development."""
 from decimal import Decimal
+import os
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from app.config import get_settings
 from app.models import Category, Product, InventoryMovement, InventoryMovementType, CanteenCounter, User, UserRole, UserCounterAssignment
 from app.security import hash_password
 
@@ -12,6 +14,9 @@ DEMO = [
 ]
 
 def seed_demo_data(db: Session) -> None:
+    env_flag = (os.getenv("ENVIRONMENT") or get_settings().environment or "").strip().lower()
+    if env_flag in {"production", "prod"}:
+        raise RuntimeError("Demo seeding and default dev credentials are forbidden in production.")
     # 1. Ensure the 2 primary counters exist
     main_counter = db.scalar(select(CanteenCounter).where(CanteenCounter.name == "Main Counter"))
     if main_counter is None:

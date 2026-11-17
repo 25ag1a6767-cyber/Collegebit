@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -40,6 +41,58 @@ from app.security import (
 router = APIRouter(tags=["v1-auth-profile"])
 
 _PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
+_REFRESH_COOKIE_NAME = "cb_refresh_token"
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+
+
+def _cookie_is_secure(request: Request) -> bool:
+    cfg = get_settings()
+    return bool(
+        cfg.environment.lower() in {"production", "prod"}
+        or cfg.https_terminated
+        or request.url.scheme == "https"
+    )
+
+
+def _set_refresh_cookie(response: Response, raw_token: str, request: Request) -> None:
+    cfg = get_settings()
+    response.set_cookie(
+        key=_REFRESH_COOKIE_NAME,
+        value=raw_token,
+        max_age=cfg.refresh_token_days * 86400,
+        path=_REFRESH_COOKIE_PATH,
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_is_secure(request),
+    )
+
+
+def _clear_refresh_cookie(response: Response, request: Request) -> None:
+    response.delete_cookie(
+        key=_REFRESH_COOKIE_NAME,
+        path=_REFRESH_COOKIE_PATH,
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_is_secure(request),
+    )
+
+
+def _assert_same_origin_for_cookie(request: Request) -> None:
+    origin = (request.headers.get("origin") or "").strip().rstrip("/")
+    if not origin:
+        return
+    cfg = get_settings()
+    allowed = {o.strip().rstrip("/") for o in cfg.cors_origins.split(",") if o.strip()}
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").split(",")[0].strip()
+    req_scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or "http").split(",")[0].strip()
+    if host:
+        allowed.add(f"{req_scheme}://{host}")
+    if cfg.public_base_url:
+        parsed = urlparse(cfg.public_base_url)
+        if parsed.scheme and parsed.netloc:
+            allowed.add(f"{parsed.scheme}://{parsed.netloc}")
+    if origin not in allowed:
+        raise ApiError(403, "CSRF_ORIGIN_REJECTED", "Origin is not allowed for cookie session refresh.")
 
 
 def _clean_phone(raw: str | None) -> str | None:
@@ -83,7 +136,7 @@ class MfaDisableIn(BaseModel):
 
 
 class RefreshIn(BaseModel):
-    refreshToken: str = Field(min_length=20, max_length=300)
+    refreshToken: str | None = Field(default=None, min_length=20, max_length=300)
 
 
 class LogoutIn(BaseModel):
@@ -174,66 +227,8 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
     else:
         cleaned = re.sub(r"[\s\-()]", "", raw_ident)
         user = db.scalar(select(User).where(User.phone == cleaned))
-        if user is None:
-            if ident_lower in ("25ag1a6767", "aceadmin", "admin", "ace@6767admin"):
-                user = db.scalar(select(User).where(User.email == "25ag1a6767@aceec.ac.in"))
-            elif ident_lower in ("25ag1a6767staff", "acestaff", "staff", "ce@6767staff"):
-                user = db.scalar(select(User).where(User.email == "25ag1a6767@gmail.com"))
 
     valid_pw = user is not None and verify_password(payload.password, user.password_hash)
-
-    # Dev / Default credentials fallback and recovery
-    if not valid_pw and user is not None:
-        pw_input = payload.password.strip()
-        pw_lower = pw_input.lower()
-        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
-        if user.email == "25ag1a6767@aceec.ac.in":
-            admin_accepted = {
-                "ace@25ag1a67676", "ace@25ag1a6767", "ace@6767admin", "admin", "admin123", "ace@25ag1a67676staff", "ace@25ag1a6767staff"
-            } | dev_fallbacks
-            if pw_input in admin_accepted or pw_lower in admin_accepted:
-                valid_pw = True
-                user.password_hash = hash_password(pw_input)
-                db.flush()
-        elif user.email == "25ag1a6767@gmail.com":
-            staff_accepted = {
-                "ace@25ag1a67676staff", "ace@25ag1a6767staff", "ace@25ag1a67676", "ace@25ag1a6767",
-                "ce@6767staff", "staff", "staff123"
-            } | dev_fallbacks
-            if pw_input in staff_accepted or pw_lower in staff_accepted:
-                valid_pw = True
-                user.password_hash = hash_password(pw_input)
-                db.flush()
-
-    if user is None:
-        pw_input = payload.password.strip()
-        dev_fallbacks = {"ace12345", "123456", "admin123", "staff123", "25ag1a6767"}
-        if ident_lower in ("25ag1a6767@aceec.ac.in", "25ag1a6767", "ace@6767admin", "admin", "aceadmin"):
-            admin_accepted = {"ace@25ag1a67676", "ace@25ag1a6767"} | dev_fallbacks
-            if pw_input in admin_accepted or pw_input.lower() in admin_accepted:
-                user = User(
-                    full_name="ACE Admin",
-                    email="25ag1a6767@aceec.ac.in",
-                    password_hash=hash_password(pw_input),
-                    role=UserRole.ADMIN,
-                    is_active=True,
-                )
-                db.add(user)
-                db.flush()
-                valid_pw = True
-        elif ident_lower in ("25ag1a6767@gmail.com", "25ag1a6767staff", "ce@6767staff", "staff", "acestaff"):
-            staff_accepted = {"ace@25ag1a67676staff", "ace@25ag1a6767staff"} | dev_fallbacks
-            if pw_input in staff_accepted or pw_input.lower() in staff_accepted:
-                user = User(
-                    full_name="ACE Kitchen Staff",
-                    email="25ag1a6767@gmail.com",
-                    password_hash=hash_password(pw_input),
-                    role=UserRole.STAFF,
-                    is_active=True,
-                )
-                db.add(user)
-                db.flush()
-                valid_pw = True
 
     if user is None:
         _record_failed_login(rate_key)
@@ -274,7 +269,7 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
     access_token = create_access_token(user, mfa_verified=True)
     record_audit(db, "user.login", "user", user.id, user.id, {"mfa": bool(user.mfa_enabled)})
     db.commit()
-    return ok(
+    resp = ok(
         request,
         {
             "mfaRequired": False,
@@ -285,6 +280,8 @@ def login_v1(payload: LoginV1In, request: Request, db: Session = Depends(get_db)
             "user": serialize_user_v1(db, user),
         },
     )
+    _set_refresh_cookie(resp, refresh_token, request)
+    return resp
 
 
 @router.post("/auth/mfa/verify-login")
@@ -313,7 +310,7 @@ def mfa_verify_login_v1(payload: MfaVerifyLoginIn, request: Request, db: Session
     access_token = create_access_token(user, mfa_verified=True)
     record_audit(db, "user.mfa_verified", "user", user.id, user.id, {"used_recovery": recovery_ok})
     db.commit()
-    return ok(
+    resp = ok(
         request,
         {
             "accessToken": access_token,
@@ -323,6 +320,8 @@ def mfa_verify_login_v1(payload: MfaVerifyLoginIn, request: Request, db: Session
             "user": serialize_user_v1(db, user),
         },
     )
+    _set_refresh_cookie(resp, refresh_token, request)
+    return resp
 
 
 @router.post("/auth/mfa/setup")
@@ -387,11 +386,17 @@ def mfa_disable_v1(payload: MfaDisableIn, request: Request, user: User = Depends
 
 
 @router.post("/auth/refresh")
-def refresh_credentials_v1(payload: RefreshIn, request: Request, db: Session = Depends(get_db)):
-    user, new_refresh = rotate_refresh_session(db, payload.refreshToken, request)
+def refresh_credentials_v1(request: Request, payload: RefreshIn = Body(default_factory=RefreshIn), db: Session = Depends(get_db)):
+    raw_token = payload.refreshToken
+    if not raw_token:
+        _assert_same_origin_for_cookie(request)
+        raw_token = (request.cookies.get(_REFRESH_COOKIE_NAME) or "").strip()
+    if len(raw_token) < 20:
+        raise ApiError(401, "INVALID_REFRESH_TOKEN", "Refresh token is required.")
+    user, new_refresh = rotate_refresh_session(db, raw_token, request)
     access_token = create_access_token(user, mfa_verified=True)
     db.commit()
-    return ok(
+    resp = ok(
         request,
         {
             "accessToken": access_token,
@@ -401,26 +406,32 @@ def refresh_credentials_v1(payload: RefreshIn, request: Request, db: Session = D
             "user": serialize_user_v1(db, user),
         },
     )
+    _set_refresh_cookie(resp, new_refresh, request)
+    return resp
 
 
 @router.post("/auth/logout")
 def logout_v1(
-    payload: LogoutIn,
     request: Request,
+    payload: LogoutIn = Body(default_factory=LogoutIn),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    cookie_token = (request.cookies.get(_REFRESH_COOKIE_NAME) or "").strip() or None
+    target_token = payload.refreshToken or cookie_token
     if payload.allSessions:
         revoked = revoke_refresh_sessions(db, user_id=user.id)
         user.token_version += 1
-    elif payload.refreshToken:
-        revoked = revoke_refresh_sessions(db, raw_token=payload.refreshToken)
+    elif target_token:
+        revoked = revoke_refresh_sessions(db, raw_token=target_token)
     else:
         revoked = revoke_refresh_sessions(db, user_id=user.id)
         user.token_version += 1
     record_audit(db, "user.logout", "user", user.id, user.id, {"all_sessions": payload.allSessions, "revoked": revoked})
     db.commit()
-    return ok(request, {"revokedSessions": revoked})
+    resp = ok(request, {"revokedSessions": revoked})
+    _clear_refresh_cookie(resp, request)
+    return resp
 
 
 @router.post("/auth/send-verification")
