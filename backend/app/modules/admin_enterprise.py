@@ -75,7 +75,7 @@ def get_admin_runtime_diagnostics_v1(
     db: Session = Depends(get_db),
 ):
     cfg = get_settings()
-    head_revision = "0025_phase89_enterprise_intelligence"
+    head_revision = "0026_expo_mobile_push"
     database: dict[str, Any] = {
         "available": False,
         "schemaReady": False,
@@ -118,6 +118,8 @@ def get_admin_runtime_diagnostics_v1(
         "redis": bool(cfg.redis_url),
         "smtp": bool(cfg.smtp_host and cfg.smtp_from),
         "webPush": bool(cfg.vapid_public_key and cfg.vapid_private_key),
+        "expoPush": bool(cfg.expo_push_enabled),
+        "smsWebhook": bool(cfg.sms_enabled and cfg.sms_webhook_url),
         "aiAssistant": bool(cfg.gemini_api_key),
     }
     return ok(request, {
