@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12372a">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png">
+  <title>CollegeBits | Student Privacy Policy &amp; Terms</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/v1-platform.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/customer/">
+      <img class="brand-logo" src="/assets/ace-logo.png" alt="ACE Engineering College logo">
+      <span><strong>ACE Canteen</strong><small>CollegeBits Student Policy</small></span>
+    </a>
+    <div class="header-account">
+      <a class="header-account-link" href="/customer/">Back to Customer App</a>
+    </div>
+  </header>
+
+  <main class="legal-doc-main">
+    <article class="legal-doc-card">
+      <p class="eyebrow">ACE CANTEEN · COLLEGEBITS CAMPUS POLICY</p>
+      <h1>Student Privacy Policy &amp; Terms of Service</h1>
+      <p class="legal-meta">Last updated: November 2026 · Applies to the CollegeBits Customer PWA (<code>/customer/</code>) and Mobile Application.</p>
+
+      <nav class="legal-toc" aria-label="Legal sections">
+        <a href="#privacy">Privacy Policy</a>
+        <a href="#terms">Terms of Service</a>
+        <a href="#no-refund-policy">Strict No-Refund Policy</a>
+      </nav>
+
+      <section id="privacy" class="legal-section">
+        <h2>1. Student Privacy Policy</h2>
+        <h3>Data We Collect</h3>
+        <ul>
+          <li><strong>Account details:</strong> Full name, college/personal email address, password hash (salted PBKDF2/Argon2 — plaintext passwords are never stored), optional phone number, dietary preference, and allergen tags.</li>
+          <li><strong>Order &amp; wallet activity:</strong> Items ordered, pickup slots, counter assignment, digital receipts, loyalty points, prepaid wallet balance movements, and pickup collection verification timestamps.</li>
+          <li><strong>Optional notification tokens:</strong> When you tap <em>Enable push alerts</em>, we store your browser Web Push subscription endpoint and encryption keys (<code>push_subscriptions</code>) strictly to send order status updates.</li>
+        </ul>
+
+        <h3>What We Never Store or Share</h3>
+        <ul>
+          <li><strong>Zero bank/PIN storage:</strong> Card numbers, UPI PINs, and bank credentials are processed exclusively by Razorpay over TLS — never stored on CollegeBits servers.</li>
+          <li><strong>Privacy-preserving pickup &amp; TV screens:</strong> Public queue boards (<code>/display</code>) and camera pickup URLs (<code>/pickup</code>) display only order/token numbers and preparation status — never student names, emails, or phone numbers.</li>
+          <li><strong>Grounded AI privacy:</strong> Menu search and concierge recommendations do not send your name, email, phone number, or payment data to external AI APIs.</li>
+          <li><strong>Zero third-party advertising:</strong> Student data is never sold or shared with advertisers.</li>
+        </ul>
+
+        <h3>Data Retention &amp; Student Controls</h3>
+        <ul>
+          <li>Temporary operational artifacts (expired login sessions, expired pickup QR tokens, read non-financial alerts, diagnostic logs) are pruned after 4 days (<code>TEMP_RETENTION_DAYS=4</code>). Accounting ledgers, orders, and payment audit logs are retained under campus financial audit rules with encrypted off-host backups.</li>
+          <li>You can update dietary/allergen details or turn off Web Push notifications anytime from the <strong>Account</strong> section, or contact the canteen office for account deactivation.</li>
+        </ul>
+      </section>
+
+      <section id="terms" class="legal-section">
+        <h2>2. Terms of Service</h2>
+        <ul>
+          <li><strong>Campus accounts &amp; security:</strong> Keep your password private (minimum 12 characters). Repeated failed sign-in attempts trigger temporary account/IP rate limiting.</li>
+          <li><strong>Order reservation &amp; pricing:</strong> Unpaid orders hold item stock briefly during checkout before expiring automatically if payment is not completed. Menu prices and GST are verified server-side.</li>
+          <li><strong>Pickup verification:</strong> Once your order reaches <em>Ready</em>, present your short-lived pickup QR code or 6-character manual code at your assigned counter before expiry. Pickup tokens are single-use; after staff scans and confirms handover (<em>Collected</em>), the token cannot be reused.</li>
+          <li><strong>Misuse:</strong> Sharing forged screenshots, attempting unauthorized API access, or harassing counter staff may result in account suspension under college rules.</li>
+        </ul>
+      </section>
+
+      <section id="no-refund-policy" class="legal-section legal-highlight-box">
+        <h2>3. Strict No-Refund Policy</h2>
+        <ul>
+          <li><strong>All confirmed payments are final:</strong> Completed Razorpay UPI orders and prepaid campus wallet checkouts are strictly <strong>non-refundable</strong>. There are no automated or self-service cash/bank refund workflows in the application.</li>
+          <li><strong>Before payment confirmation:</strong> Only <em>unpaid pending</em> orders may be cancelled prior to payment capture (restoring reserved loyalty points and item stock immediately).</li>
+          <li><strong>Kitchen unavailability or late payment capture:</strong> If a paid order cannot be fulfilled due to a kitchen stockout/exception (<code>kitchen_unfulfilled</code>) or a delayed Razorpay capture after checkout expiry (<code>late_capture_flagged</code>), the payment record is fully preserved in the ledger and flagged as an administrative incident for counter resolution (such as an approved substitute item or canteen administration reconciliation).</li>
+        </ul>
+      </section>
+
+      <p class="legal-back-row">
+        <a class="primary-button" href="/customer/">Return to CollegeBits Ordering</a>
+      </p>
+    </article>
+  </main>
+
+  <footer>
+    <a class="footer-brand" href="/customer/">ACE Canteen</a>
+    <span><a href="/legal#privacy">Privacy Policy</a> · <a href="/legal#terms">Terms &amp; No-Refund Policy</a></span>
+    <span>ACE Engineering College Canteen Operations</span>
+  </footer>
+</body>
+</html>

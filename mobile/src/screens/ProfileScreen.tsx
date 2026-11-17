@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -7,7 +8,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { apiRequest, saveTokens } from "../api/client";
+import { API_BASE_URL, apiRequest, saveTokens } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { NotificationItem } from "../types/api";
 
@@ -179,6 +180,25 @@ export const ProfileScreen: React.FC = () => {
         </TouchableOpacity>
         <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("emailEnabled")}>
           <Text style={styles.primaryBtnText}>Email Receipts: {prefs.emailEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Legal &amp; Strict No-Refund Policy</Text>
+        <Text style={styles.notifBody}>
+          All completed digital payments and prepaid wallet checkouts are final (non-refundable). Unfulfilled paid orders are logged for counter administration resolution.
+        </Text>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={() => API_BASE_URL && Linking.openURL(`${API_BASE_URL}/legal#privacy`)}
+        >
+          <Text style={styles.primaryBtnText}>Privacy Policy</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={() => API_BASE_URL && Linking.openURL(`${API_BASE_URL}/legal#terms`)}
+        >
+          <Text style={styles.primaryBtnText}>Terms &amp; No-Refund Policy</Text>
         </TouchableOpacity>
       </View>
 

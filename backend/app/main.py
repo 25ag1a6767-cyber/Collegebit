@@ -511,6 +511,16 @@ async def offline_fallback_page() -> FileResponse:
         headers={"Cache-Control": "no-cache"},
     )
 
+@app.get("/legal", include_in_schema=False)
+@app.get("/privacy", include_in_schema=False)
+@app.get("/terms", include_in_schema=False)
+async def legal_policy_page() -> FileResponse:
+    return FileResponse(
+        FRONTEND_DIR / "legal.html",
+        media_type="text/html",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
 @app.get("/config.js", include_in_schema=False)
 async def frontend_runtime_config() -> Response:
     api_base = get_settings().api_base_url.strip().rstrip("/")
