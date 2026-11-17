@@ -43,7 +43,7 @@ from app.models import (
     paise_to_rupees,
     rupees_to_paise,
 )
-from app.realtime import hub, send_expo_push_to_user, send_sms_to_user, send_web_push_to_user, stage_outbox_event
+from app.realtime import dispatch_external_alerts, hub, stage_outbox_event
 
 
 # Canonical uppercase external state mapping for /api/v1
@@ -330,9 +330,14 @@ def notify_user(
             "url": "/customer/#my-orders-section",
             "tag": f"{entity_type or 'canteen'}-{entity_id or '0'}-{notification_type}",
         }
-        send_web_push_to_user(db, user_id, title, message, push_payload)
-        send_expo_push_to_user(db, user_id, title, message, push_payload)
-        send_sms_to_user(db, user_id, title, message, notification_type=notification_type)
+        dispatch_external_alerts(
+            db,
+            user_id,
+            title,
+            message,
+            notification_type=notification_type,
+            payload_data=push_payload,
+        )
     return notif
 
 

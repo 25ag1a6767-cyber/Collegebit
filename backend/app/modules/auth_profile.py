@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import re
-from urllib.parse import urlparse
+import secrets
+import time
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
@@ -15,8 +17,18 @@ from app.config import get_settings
 from app.database import get_db
 from app.emailer import send_email
 from app.envelope import ApiError, ok
-from app.models import DevicePushToken, Notification, Order, PushSubscription, SecurityEvent, User, UserRole
-from app.modules.common import record_audit, serialize_order_v1, serialize_user_v1
+from app.models import (
+    DevicePushToken,
+    Notification,
+    Order,
+    PushSubscription,
+    SecurityEvent,
+    User,
+    UserNotificationPreference,
+    UserRole,
+)
+from app.modules.common import commit_and_flush_outbox, record_audit, serialize_order_v1, serialize_user_v1
+from app.realtime import dispatch_external_alerts, normalize_e164_phone, stage_outbox_event
 from app.security import (
     consume_recovery_code,
     create_access_token,
@@ -722,3 +734,229 @@ def unregister_mobile_device_push_v1(
         db.delete(row)
         db.commit()
     return ok(request, {"registered": False})
+
+
+_TEST_ALERT_LAST: dict[int, float] = {}
+
+
+def _get_or_create_pref(db: Session, user_id: int) -> UserNotificationPreference:
+    pref = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id))
+    if pref is None:
+        pref = UserNotificationPreference(user_id=user_id)
+        db.add(pref)
+        db.flush()
+    return pref
+
+
+def _ntfy_urls(ntfy_base_url: str, topic: str | None) -> tuple[str | None, str | None]:
+    if not topic:
+        return (None, None)
+    base = (ntfy_base_url or "https://ntfy.sh").strip().rstrip("/")
+    parsed = urlparse(base)
+    host = parsed.netloc
+    return (f"ntfy://{host}/{topic}" if host else None, f"{base}/{topic}" if base else None)
+
+
+@router.get("/push/free-channels")
+def free_notification_channels_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cfg = get_settings()
+    pref = _get_or_create_pref(db, user.id)
+    db.commit()
+    sub_url, https_url = _ntfy_urls(cfg.ntfy_base_url, pref.ntfy_topic)
+    bot_user = (cfg.telegram_bot_username or "").strip().lstrip("@")
+    _, canteen_wa_digits = normalize_e164_phone(cfg.canteen_whatsapp_number, cfg.canteen_default_country_code)
+    wa_chat_url = (
+        f"https://wa.me/{canteen_wa_digits}?text={quote('Hi CollegeBits, please enable my free WhatsApp order alerts.')}"
+        if canteen_wa_digits
+        else None
+    )
+    return ok(
+        request,
+        {
+            "webPush": {"configured": bool(cfg.vapid_public_key and cfg.vapid_private_key)},
+            "expoPush": {"enabled": bool(cfg.expo_push_enabled)},
+            "ntfy": {
+                "enabled": bool(cfg.ntfy_enabled),
+                "connected": bool(pref.ntfy_topic),
+                "topic": pref.ntfy_topic,
+                "subscribeUrl": sub_url,
+                "httpsUrl": https_url,
+            },
+            "telegram": {
+                "enabled": bool(cfg.telegram_enabled and cfg.telegram_bot_token and bot_user),
+                "connected": bool(pref.telegram_chat_id),
+                "botUsername": bot_user or None,
+                "startUrl": f"https://t.me/{bot_user}?start={pref.telegram_link_token}" if (bot_user and pref.telegram_link_token) else None,
+            },
+            "whatsapp": {
+                "canteenNumber": canteen_wa_digits or None,
+                "canteenChatUrl": wa_chat_url,
+                "cloudApiEnabled": bool(cfg.whatsapp_cloud_enabled and cfg.whatsapp_phone_number_id and cfg.whatsapp_access_token),
+                "optedIn": bool(pref.whatsapp_enabled),
+            },
+            "sms": {
+                "webhookEnabled": bool(cfg.sms_enabled and cfg.sms_webhook_url),
+                "preset": (cfg.sms_webhook_preset or "generic").strip().lower(),
+                "optedIn": bool(pref.sms_enabled),
+            },
+        },
+    )
+
+
+@router.post("/push/ntfy/enable")
+def enable_ntfy_push_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cfg = get_settings()
+    if not cfg.ntfy_enabled:
+        raise ApiError(409, "NTFY_DISABLED", "ntfy push notifications are disabled on this server.")
+    pref = _get_or_create_pref(db, user.id)
+    if not pref.ntfy_topic:
+        pref.ntfy_topic = f"cb-{secrets.token_hex(12)}"
+    db.commit()
+    sub_url, https_url = _ntfy_urls(cfg.ntfy_base_url, pref.ntfy_topic)
+    return ok(
+        request,
+        {"connected": True, "topic": pref.ntfy_topic, "subscribeUrl": sub_url, "httpsUrl": https_url},
+    )
+
+
+@router.delete("/push/ntfy")
+def disable_ntfy_push_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pref = _get_or_create_pref(db, user.id)
+    pref.ntfy_topic = None
+    db.commit()
+    return ok(request, {"connected": False})
+
+
+@router.post("/push/telegram/link-start")
+def start_telegram_link_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cfg = get_settings()
+    bot_user = (cfg.telegram_bot_username or "").strip().lstrip("@")
+    if not (cfg.telegram_enabled and cfg.telegram_bot_token.strip() and bot_user):
+        raise ApiError(409, "TELEGRAM_NOT_CONFIGURED", "Telegram Bot alerts are not configured on this server yet.")
+    pref = _get_or_create_pref(db, user.id)
+    pref.telegram_link_token = f"cb{secrets.token_hex(8)}"
+    db.commit()
+    return ok(
+        request,
+        {"botUsername": bot_user, "startUrl": f"https://t.me/{bot_user}?start={pref.telegram_link_token}"},
+    )
+
+
+@router.post("/push/telegram/verify")
+def verify_telegram_link_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cfg = get_settings()
+    token = (cfg.telegram_bot_token or "").strip()
+    if not (cfg.telegram_enabled and token):
+        raise ApiError(409, "TELEGRAM_NOT_CONFIGURED", "Telegram Bot alerts are not configured on this server yet.")
+    pref = _get_or_create_pref(db, user.id)
+    if not pref.telegram_link_token:
+        raise ApiError(400, "TELEGRAM_LINK_NOT_STARTED", "Generate a Telegram connect link first.")
+
+    import httpx
+    try:
+        resp = httpx.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"limit": 100}, timeout=5.0)
+        updates = (resp.json() or {}).get("result") or [] if resp.status_code == 200 else []
+    except Exception:
+        raise ApiError(502, "TELEGRAM_UNREACHABLE", "Could not reach Telegram Bot API right now.")
+
+    matched_chat_id: str | None = None
+    expected_code = pref.telegram_link_token
+    for upd in reversed(updates):
+        msg = upd.get("message") or upd.get("edited_message") or {}
+        text = str(msg.get("text") or "")
+        chat = msg.get("chat") or {}
+        if expected_code in text and chat.get("id") is not None:
+            matched_chat_id = str(chat["id"])
+            break
+
+    if not matched_chat_id:
+        raise ApiError(409, "TELEGRAM_LINK_PENDING", "Open the Telegram link and tap Start first, then tap Verify again.")
+
+    pref.telegram_chat_id = matched_chat_id
+    pref.telegram_link_token = None
+    db.commit()
+    try:
+        httpx.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json={"chat_id": matched_chat_id, "text": "✅ CollegeBits linked! You will receive free order status updates here."},
+            timeout=3.0,
+        )
+    except Exception:
+        pass
+    return ok(request, {"connected": True})
+
+
+@router.delete("/push/telegram")
+def disable_telegram_link_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pref = _get_or_create_pref(db, user.id)
+    pref.telegram_chat_id = None
+    pref.telegram_link_token = None
+    db.commit()
+    return ok(request, {"connected": False})
+
+
+@router.post("/users/me/notifications/test")
+def send_test_notification_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    now_mono = time.monotonic()
+    last = _TEST_ALERT_LAST.get(user.id, 0.0)
+    if now_mono - last < 3.0:
+        raise ApiError(429, "RATE_LIMITED", "Please wait a few seconds before sending another test alert.")
+    _TEST_ALERT_LAST[user.id] = now_mono
+
+    title = "CollegeBits Test Alert"
+    message = "Free order notifications are active for your account."
+    notif = Notification(
+        user_id=user.id,
+        notification_type="order_status",
+        title=title,
+        message=message,
+        entity_type="test",
+        entity_id=str(user.id),
+    )
+    db.add(notif)
+    stage_outbox_event(
+        db,
+        "notification.created",
+        {"type": "order_status", "title": title, "message": message, "entityType": "test", "entityId": str(user.id)},
+        target_user_id=user.id,
+    )
+    commit_and_flush_outbox(db)
+
+    delivery = dispatch_external_alerts(
+        db,
+        user.id,
+        title,
+        message,
+        notification_type="order_status",
+        payload_data={"entityType": "test", "entityId": str(user.id), "url": "/customer/#my-orders-section", "tag": f"test-{user.id}"},
+    )
+    db.commit()
+    return ok(request, {"inAppCreated": True, "delivery": delivery})

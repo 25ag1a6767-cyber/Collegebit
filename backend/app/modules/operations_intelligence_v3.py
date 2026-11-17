@@ -693,6 +693,7 @@ class NotificationPrefsPatchIn(BaseModel):
     emailEnabled: bool | None = None
     webPushEnabled: bool | None = None
     smsEnabled: bool | None = None
+    whatsappEnabled: bool | None = None
 
 
 class NotificationDispatchIn(BaseModel):
@@ -703,6 +704,18 @@ class NotificationDispatchIn(BaseModel):
     subject: str = Field(min_length=2, max_length=200)
     body: str = Field(min_length=2, max_length=2000)
     simulateTransientFailure: bool = False
+
+
+def _serialize_notif_pref(pref: UserNotificationPreference) -> dict[str, Any]:
+    return {
+        "inAppEnabled": bool(pref.in_app_enabled),
+        "emailEnabled": bool(pref.email_enabled),
+        "webPushEnabled": bool(pref.web_push_enabled),
+        "smsEnabled": bool(pref.sms_enabled),
+        "whatsappEnabled": bool(pref.whatsapp_enabled),
+        "ntfyConnected": bool(pref.ntfy_topic),
+        "telegramConnected": bool(pref.telegram_chat_id),
+    }
 
 
 @router.get("/users/me/notification-preferences")
@@ -717,15 +730,7 @@ def get_my_notification_preferences_v1(
         db.add(pref)
         db.commit()
         db.refresh(pref)
-    return ok(
-        request,
-        {
-            "inAppEnabled": bool(pref.in_app_enabled),
-            "emailEnabled": bool(pref.email_enabled),
-            "webPushEnabled": bool(pref.web_push_enabled),
-            "smsEnabled": bool(pref.sms_enabled),
-        },
-    )
+    return ok(request, _serialize_notif_pref(pref))
 
 
 @router.patch("/users/me/notification-preferences")
@@ -747,17 +752,11 @@ def update_my_notification_preferences_v1(
         pref.web_push_enabled = payload.webPushEnabled
     if payload.smsEnabled is not None:
         pref.sms_enabled = payload.smsEnabled
+    if payload.whatsappEnabled is not None:
+        pref.whatsapp_enabled = payload.whatsappEnabled
     db.commit()
     db.refresh(pref)
-    return ok(
-        request,
-        {
-            "inAppEnabled": bool(pref.in_app_enabled),
-            "emailEnabled": bool(pref.email_enabled),
-            "webPushEnabled": bool(pref.web_push_enabled),
-            "smsEnabled": bool(pref.sms_enabled),
-        },
-    )
+    return ok(request, _serialize_notif_pref(pref))
 
 
 @router.post("/notifications/dispatch", status_code=201)

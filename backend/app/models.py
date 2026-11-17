@@ -1482,6 +1482,10 @@ class UserNotificationPreference(Base):
     email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
     web_push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
     sms_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    whatsapp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    ntfy_topic: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    telegram_link_token: Mapped[str | None] = mapped_column(String(48), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 

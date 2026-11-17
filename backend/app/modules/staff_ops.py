@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
@@ -47,7 +48,7 @@ from app.modules.common import (
     serialize_product_v1,
 )
 from app.modules.orders_payments import _restore_order_inventory_once
-from app.realtime import stage_outbox_event
+from app.realtime import normalize_e164_phone, stage_outbox_event
 from app.security import assert_counter_access, get_staff_assigned_counter_ids, require_roles
 
 router = APIRouter(prefix="/staff", tags=["v1-staff"])
@@ -926,5 +927,65 @@ def get_staff_daily_performance_v1(
                 "onTimeSlaPct": sla_pct,
                 "hourlyThroughput": [{"hour": f"{h:02d}:00", "orders": hourly_buckets[h]} for h in sorted(hourly_buckets.keys())],
             },
+        },
+    )
+
+
+def _free_notify_message(order: Order, counter_name: str | None) -> str:
+    cfg = get_settings()
+    first_name = ((order.user.full_name if order.user else "") or "Student").split()[0]
+    order_ref = order.order_number or f"ACE-{order.id:06d}"
+    token_part = f" (Token #{order.token_number})" if order.token_number else ""
+    ctr = f" at {counter_name}" if counter_name else ""
+    st = order.status
+    if st == OrderStatus.READY:
+        return f"{cfg.brand_name}: Hi {first_name}, your Order #{order_ref}{token_part}{ctr} is READY for pickup! Show your pickup QR at the counter."
+    if st in {OrderStatus.ACCEPTED, OrderStatus.PREPARING}:
+        return f"{cfg.brand_name}: Hi {first_name}, your Order #{order_ref}{token_part}{ctr} is being prepared now."
+    return f"{cfg.brand_name}: Hi {first_name}, update on Order #{order_ref}{token_part}{ctr} — current status: {st.value.upper()}."
+
+
+@router.get("/orders/{order_id}/free-notify-links")
+def get_staff_free_notify_links_v1(
+    order_id: int,
+    request: Request,
+    staff: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    """Generate 1-tap free WhatsApp (wa.me) and device SMS (sms:) links for counter staff."""
+    order = db.scalar(
+        select(Order)
+        .options(joinedload(Order.user), joinedload(Order.counter))
+        .where(Order.id == order_id)
+    )
+    if order is None:
+        raise ApiError(404, "ORDER_NOT_FOUND", "Order not found.")
+    assert_counter_access(db, staff, order.counter_id)
+
+    cfg = get_settings()
+    counter_name = order.counter.name if order.counter else None
+    msg = _free_notify_message(order, counter_name)
+    e164, digits = normalize_e164_phone(
+        order.user.phone if order.user else None,
+        cfg.canteen_default_country_code,
+    )
+    encoded_msg = quote(msg)
+    record_audit(
+        db,
+        "staff.free_notify_links",
+        "order",
+        order.id,
+        staff.id,
+        {"counter_id": order.counter_id, "phone_present": bool(digits)},
+    )
+    db.commit()
+    return ok(
+        request,
+        {
+            "orderId": order.id,
+            "phonePresent": bool(digits),
+            "messageText": msg,
+            "whatsappUrl": f"https://wa.me/{digits}?text={encoded_msg}" if digits else None,
+            "smsUrl": f"sms:{e164}?body={encoded_msg}" if e164 else None,
         },
     )

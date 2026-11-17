@@ -75,7 +75,7 @@ def get_admin_runtime_diagnostics_v1(
     db: Session = Depends(get_db),
 ):
     cfg = get_settings()
-    head_revision = "0026_expo_mobile_push"
+    head_revision = "0027_free_notification_channels"
     database: dict[str, Any] = {
         "available": False,
         "schemaReady": False,
@@ -119,6 +119,10 @@ def get_admin_runtime_diagnostics_v1(
         "smtp": bool(cfg.smtp_host and cfg.smtp_from),
         "webPush": bool(cfg.vapid_public_key and cfg.vapid_private_key),
         "expoPush": bool(cfg.expo_push_enabled),
+        "ntfyPush": bool(cfg.ntfy_enabled),
+        "telegramBot": bool(cfg.telegram_enabled and cfg.telegram_bot_token and cfg.telegram_bot_username),
+        "whatsappCloud": bool(cfg.whatsapp_cloud_enabled and cfg.whatsapp_phone_number_id and cfg.whatsapp_access_token),
+        "canteenWhatsapp": bool((cfg.canteen_whatsapp_number or "").strip()),
         "smsWebhook": bool(cfg.sms_enabled and cfg.sms_webhook_url),
         "aiAssistant": bool(cfg.gemini_api_key),
     }

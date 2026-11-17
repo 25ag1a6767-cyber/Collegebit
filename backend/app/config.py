@@ -42,8 +42,23 @@ class Settings(BaseSettings):
     # Optional Expo mobile push & generic SMS/WhatsApp webhook notifications
     expo_push_enabled: bool = True
     sms_enabled: bool = False
+    sms_webhook_preset: str = "generic"  # generic | android_sms_gate
     sms_webhook_url: str = ""
     sms_webhook_bearer_token: str = ""
+    sms_webhook_username: str = ""
+    sms_webhook_password: str = ""
+    # Free zero-cost notification channels (phone push via ntfy, Telegram Bot, and WhatsApp)
+    canteen_default_country_code: str = "91"
+    canteen_whatsapp_number: str = ""
+    ntfy_enabled: bool = True
+    ntfy_base_url: str = "https://ntfy.sh"
+    telegram_enabled: bool = False
+    telegram_bot_token: str = ""
+    telegram_bot_username: str = ""
+    whatsapp_cloud_enabled: bool = False
+    whatsapp_phone_number_id: str = ""
+    whatsapp_access_token: str = ""
+    whatsapp_graph_version: str = "v21.0"
     # Optional S3-compatible object storage configuration
     object_storage_bucket: str = ""
     object_storage_public_url: str = ""
