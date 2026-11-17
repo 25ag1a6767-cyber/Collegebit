@@ -689,6 +689,68 @@ def record_water_quality_v1(
     )
 
 
+@router.get("/enterprise/infrastructure/water-quality")
+def list_water_quality_v1(
+    request: Request,
+    tenant_id: int | None = Query(default=None, alias="tenantId"),
+    x_tenant_id: int | None = Header(default=None, alias="X-Tenant-ID"),
+    staff: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    tid = _resolve_tenant_scope(db, staff, tenant_id, x_tenant_id)
+    stmt = select(WaterQualityTest).order_by(WaterQualityTest.tested_at.desc())
+    stmt = stmt.where(WaterQualityTest.tenant_id == tid if tid is not None else WaterQualityTest.tenant_id.is_(None))
+    rows = db.scalars(stmt.limit(30)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": w.id,
+                    "sourcePoint": w.source_point,
+                    "tdsPpm": w.tds_ppm,
+                    "phLevel": float(w.ph_level),
+                    "freeChlorinePpm": float(w.free_chlorine_ppm),
+                    "isCompliant": w.is_compliant,
+                    "testedAt": as_utc(w.tested_at).isoformat(),
+                }
+                for w in rows
+            ]
+        },
+    )
+
+
+@router.get("/enterprise/infrastructure/fire-events")
+def list_fire_events_v1(
+    request: Request,
+    tenant_id: int | None = Query(default=None, alias="tenantId"),
+    x_tenant_id: int | None = Header(default=None, alias="X-Tenant-ID"),
+    staff: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    tid = _resolve_tenant_scope(db, staff, tenant_id, x_tenant_id)
+    stmt = select(FireEmergencyEvent).order_by(FireEmergencyEvent.created_at.desc())
+    stmt = stmt.where(FireEmergencyEvent.tenant_id == tid if tid is not None else FireEmergencyEvent.tenant_id.is_(None))
+    rows = db.scalars(stmt.limit(30)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": ev.id,
+                    "zone": ev.zone,
+                    "eventType": ev.event_type,
+                    "severity": ev.severity,
+                    "isDrill": ev.is_drill,
+                    "status": ev.status,
+                    "createdAt": as_utc(ev.created_at).isoformat(),
+                }
+                for ev in rows
+            ]
+        },
+    )
+
+
 @router.post("/enterprise/infrastructure/fire-events", status_code=201)
 def trigger_fire_emergency_event_v1(
     payload: FireEmergencyIn,
@@ -892,6 +954,46 @@ def get_supplier_demand_collaboration_v1(
             ],
         },
     )
+
+
+@router.get("/enterprise/supply-chain/rfqs")
+def list_procurement_rfqs_v1(
+    request: Request,
+    tenant_id: int | None = Query(default=None, alias="tenantId"),
+    x_tenant_id: int | None = Header(default=None, alias="X-Tenant-ID"),
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    tid = _resolve_tenant_scope(db, admin, tenant_id, x_tenant_id)
+    stmt = select(ProcurementRfq).order_by(ProcurementRfq.created_at.desc())
+    stmt = stmt.where(ProcurementRfq.tenant_id == tid if tid is not None else ProcurementRfq.tenant_id.is_(None))
+    rfqs = db.scalars(stmt.limit(30)).all()
+    items = []
+    for r in rfqs:
+        bids = db.scalars(select(ProcurementBid).where(ProcurementBid.rfq_id == r.id).order_by(ProcurementBid.unit_price_paise.asc())).all()
+        items.append(
+            {
+                "id": r.id,
+                "ingredientId": r.ingredient_id,
+                "title": r.title,
+                "requiredQuantity": float(r.required_quantity),
+                "unit": r.unit,
+                "targetMaxUnitPaise": r.target_max_unit_paise,
+                "status": r.status,
+                "awardedBidId": r.awarded_bid_id,
+                "bids": [
+                    {
+                        "id": b.id,
+                        "supplierId": b.supplier_id,
+                        "unitPricePaise": b.unit_price_paise,
+                        "leadTimeDays": b.lead_time_days,
+                        "status": b.status,
+                    }
+                    for b in bids
+                ],
+            }
+        )
+    return ok(request, {"items": items})
 
 
 @router.post("/enterprise/supply-chain/rfqs", status_code=201)
@@ -1184,6 +1286,69 @@ class TaxValidationIn(BaseModel):
     subtotalPaise: int = Field(ge=0)
     taxPaise: int = Field(ge=0)
     totalPaise: int = Field(ge=0)
+
+
+@router.get("/enterprise/finance/meal-credits/me")
+def list_my_meal_credits_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(
+        select(MealCreditAllocation)
+        .where(MealCreditAllocation.user_id == user.id)
+        .order_by(MealCreditAllocation.created_at.desc())
+        .limit(20)
+    ).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": a.id,
+                    "departmentName": a.department_name,
+                    "programName": a.program_name,
+                    "allocatedPaise": a.allocated_paise,
+                    "remainingPaise": a.remaining_paise,
+                    "expiresOn": a.expires_on.isoformat(),
+                    "status": a.status,
+                }
+                for a in rows
+            ]
+        },
+    )
+
+
+@router.get("/enterprise/finance/meal-credits")
+def list_admin_meal_credits_v1(
+    request: Request,
+    tenant_id: int | None = Query(default=None, alias="tenantId"),
+    x_tenant_id: int | None = Header(default=None, alias="X-Tenant-ID"),
+    admin: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    tid = _resolve_tenant_scope(db, admin, tenant_id, x_tenant_id)
+    stmt = select(MealCreditAllocation).order_by(MealCreditAllocation.created_at.desc())
+    stmt = stmt.where(MealCreditAllocation.tenant_id == tid if tid is not None else MealCreditAllocation.tenant_id.is_(None))
+    rows = db.scalars(stmt.limit(40)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": a.id,
+                    "userId": a.user_id,
+                    "departmentName": a.department_name,
+                    "programName": a.program_name,
+                    "allocatedPaise": a.allocated_paise,
+                    "remainingPaise": a.remaining_paise,
+                    "expiresOn": a.expires_on.isoformat(),
+                    "status": a.status,
+                }
+                for a in rows
+            ]
+        },
+    )
 
 
 @router.post("/enterprise/finance/meal-credits", status_code=201)

@@ -499,3 +499,36 @@ def test_part6_platform_engineering_ssrf_recovery_drill_blueprints_and_tenant_is
         )
         assert iso.status_code == 403
         assert iso.json()["error"]["code"] == "TENANT_ISOLATION_VIOLATION"
+
+
+def test_part7_new_list_endpoints_and_ui_portal_csp_contracts():
+    from pathlib import Path
+    _, _, admin_tok = _mk_actor(UserRole.ADMIN, "p89listadm")
+    _, _, staff_tok = _mk_actor(UserRole.STAFF, "p89liststf")
+    stu_id, _, stu_tok = _mk_actor(UserRole.STUDENT, "p89liststu")
+    admin_h = {"Authorization": f"Bearer {admin_tok}"}
+    staff_h = {"Authorization": f"Bearer {staff_tok}"}
+    stu_h = {"Authorization": f"Bearer {stu_tok}"}
+
+    with TestClient(app) as client:
+        for path, hdrs in [
+            ("/api/v1/enterprise/infrastructure/water-quality", staff_h),
+            ("/api/v1/enterprise/infrastructure/fire-events", staff_h),
+            ("/api/v1/enterprise/supply-chain/rfqs", admin_h),
+            ("/api/v1/enterprise/finance/meal-credits/me", stu_h),
+            ("/api/v1/enterprise/finance/meal-credits", admin_h),
+            ("/api/v1/workforce/shifts", staff_h),
+            ("/api/v1/group-orders", stu_h),
+            ("/api/v1/meal-passes/plans", stu_h),
+            ("/api/v1/meal-passes/me", stu_h),
+            ("/api/v1/admin/closings", staff_h),
+            ("/api/v1/equipment/assets", staff_h),
+        ]:
+            res = client.get(path, headers=hdrs)
+            assert res.status_code == 200, f"{path}: {res.text}"
+            assert isinstance(res.json()["data"]["items"], list)
+
+    root = Path(__file__).resolve().parents[2]
+    for html_name in ["admin.html", "staff.html", "customer.html"]:
+        content = (root / "frontend" / html_name).read_text(encoding="utf-8")
+        assert 'style="' not in content.lower(), f"Inline style found in {html_name}"

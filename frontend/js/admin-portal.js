@@ -274,6 +274,7 @@
       else if (state.activeTab === "operations") await loadOperationsModule();
       else if (state.activeTab === "settings") await loadSettingsModule();
       else if (state.activeTab === "governance") await loadGovernanceModule();
+      else if (state.activeTab === "saas-enterprise") await loadSaasEnterpriseTab();
     } catch (err) {
       showAlert(err.message, "error");
     }
@@ -1811,6 +1812,246 @@
         }
       });
     }
+
+    if ($("p89-tenant-form")) {
+      $("p89-tenant-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/platform/colleges", {
+            method: "POST",
+            body: {
+              collegeName: $("p89-ten-name").value.trim(),
+              authorizedAdminName: $("p89-ten-admin-name").value.trim(),
+              authorizedAdminEmail: $("p89-ten-admin-email").value.trim(),
+              planTier: $("p89-ten-plan").value
+            }
+          });
+          $("p89-tenant-invite-out").textContent =
+            "Provisioned " + (r.collegeName || "tenant") + " (" + (r.tenantCode || "") + ") — pending invitation dispatched.";
+          showAlert("College provisioned & single-use admin invitation generated.", "success");
+          e.target.reset();
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-rfq-form")) {
+      $("p89-rfq-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await apiFetch("/api/v1/enterprise/supply-chain/rfqs", {
+            method: "POST",
+            body: {
+              ingredientId: Number($("p89-rfq-ing-id").value || 1),
+              title: $("p89-rfq-title").value.trim(),
+              requiredQuantity: Number($("p89-rfq-qty").value || 1),
+              unit: $("p89-rfq-unit").value.trim()
+            }
+          });
+          showAlert("Procurement RFQ created.", "success");
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-recv-form")) {
+      $("p89-recv-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/enterprise/supply-chain/receiving/inspect", {
+            method: "POST",
+            body: {
+              supplierId: Number($("p89-recv-sup-id").value || 1),
+              ingredientId: Number($("p89-recv-ing-id").value || 1),
+              batchCode: $("p89-recv-batch").value.trim(),
+              receivedQuantity: Number($("p89-recv-qty").value || 1),
+              expiryDate: $("p89-recv-exp").value,
+              packagingIntact: $("p89-recv-intact").value === "true"
+            }
+          });
+          $("p89-recv-result").textContent =
+            "Batch " + r.batchCode + ": " + r.inspectionStatus + " (Inventory updated: " + String(r.inventoryUpdated) + ")";
+          showAlert("Receiving inspection logged: " + r.inspectionStatus, r.inventoryUpdated ? "success" : "error");
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-water-form")) {
+      $("p89-water-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/enterprise/infrastructure/water-quality", {
+            method: "POST",
+            body: {
+              sourcePoint: $("p89-wat-point").value.trim(),
+              tdsPpm: Number($("p89-wat-tds").value || 0),
+              phLevel: Number($("p89-wat-ph").value || 7)
+            }
+          });
+          showAlert("Water test saved: " + (r.isCompliant ? "COMPLIANT" : "NON-COMPLIANT ALERT"), r.isCompliant ? "success" : "error");
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-credit-form")) {
+      $("p89-credit-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await apiFetch("/api/v1/enterprise/finance/meal-credits", {
+            method: "POST",
+            body: {
+              userId: Number($("p89-cred-uid").value),
+              departmentName: $("p89-cred-dept").value.trim(),
+              programName: $("p89-cred-prog").value.trim(),
+              allocatedPaise: Math.round(Number($("p89-cred-amt").value || 0) * 100),
+              expiresOn: $("p89-cred-exp").value
+            }
+          });
+          showAlert("Institutional meal credit allocated (separate from cash wallet).", "success");
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+  }
+
+  async function loadSaasEnterpriseTab() {
+    const [tenants, closings, proposals, rfqs, water, credits] = await Promise.all([
+      apiFetch("/api/v1/saas/tenants").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/admin/closings").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/enterprise/ai/agents/proposals").catch(() => ({ proposals: [] })),
+      apiFetch("/api/v1/enterprise/supply-chain/rfqs").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/enterprise/infrastructure/water-quality").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/enterprise/finance/meal-credits").catch(() => ({ items: [] }))
+    ]);
+
+    const tFrag = document.createDocumentFragment();
+    (tenants.items || []).forEach((t) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "mono", "#" + t.id));
+      tr.appendChild(el("td", "", t.collegeName || "—"));
+      tr.appendChild(el("td", "mono", t.tenantSlug || "—"));
+      tr.appendChild(el("td", "", t.planTier || "—"));
+      tr.appendChild(el("td", "", t.status || "—"));
+      const tdAct = el("td");
+      const btn = el("button", "btn btn-outline", t.status === "suspended" ? "Reactivate" : "Suspend");
+      btn.type = "button";
+      btn.addEventListener("click", async () => {
+        const ep = t.status === "suspended" ? "reactivate" : "suspend";
+        await apiFetch("/api/v1/saas/tenants/" + t.id + "/" + ep, { method: "POST", body: {} });
+        await loadSaasEnterpriseTab();
+      });
+      tdAct.appendChild(btn);
+      tr.appendChild(tdAct);
+      tFrag.appendChild(tr);
+    });
+    if ($("p89-tenants-tbody")) $("p89-tenants-tbody").replaceChildren(tFrag);
+
+    const cFrag = document.createDocumentFragment();
+    (closings.items || []).forEach((c) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "mono", c.businessDate));
+      tr.appendChild(el("td", "", "Counter " + c.counterId));
+      tr.appendChild(el("td", "mono", formatINRFromPaise(c.successfulPaymentsPaise || 0)));
+      tr.appendChild(el("td", "mono", formatINRFromPaise(c.wastageLossPaise || 0)));
+      tr.appendChild(el("td", "", c.isLocked ? "LOCKED" : "OPEN"));
+      const tdAct = el("td");
+      if (!c.isLocked) {
+        const btn = el("button", "btn btn-primary", "Approve & Lock");
+        btn.type = "button";
+        btn.addEventListener("click", async () => {
+          await apiFetch("/api/v1/admin/closings/" + c.id + "/approve", { method: "POST", body: {} });
+          await loadSaasEnterpriseTab();
+        });
+        tdAct.appendChild(btn);
+      } else {
+        tdAct.textContent = "Locked";
+      }
+      tr.appendChild(tdAct);
+      cFrag.appendChild(tr);
+    });
+    if ($("p89-closings-tbody")) $("p89-closings-tbody").replaceChildren(cFrag);
+
+    const pFrag = document.createDocumentFragment();
+    (proposals.proposals || []).forEach((p) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "mono", p.proposingAgent));
+      tr.appendChild(el("td", "", p.title));
+      tr.appendChild(el("td", "mono", formatINRFromPaise(p.estimatedImpactPaise || 0)));
+      tr.appendChild(el("td", "", p.status));
+      const tdAct = el("td");
+      if (p.status === "pending_approval") {
+        const bOk = el("button", "btn btn-primary", "Approve");
+        bOk.type = "button";
+        bOk.addEventListener("click", async () => {
+          await apiFetch("/api/v1/enterprise/ai/agents/proposals/" + p.id + "/decide", { method: "POST", body: { decision: "approved" } });
+          await loadSaasEnterpriseTab();
+        });
+        tdAct.appendChild(bOk);
+      } else {
+        tdAct.textContent = p.status;
+      }
+      tr.appendChild(tdAct);
+      pFrag.appendChild(tr);
+    });
+    if ($("p89-proposals-tbody")) $("p89-proposals-tbody").replaceChildren(pFrag);
+
+    const rFrag = document.createDocumentFragment();
+    (rfqs.items || []).forEach((r) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", r.title + " (" + r.requiredQuantity + " " + r.unit + ")"));
+      tr.appendChild(el("td", "", r.status));
+      const best = (r.bids || [])[0];
+      tr.appendChild(el("td", "mono", best ? formatINRFromPaise(best.unitPricePaise) : "No bids"));
+      const tdAct = el("td");
+      if (r.status === "open" && best) {
+        const bAw = el("button", "btn btn-outline", "Award #" + best.id);
+        bAw.type = "button";
+        bAw.addEventListener("click", async () => {
+          await apiFetch("/api/v1/enterprise/supply-chain/rfqs/" + r.id + "/award/" + best.id, { method: "POST", body: {} });
+          await loadSaasEnterpriseTab();
+        });
+        tdAct.appendChild(bAw);
+      } else {
+        tdAct.textContent = r.status;
+      }
+      tr.appendChild(tdAct);
+      rFrag.appendChild(tr);
+    });
+    if ($("p89-rfqs-tbody")) $("p89-rfqs-tbody").replaceChildren(rFrag);
+
+    const wFrag = document.createDocumentFragment();
+    (water.items || []).forEach((w) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", w.sourcePoint));
+      tr.appendChild(el("td", "mono", w.tdsPpm + " ppm / pH " + w.phLevel));
+      tr.appendChild(el("td", "", w.isCompliant ? "PASS" : "ALERT"));
+      tr.appendChild(el("td", "mono", fmtDateTime(w.testedAt)));
+      wFrag.appendChild(tr);
+    });
+    if ($("p89-water-tbody")) $("p89-water-tbody").replaceChildren(wFrag);
+
+    const crFrag = document.createDocumentFragment();
+    (credits.items || []).forEach((cr) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "mono", "#" + cr.userId));
+      tr.appendChild(el("td", "", cr.departmentName));
+      tr.appendChild(el("td", "mono", formatINRFromPaise(cr.remainingPaise || 0)));
+      tr.appendChild(el("td", "mono", cr.expiresOn));
+      tr.appendChild(el("td", "", cr.status));
+      crFrag.appendChild(tr);
+    });
+    if ($("p89-credits-tbody")) $("p89-credits-tbody").replaceChildren(crFrag);
   }
 
   document.addEventListener("DOMContentLoaded", () => {

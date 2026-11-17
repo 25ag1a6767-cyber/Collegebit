@@ -14,13 +14,14 @@ import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import { CartProvider, useCart } from "./src/context/CartContext";
 import { AIAssistantScreen } from "./src/screens/AIAssistantScreen";
 import { AuthScreen } from "./src/screens/AuthScreen";
+import { CampusHubScreen } from "./src/screens/CampusHubScreen";
 import { CartCheckoutScreen } from "./src/screens/CartCheckoutScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { MenuScreen } from "./src/screens/MenuScreen";
 import { OrdersTrackingScreen } from "./src/screens/OrdersTrackingScreen";
 import { ProfileScreen } from "./src/screens/ProfileScreen";
 
-type TabKey = "home" | "menu" | "cart" | "orders" | "ai" | "profile";
+type TabKey = "home" | "menu" | "cart" | "orders" | "hub" | "ai" | "profile";
 
 const Shell: React.FC = () => {
   const { user, loading } = useAuth();
@@ -62,6 +63,7 @@ const Shell: React.FC = () => {
         {tab === "menu" && <MenuScreen />}
         {tab === "cart" && <CartCheckoutScreen onOrderCreated={() => setTab("orders")} />}
         {tab === "orders" && <OrdersTrackingScreen />}
+        {tab === "hub" && <CampusHubScreen />}
         {tab === "ai" && <AIAssistantScreen />}
         {tab === "profile" && <ProfileScreen />}
       </KeyboardAvoidingView>
@@ -73,6 +75,7 @@ const Shell: React.FC = () => {
             ["menu", "Menu"],
             ["cart", cartCount > 0 ? `Cart (${cartCount})` : "Cart"],
             ["orders", "Orders"],
+            ["hub", "Hub"],
             ["ai", "AI"],
             ["profile", "Profile"]
           ] as Array<[TabKey, string]>

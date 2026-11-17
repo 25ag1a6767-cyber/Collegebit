@@ -57,6 +57,7 @@
         <button type="button" class="nav-tab" data-tab="operations">7. Orders, Payments, Incidents &amp; Feedback</button>
         <button type="button" class="nav-tab" data-tab="settings">8. Counters &amp; Operating Hours</button>
         <button type="button" class="nav-tab" data-tab="governance">9. DB Admin, Backups, 4-Day Retention &amp; Security</button>
+        <button type="button" class="nav-tab" data-tab="saas-enterprise">10. Multi-College SaaS, RFQ &amp; Infra</button>
       </nav>
 
       <!-- ===================================================================== -->
@@ -750,6 +751,119 @@
               <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Entity</th><th>Details</th></tr></thead>
               <tbody id="audit-tbody"></tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================== -->
+      <!-- TAB 10: MULTI-COLLEGE SAAS, PROCUREMENT RFQ, SMART INFRA & CLOSINGS -->
+      <!-- ===================================================================== -->
+      <section id="tab-saas-enterprise" class="admin-tab-pane" hidden>
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Multi-College SaaS Tenants &amp; Provisioning</h2></div>
+            <form id="p89-tenant-form" class="split-2">
+              <label>College Name<input id="p89-ten-name" type="text" required placeholder="ACE Engineering College" /></label>
+              <label>Admin Name<input id="p89-ten-admin-name" type="text" required placeholder="Campus Coordinator" /></label>
+              <label>Admin Email<input id="p89-ten-admin-email" type="email" required placeholder="canteen@college.edu" /></label>
+              <label>Plan Tier
+                <select id="p89-ten-plan">
+                  <option value="STARTER">STARTER</option>
+                  <option value="PROFESSIONAL" selected>PROFESSIONAL</option>
+                  <option value="ENTERPRISE">ENTERPRISE</option>
+                </select>
+              </label>
+              <div><button type="submit" class="btn btn-primary">Provision College + Invite</button></div>
+            </form>
+            <div id="p89-tenant-invite-out" class="muted"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>ID</th><th>College</th><th>Slug</th><th>Plan</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="p89-tenants-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head"><h2>Daily Canteen Closing Lock &amp; AI Proposals Gate</h2></div>
+            <p class="muted">Non-autonomous Multi-Agent Proposals require explicit administrator approval; Daily Closings lock end-of-day totals.</p>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Date</th><th>Counter</th><th>Paid</th><th>Waste</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="p89-closings-tbody"></tbody>
+              </table>
+            </div>
+            <h3>Pending Non-Autonomous Agent Proposals</h3>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Agent</th><th>Title</th><th>Est. Impact</th><th>Status</th><th>Decision</th></tr></thead>
+                <tbody id="p89-proposals-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Supply-Chain RFQs &amp; Expired Goods Receiving Gate</h2></div>
+            <form id="p89-rfq-form" class="split-2">
+              <label>Ingredient ID<input id="p89-rfq-ing-id" type="number" min="1" value="1" required /></label>
+              <label>Title<input id="p89-rfq-title" type="text" required placeholder="Monthly Cooking Oil Tender" /></label>
+              <label>Required Qty<input id="p89-rfq-qty" type="number" step="0.1" min="1" value="50" required /></label>
+              <label>Unit<input id="p89-rfq-unit" type="text" value="kg" required /></label>
+              <div><button type="submit" class="btn btn-primary">Create RFQ Tender</button></div>
+            </form>
+            <form id="p89-recv-form" class="split-2">
+              <label>Supplier ID<input id="p89-recv-sup-id" type="number" min="1" value="1" required /></label>
+              <label>Ingredient ID<input id="p89-recv-ing-id" type="number" min="1" value="1" required /></label>
+              <label>Batch Code<input id="p89-recv-batch" type="text" required placeholder="BATCH-2026-01" /></label>
+              <label>Qty<input id="p89-recv-qty" type="number" step="0.1" min="0.1" value="10" required /></label>
+              <label>Expiry Date<input id="p89-recv-exp" type="date" required /></label>
+              <label>Packaging Intact
+                <select id="p89-recv-intact">
+                  <option value="true" selected>Intact (Accept)</option>
+                  <option value="false">Damaged (Reject)</option>
+                </select>
+              </label>
+              <div><button type="submit" class="btn btn-outline">Inspect Receiving Batch</button></div>
+            </form>
+            <div id="p89-recv-result" class="muted"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>RFQ</th><th>Status</th><th>Lowest Bid</th><th>Action</th></tr></thead>
+                <tbody id="p89-rfqs-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head"><h2>Smart Campus Infra, Water &amp; Institutional Meal Credits</h2></div>
+            <form id="p89-water-form" class="split-2">
+              <label>Water Point<input id="p89-wat-point" type="text" required value="RO Drinking Point 1" /></label>
+              <label>TDS (ppm)<input id="p89-wat-tds" type="number" min="0" value="110" required /></label>
+              <label>pH Level<input id="p89-wat-ph" type="number" step="0.1" min="0" max="14" value="7.2" required /></label>
+              <div><button type="submit" class="btn btn-outline">Log Water Quality Check</button></div>
+            </form>
+            <form id="p89-credit-form" class="split-2">
+              <label>Student User ID<input id="p89-cred-uid" type="number" min="1" required placeholder="Student ID" /></label>
+              <label>Department<input id="p89-cred-dept" type="text" required value="CSE Merit Grant" /></label>
+              <label>Program<input id="p89-cred-prog" type="text" required value="Semester Meal Scholarship" /></label>
+              <label>Amount (₹)<input id="p89-cred-amt" type="number" min="10" value="500" required /></label>
+              <label>Expires On<input id="p89-cred-exp" type="date" required /></label>
+              <div><button type="submit" class="btn btn-primary">Issue Institutional Credit</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Water Point</th><th>TDS / pH</th><th>Compliant</th><th>Tested At</th></tr></thead>
+                <tbody id="p89-water-tbody"></tbody>
+              </table>
+            </div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>User #</th><th>Department</th><th>Remaining</th><th>Expires</th><th>Status</th></tr></thead>
+                <tbody id="p89-credits-tbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>

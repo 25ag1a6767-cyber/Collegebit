@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      EXPO_PUBLIC_API_URL: https://app-sai-e3e1.vercel.app
+      EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL || 'https://www.collegebits.com' }}
       NODE_ENV: production
       CI: "1"
     defaults:

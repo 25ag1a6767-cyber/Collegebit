@@ -966,6 +966,35 @@ def get_sustainability_waste_dashboard_v1(
     )
 
 
+@router.get("/workforce/shifts")
+def list_staff_shifts_v1(
+    request: Request,
+    user: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    stmt = select(StaffShift).order_by(StaffShift.shift_start.desc())
+    if user.role == UserRole.STAFF:
+        stmt = stmt.where(StaffShift.staff_user_id == user.id)
+    rows = db.scalars(stmt.limit(40)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": s.id,
+                    "staffUserId": s.staff_user_id,
+                    "stationRole": s.station_role,
+                    "status": s.status,
+                    "lateMinutes": s.late_minutes,
+                    "shiftStart": as_utc(s.shift_start),
+                    "shiftEnd": as_utc(s.shift_end),
+                }
+                for s in rows
+            ]
+        },
+    )
+
+
 @router.post("/workforce/shifts", status_code=201)
 def create_staff_shift_v1(
     request: Request,
@@ -1257,6 +1286,37 @@ class DailyClosingAdjustmentIn(BaseModel):
     deltaPaise: int
 
 
+@router.get("/group-orders")
+def list_my_group_orders_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(
+        select(GroupOrder)
+        .where(GroupOrder.organizer_user_id == user.id)
+        .order_by(GroupOrder.created_at.desc())
+        .limit(20)
+    ).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": g.id,
+                    "inviteCode": g.invite_code,
+                    "title": g.title,
+                    "pickupSlot": g.pickup_slot,
+                    "status": g.status,
+                    "totalPaise": g.total_paise,
+                    "closesAt": as_utc(g.closes_at),
+                }
+                for g in rows
+            ]
+        },
+    )
+
+
 @router.post("/group-orders", status_code=201)
 def create_group_order_v1(
     request: Request,
@@ -1419,6 +1479,66 @@ def submit_order_quality_feedback_v1(
     db.commit()
     db.refresh(fb)
     return ok(request, {"id": fb.id, "orderId": order.id, "escalatedTicketId": escalated_tck_id}, status_code=201)
+
+
+@router.get("/meal-passes/plans")
+def list_meal_pass_plans_v1(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    plans = db.scalars(
+        select(MealPassPlan).where(MealPassPlan.is_active.is_(True)).order_by(MealPassPlan.price_paise.asc())
+    ).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": p.id,
+                    "planCode": p.plan_code,
+                    "name": p.name,
+                    "passPeriod": p.pass_period,
+                    "totalMeals": p.total_meals,
+                    "validityDays": p.validity_days,
+                    "pricePaise": p.price_paise,
+                }
+                for p in plans
+            ]
+        },
+    )
+
+
+@router.get("/meal-passes/me")
+def list_my_meal_passes_v1(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = db.execute(
+        select(StudentMealPass, MealPassPlan)
+        .join(MealPassPlan, MealPassPlan.id == StudentMealPass.plan_id)
+        .where(StudentMealPass.user_id == user.id)
+        .order_by(StudentMealPass.created_at.desc())
+        .limit(20)
+    ).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "passId": mp.id,
+                    "planId": plan.id,
+                    "planName": plan.name,
+                    "planCode": plan.plan_code,
+                    "status": mp.status,
+                    "remainingMeals": mp.remaining_meals,
+                    "totalMeals": plan.total_meals,
+                    "expiresAt": as_utc(mp.expires_at),
+                }
+                for mp, plan in rows
+            ]
+        },
+    )
 
 
 @router.post("/meal-passes/plans", status_code=201)
@@ -1648,6 +1768,57 @@ def register_equipment_asset_v1(
     db.commit()
     db.refresh(eq)
     return ok(request, {"id": eq.id, "name": eq.name, "assetCode": eq.asset_code, "operationalStatus": eq.operational_status}, status_code=201)
+
+
+@router.get("/equipment/assets")
+def list_equipment_assets_v1(
+    request: Request,
+    _: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(select(EquipmentAsset).order_by(EquipmentAsset.id.desc()).limit(50)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": e.id,
+                    "name": e.name,
+                    "category": e.category,
+                    "assetCode": e.asset_code,
+                    "operationalStatus": e.operational_status,
+                }
+                for e in rows
+            ]
+        },
+    )
+
+
+@router.get("/admin/closings")
+def list_daily_closings_v1(
+    request: Request,
+    _: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(select(DailyCanteenClosing).order_by(DailyCanteenClosing.business_date.desc()).limit(30)).all()
+    return ok(
+        request,
+        {
+            "items": [
+                {
+                    "id": c.id,
+                    "businessDate": c.business_date.isoformat(),
+                    "counterId": c.counter_id,
+                    "totalOrders": c.total_orders,
+                    "completedOrders": c.completed_orders,
+                    "successfulPaymentsPaise": c.successful_payments_paise,
+                    "wastageLossPaise": c.wastage_loss_paise,
+                    "isLocked": bool(c.is_locked),
+                }
+                for c in rows
+            ]
+        },
+    )
 
 
 @router.post("/equipment/{equipment_id}/report-breakdown", status_code=201)

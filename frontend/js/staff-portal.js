@@ -1069,9 +1069,84 @@
     checkBackendConnectivity();
     setInterval(checkBackendConnectivity, 15000);
 
+    async function loadStationsAndShifts() {
+      if (!state.accessToken) return;
+      try {
+        const [stRes, shRes] = await Promise.all([
+          api("/kitchen/stations").catch(() => ({ items: [] })),
+          api("/workforce/shifts").catch(() => ({ items: [] }))
+        ]);
+        const stBox = $("staff-stations-list");
+        if (stBox) {
+          const items = stRes.items || [];
+          stBox.replaceChildren();
+          if (!items.length) stBox.textContent = "No kitchen stations configured yet.";
+          items.forEach((st) => {
+            const row = document.createElement("div");
+            row.className = "inline-row";
+            const txt = document.createElement("span");
+            txt.textContent = `${st.name} (${st.activeLoad}/${st.maxConcurrentOrders}) · ${st.isPaused ? "PAUSED" : "OPEN"}`;
+            row.appendChild(txt);
+            if (st.isPaused) {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "btn btn-outline";
+              btn.textContent = "Reopen Station";
+              btn.addEventListener("click", async () => {
+                await api(`/kitchen/stations/${st.id}/reopen`, { method: "POST", body: {} });
+                showBanner(`Kitchen station ${st.name} reopened.`, "success");
+                await loadStationsAndShifts();
+              });
+              row.appendChild(btn);
+            }
+            stBox.appendChild(row);
+          });
+        }
+        const shBox = $("staff-shifts-list");
+        if (shBox) {
+          const shifts = shRes.items || [];
+          shBox.replaceChildren();
+          if (!shifts.length) shBox.textContent = "No shifts assigned yet.";
+          shifts.slice(0, 6).forEach((sh) => {
+            const row = document.createElement("div");
+            row.className = "inline-row";
+            const txt = document.createElement("span");
+            txt.textContent = `Shift #${sh.id} · ${sh.stationRole} · ${sh.status}`;
+            row.appendChild(txt);
+            if (sh.status === "scheduled") {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "btn btn-primary";
+              btn.textContent = "Check In";
+              btn.addEventListener("click", async () => {
+                await api(`/workforce/shifts/${sh.id}/check-in`, { method: "POST", body: {} });
+                showBanner(`Checked in for shift #${sh.id}.`, "success");
+                await loadStationsAndShifts();
+              });
+              row.appendChild(btn);
+            }
+            shBox.appendChild(row);
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    $("btn-refresh-stations")?.addEventListener("click", loadStationsAndShifts);
+    $("btn-staff-closing-submit")?.addEventListener("click", async () => {
+      try {
+        const res = await api("/admin/closings", { method: "POST", body: { counterId: 1, discrepancyNotes: "Staff end-of-day submission" } });
+        showBanner(`Daily closing #${res.id} submitted (${res.businessDate}). Awaiting admin lock.`, "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
     if (state.accessToken) {
       bootstrapAuthenticated();
       loadKitchenBatches();
+      loadStationsAndShifts();
     }
   });
 })();

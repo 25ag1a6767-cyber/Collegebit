@@ -18,7 +18,7 @@ import {
 } from "../types/api";
 
 interface Props {
-  onNavigate: (tab: "menu" | "cart" | "orders" | "ai") => void;
+  onNavigate: (tab: "menu" | "cart" | "orders" | "hub" | "ai") => void;
 }
 
 export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
@@ -83,8 +83,11 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
           <TouchableOpacity style={styles.primaryChip} onPress={() => onNavigate("menu")}>
             <Text style={styles.primaryChipText}>Browse Menu</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryChip} onPress={() => onNavigate("hub")}>
+            <Text style={styles.secondaryChipText}>Campus Hub</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryChip} onPress={() => onNavigate("ai")}>
-            <Text style={styles.secondaryChipText}>✨ Ask AI Concierge</Text>
+            <Text style={styles.secondaryChipText}>✨ AI</Text>
           </TouchableOpacity>
         </View>
       </View>

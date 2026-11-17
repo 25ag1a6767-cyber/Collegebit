@@ -1685,6 +1685,66 @@
     }
   });
 
+  async function loadMealPassesAndCreditsHub() {
+    const passEl = $("#v1-meal-passes-list");
+    const credEl = $("#v1-meal-credits-list");
+    if (!window.aceCanteenToken) return;
+    if (passEl) {
+      try {
+        const [plansRes, myRes] = await Promise.all([
+          v1Fetch("/api/v1/meal-passes/plans").catch(() => ({ items: [] })),
+          v1Fetch("/api/v1/meal-passes/me").catch(() => ({ items: [] }))
+        ]);
+        passEl.replaceChildren();
+        const myItems = myRes?.items || [];
+        myItems.forEach(mp => {
+          const p = document.createElement("p");
+          p.textContent = `Active Pass: ${mp.planName} (${mp.remainingMeals}/${mp.totalMeals} meals left · ${mp.status})`;
+          passEl.appendChild(p);
+        });
+        const plans = plansRes?.items || [];
+        plans.forEach(pl => {
+          const row = document.createElement("div");
+          row.className = "inline-toolbar-row";
+          const lbl = document.createElement("span");
+          lbl.textContent = `${pl.name} · ${pl.totalMeals} meals · ${formatPaise(pl.pricePaise)}`;
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "secondary-button";
+          btn.textContent = "Purchase Pass";
+          btn.addEventListener("click", async () => {
+            try {
+              const ord = await v1Fetch(`/api/v1/meal-passes/${pl.id}/purchase`, { method: "POST" });
+              lbl.textContent = `Pass #${ord.passId} created (${ord.status}). Verify payment in Razorpay to activate.`;
+            } catch (err) {
+              lbl.textContent = err.message;
+            }
+          });
+          row.append(lbl, btn);
+          passEl.appendChild(row);
+        });
+        if (!myItems.length && !plans.length) passEl.textContent = "No active meal pass plans configured yet.";
+      } catch { /* non-blocking */ }
+    }
+    if (credEl) {
+      try {
+        const res = await v1Fetch("/api/v1/enterprise/finance/meal-credits/me").catch(() => ({ items: [] }));
+        const rows = res?.items || [];
+        credEl.replaceChildren();
+        if (!rows.length) {
+          credEl.textContent = "No institutional meal credits currently allocated to your account.";
+          return;
+        }
+        rows.forEach(c => {
+          const card = document.createElement("div");
+          card.className = "v1-order-card";
+          card.textContent = `${c.departmentName} (${c.programName}): ${formatPaise(c.remainingPaise)} remaining of ${formatPaise(c.allocatedPaise)} · ${c.status}`;
+          credEl.appendChild(card);
+        });
+      } catch { /* non-blocking */ }
+    }
+  }
+
   function syncV1ForAuth(user) {
     connectRealtimeWs();
     loadRecommendations();
@@ -1694,6 +1754,7 @@
     loadUserProfileV1();
     loadBulkOrdersHub();
     loadSupportTicketsHub();
+    loadMealPassesAndCreditsHub();
     if (user.role === "student") loadStudentActiveOrders();
     if (["staff", "admin"].includes(user.role)) {
       loadStaffKds();
