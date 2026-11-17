@@ -76,6 +76,19 @@
               <button class="primary-button auth-submit" type="submit" id="auth-submit">Sign in</button>
               <button type="button" class="link-button" id="auth-forgot">Forgot your password?</button>
             </form>
+            <div class="v1-mini-card" id="v1-guest-otp-box">
+              <h4>Visitor / Faculty Quick OTP Sign-In</h4>
+              <div class="form-pair">
+                <input id="v1-otp-contact" type="text" placeholder="Email or Phone for OTP">
+                <input id="v1-otp-code" type="text" placeholder="OTP Code">
+              </div>
+              <div class="v1-inline-actions">
+                <button type="button" class="secondary-button" id="v1-otp-req-btn">Request Guest OTP</button>
+                <button type="button" class="secondary-button" id="v1-otp-ver-btn">Verify OTP</button>
+              </div>
+              <p id="v1-otp-msg" class="muted"></p>
+              <p id="v1-payment-methods-hint" class="muted"></p>
+            </div>
             <p id="auth-message" class="auth-message" role="status" aria-live="polite">You are not signed in.</p>
             <div id="account-panel" class="account-panel" hidden>
               <strong id="account-name"></strong>

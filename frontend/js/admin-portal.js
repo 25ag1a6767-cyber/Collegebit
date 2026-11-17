@@ -2060,10 +2060,171 @@
         }
       });
     }
+
+    if ($("p89-pricing-rule-form")) {
+      $("p89-pricing-rule-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/menu/pricing-rules", {
+            method: "POST",
+            body: {
+              productId: Number($("p89-pr-prod-id").value || 1),
+              ruleName: $("p89-pr-name").value.trim(),
+              proposedPricePaise: Math.round(Number($("p89-pr-price").value || 0) * 100),
+              minPricePaise: Math.round(Number($("p89-pr-min").value || 0) * 100),
+              maxPricePaise: Math.round(Number($("p89-pr-max").value || 0) * 100),
+              reason: $("p89-pr-reason").value.trim()
+            }
+          });
+          showAlert("Pricing rule #" + r.id + " submitted for secondary manager approval.", "success");
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-req-form")) {
+      $("p89-req-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const supId = $("p89-req-sup-id").value ? Number($("p89-req-sup-id").value) : null;
+          const r = await apiFetch("/api/v1/procurement/requisitions", {
+            method: "POST",
+            body: {
+              supplierId: supId,
+              items: [{ name: $("p89-req-item").value.trim(), quantity: Number($("p89-req-qty").value || 1) }],
+              reason: $("p89-req-reason").value.trim()
+            }
+          });
+          showAlert("Purchase requisition #" + r.id + " submitted.", "success");
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-inv-form")) {
+      $("p89-inv-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/procurement/invoices", {
+            method: "POST",
+            body: {
+              purchaseOrderId: Number($("p89-inv-po-id").value || 1),
+              invoiceReference: $("p89-inv-ref").value.trim(),
+              invoiceAmountPaise: Math.round(Number($("p89-inv-amt").value || 0) * 100)
+            }
+          });
+          $("p89-inv-result").textContent =
+            "Invoice " + r.invoiceReference + " logged · Discrepancy Flagged: " + String(Boolean(r.discrepancyFlagged));
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("btn-p89-risk")) {
+      $("btn-p89-risk").addEventListener("click", async () => {
+        try {
+          const sid = Number($("p89-risk-sup-id").value || 1);
+          const r = await apiFetch("/api/v1/enterprise/supply-chain/suppliers/" + sid + "/risk");
+          $("p89-supply-lookup-out").textContent =
+            `${r.supplierName}: Risk ${r.riskScore}/100 (${r.riskBand}) · Rejected Deliveries: ${r.metrics?.rejectedDeliveries || 0}`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("btn-p89-prov")) {
+      $("btn-p89-prov").addEventListener("click", async () => {
+        try {
+          const code = $("p89-prov-batch").value.trim();
+          if (!code) return;
+          const r = await apiFetch("/api/v1/enterprise/supply-chain/provenance/" + encodeURIComponent(code));
+          $("p89-supply-lookup-out").textContent =
+            `Batch ${r.batchCode}: ${(r.receivingInspections || []).length} intake check(s), ${(r.productBatches || []).length} stock batch(es).`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-dec-form")) {
+      $("p89-dec-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/enterprise/ai/decisions/evaluate", {
+            method: "POST",
+            body: {
+              actionCategory: "capacity",
+              title: $("p89-dec-title").value.trim(),
+              metricName: $("p89-dec-metric").value.trim(),
+              baselineValue: Number($("p89-dec-base").value || 0),
+              observedValue: Number($("p89-dec-obs").value || 0)
+            }
+          });
+          $("p89-dec-loy-out").textContent = `Decision Impact Saved: ${r.title} -> ${r.deltaPct}% delta (${r.confidenceBand})`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("btn-p89-loyalty-sim")) {
+      $("btn-p89-loyalty-sim").addEventListener("click", async () => {
+        try {
+          const r = await apiFetch("/api/v1/enterprise/finance/loyalty-simulator", {
+            method: "POST",
+            body: { cashbackRatePct: Number($("p89-loy-pct").value || 0) }
+          });
+          $("p89-dec-loy-out").textContent =
+            `Loyalty Sim (${r.observedPaidOrders} paid orders): Projected liability ${formatINRFromPaise(r.projectedRewardLiabilityPaise || 0)}`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-invite-form")) {
+      $("p89-invite-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const tid = Number($("p89-inv-tid").value || 1);
+          const r = await apiFetch("/api/v1/saas/tenants/" + tid + "/invitations", {
+            method: "POST",
+            body: {
+              fullName: $("p89-inv-name").value.trim(),
+              email: $("p89-inv-email").value.trim(),
+              tenantRole: $("p89-inv-role").value
+            }
+          });
+          $("p89-saas-action-out").textContent = `Invitation created for ${r.email} (${r.tenantRole}) · Expires ${fmtDateTime(r.expiresAt)}`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("btn-p89-plan-change")) {
+      $("btn-p89-plan-change").addEventListener("click", async () => {
+        try {
+          const tid = Number($("p89-plan-tid").value || 1);
+          const r = await apiFetch("/api/v1/saas/tenants/" + tid + "/subscription/change-plan", {
+            method: "POST",
+            body: { planTier: $("p89-plan-tier").value }
+          });
+          $("p89-saas-action-out").textContent = `Tenant #${tid} plan changed to ${r.planTier}.`;
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
   }
 
   async function loadSaasEnterpriseTab() {
-    const [tenants, closings, proposals, rfqs, water, credits, fires, scen] = await Promise.all([
+    const [tenants, closings, proposals, rfqs, water, credits, fires, scen, depProf, decList] = await Promise.all([
       apiFetch("/api/v1/saas/tenants").catch(() => ({ items: [] })),
       apiFetch("/api/v1/admin/closings").catch(() => ({ items: [] })),
       apiFetch("/api/v1/enterprise/ai/agents/proposals").catch(() => ({ proposals: [] })),
@@ -2071,8 +2232,18 @@
       apiFetch("/api/v1/enterprise/infrastructure/water-quality").catch(() => ({ items: [] })),
       apiFetch("/api/v1/enterprise/finance/meal-credits").catch(() => ({ items: [] })),
       apiFetch("/api/v1/enterprise/infrastructure/fire-events").catch(() => ({ items: [] })),
-      apiFetch("/api/v1/enterprise/finance/scenario-forecast?horizonDays=30").catch(() => null)
+      apiFetch("/api/v1/enterprise/finance/scenario-forecast?horizonDays=30").catch(() => null),
+      apiFetch("/api/v1/enterprise/platform/deployment-profiles").catch(() => null),
+      apiFetch("/api/v1/enterprise/ai/decisions").catch(() => null)
     ]);
+    if ($("p89-deploy-profiles-box") && depProf) {
+      $("p89-deploy-profiles-box").textContent =
+        `Active Profile: ${depProf.activeProfile} | Ready Targets: ${(depProf.profiles || []).filter((p) => p.ready).map((p) => p.id).join(", ") || "local_evaluation_sqlite"}`;
+    }
+    if ($("p89-dec-loy-out") && decList && !($("p89-dec-loy-out").textContent)) {
+      $("p89-dec-loy-out").textContent =
+        `Empirical Impact Records: ${(decList.evaluations || []).length} | Verified Paid Orders: ${decList.liveImpactSnapshot?.verifiedPaidOrders || 0}`;
+    }
     if ($("p89-forecast-box") && scen && scen.scenarios) {
       const s = scen.scenarios;
       $("p89-forecast-box").textContent =

@@ -356,6 +356,15 @@
           switchTab("pickup");
         });
         actions.appendChild(btnGoPickup);
+
+        const btnUncoll = el("button", "btn btn-outline", "Mark Uncollected");
+        btnUncoll.type = "button";
+        btnUncoll.addEventListener("click", async () => {
+          await api(`/staff/orders/${o.id}/mark-uncollected`, { method: "POST", body: {} });
+          showBanner(`Order #${o.id} marked overdue uncollected (financial record retained).`, "success");
+          await loadQueue();
+        });
+        actions.appendChild(btnUncoll);
       }
 
       const btnExc = el("button", "btn btn-outline", "Issue / Exception");
@@ -1170,6 +1179,14 @@
     }
 
     $("btn-refresh-stations")?.addEventListener("click", loadStationsAndShifts);
+    $("btn-staff-retry-notifs")?.addEventListener("click", async () => {
+      try {
+        const r = await api("/notifications/retry-failed", { method: "POST", body: {} });
+        showBanner(`Notification queue retry executed (${r.retriedCount || 0} retried).`, "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
     $("btn-staff-closing-submit")?.addEventListener("click", async () => {
       try {
         const res = await api("/admin/closings", { method: "POST", body: { counterId: 1, discrepancyNotes: "Staff end-of-day submission" } });

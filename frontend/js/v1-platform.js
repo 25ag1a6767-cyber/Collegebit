@@ -726,6 +726,23 @@
           receiptBtn.textContent = "Download Receipt (PDF)";
           receiptBtn.addEventListener("click", () => downloadDigitalReceiptPdf(o.id));
           actions.append(receiptBtn);
+        } else {
+          const walPayBtn = document.createElement("button");
+          walPayBtn.type = "button";
+          walPayBtn.className = "primary-button";
+          walPayBtn.textContent = "Pay with Prepaid Wallet";
+          walPayBtn.addEventListener("click", async () => {
+            walPayBtn.disabled = true;
+            try {
+              await v1Fetch(`/api/v1/orders/${o.id}/pay-with-wallet`, { method: "POST" });
+              await loadStudentActiveOrders();
+              if (typeof window.loadMyOrders === "function") window.loadMyOrders();
+            } catch (err) {
+              alert(err.message);
+              walPayBtn.disabled = false;
+            }
+          });
+          actions.append(walPayBtn);
         }
         if (["pending", "confirmed"].includes(statusNorm)) {
           const cancelBtn = document.createElement("button");
@@ -770,7 +787,30 @@
         receiptBtn.className = "secondary-button";
         receiptBtn.textContent = "Download Digital Receipt (PDF)";
         receiptBtn.addEventListener("click", () => downloadDigitalReceiptPdf(o.id));
-        head.append(title, receiptBtn);
+        const rateBtn = document.createElement("button");
+        rateBtn.type = "button";
+        rateBtn.className = "secondary-button";
+        rateBtn.textContent = "5★ Rate Quality";
+        rateBtn.addEventListener("click", async () => {
+          try {
+            await v1Fetch(`/api/v1/orders/${o.id}/quality-feedback`, {
+              method: "POST",
+              body: JSON.stringify({
+                foodQualityRating: 5,
+                tasteRating: 5,
+                packagingRating: 5,
+                waitTimeRating: 5,
+                outletRating: 5,
+                comment: "Great canteen service"
+              })
+            });
+            rateBtn.textContent = "Rated 5★";
+            rateBtn.disabled = true;
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+        head.append(title, receiptBtn, rateBtn);
         recCard.append(head);
         panel.append(recCard);
       }
@@ -1789,6 +1829,48 @@
       elEta.textContent = `Live Kitchen Wait ETA: ~${eta.estimatedMinutes ?? 5} mins (${eta.queuedOrders ?? 0} active orders in queue)`;
     }
   }).catch(() => {});
+  v1Fetch("/api/v1/payments/methods").then(pm => {
+    const hint = $("#v1-payment-methods-hint");
+    if (hint && pm) {
+      hint.textContent = `Online Only Policy (No Refunds): ${(pm.supportedMethods || ["UPI", "Card", "Wallet"]).join(" / ")}`;
+    }
+  }).catch(() => {});
+
+  $("#v1-otp-req-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-otp-msg");
+    const contact = $("#v1-otp-contact")?.value.trim();
+    if (!contact) return;
+    try {
+      const r = await v1Fetch("/api/v1/auth/guest-otp/request", {
+        method: "POST",
+        body: JSON.stringify({ phoneOrEmail: contact, roleCategory: "guest", fullName: "Campus Visitor" })
+      });
+      if (msg) msg.textContent = `OTP issued (${r.expiresInSeconds || 300}s valid). Check dev console or inbox.`;
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+    }
+  });
+
+  $("#v1-otp-ver-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-otp-msg");
+    const contact = $("#v1-otp-contact")?.value.trim();
+    const otpCode = $("#v1-otp-code")?.value.trim();
+    if (!contact || !otpCode) return;
+    try {
+      const res = await v1Fetch("/api/v1/auth/guest-otp/verify", {
+        method: "POST",
+        body: JSON.stringify({ phoneOrEmail: contact, otpCode, fullName: "Campus Visitor" })
+      });
+      if (res?.accessToken) {
+        localStorage.setItem("ace_v1_access_token", res.accessToken);
+        window.aceCanteenToken = res.accessToken;
+        if (msg) msg.textContent = "Guest verified! Reloading session…";
+        window.location.reload();
+      }
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+    }
+  });
   connectRealtimeWs();
   if (window.aceCanteenUser) syncV1ForAuth(window.aceCanteenUser);
 })();

@@ -436,6 +436,19 @@
             <div><button type="submit" class="btn btn-primary">Save Fulfillment Rule</button></div>
           </form>
         </div>
+
+        <div class="section-card">
+          <h3>Dynamic Menu Pricing Rule (Manager Approval Required)</h3>
+          <form id="p89-pricing-rule-form" class="split-2">
+            <label>Product ID<input id="p89-pr-prod-id" type="number" min="1" value="1" required /></label>
+            <label>Rule Name<input id="p89-pr-name" type="text" required placeholder="Peak Lunch Dynamic Price" /></label>
+            <label>Proposed Price (₹)<input id="p89-pr-price" type="number" step="1" min="5" value="60" required /></label>
+            <label>Min Guardrail (₹)<input id="p89-pr-min" type="number" step="1" min="1" value="40" required /></label>
+            <label>Max Guardrail (₹)<input id="p89-pr-max" type="number" step="1" min="1" value="100" required /></label>
+            <label>Justification<input id="p89-pr-reason" type="text" required value="Seasonal ingredient price alignment" /></label>
+            <div><button type="submit" class="btn btn-outline">Propose Pricing Rule</button></div>
+          </form>
+        </div>
       </section>
 
       <!-- ===================================================================== -->
@@ -535,6 +548,37 @@
                 <tbody id="expenses-tbody"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <h3>Purchase Requisition &amp; Supplier Invoice Matching</h3>
+            <form id="p89-req-form" class="split-2">
+              <label>Supplier ID (optional)<input id="p89-req-sup-id" type="number" min="1" placeholder="e.g. 1" /></label>
+              <label>Item Name<input id="p89-req-item" type="text" required value="Refined Sunflower Oil" /></label>
+              <label>Qty<input id="p89-req-qty" type="number" min="1" value="20" required /></label>
+              <label>Reason<input id="p89-req-reason" type="text" required value="Weekly kitchen replenishment" /></label>
+              <div><button type="submit" class="btn btn-primary">Submit Requisition</button></div>
+            </form>
+            <form id="p89-inv-form" class="split-2">
+              <label>PO ID<input id="p89-inv-po-id" type="number" min="1" required value="1" /></label>
+              <label>Invoice Reference<input id="p89-inv-ref" type="text" required placeholder="INV-SUP-001" /></label>
+              <label>Invoice Amount (₹)<input id="p89-inv-amt" type="number" min="1" required value="2500" /></label>
+              <div><button type="submit" class="btn btn-outline">Log &amp; Reconcile Invoice</button></div>
+            </form>
+            <div id="p89-inv-result" class="muted"></div>
+          </div>
+
+          <div class="section-card">
+            <h3>Supplier Risk Score &amp; Batch Provenance Lookup</h3>
+            <div class="inline-controls">
+              <input id="p89-risk-sup-id" type="number" min="1" value="1" placeholder="Supplier ID" />
+              <button type="button" id="btn-p89-risk" class="btn btn-outline">Check Supplier Risk</button>
+              <input id="p89-prov-batch" type="text" placeholder="Batch code…" />
+              <button type="button" id="btn-p89-prov" class="btn btn-outline">Trace Batch Provenance</button>
+            </div>
+            <div id="p89-supply-lookup-out" class="muted"></div>
           </div>
         </div>
       </section>
@@ -942,6 +986,49 @@
               <div><button type="submit" class="btn btn-primary">Validate GST &amp; Duplicate</button></div>
             </form>
             <div id="p89-gst-out" class="muted"></div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>AI Decision Intelligence &amp; Loyalty Simulator</h2></div>
+            <form id="p89-dec-form" class="split-2">
+              <label>Action Title<input id="p89-dec-title" type="text" required placeholder="Counter 2 Lunch Prepack Rollout" /></label>
+              <label>Metric Name<input id="p89-dec-metric" type="text" required value="avg_wait_seconds" /></label>
+              <label>Baseline<input id="p89-dec-base" type="number" step="0.1" required value="120" /></label>
+              <label>Observed<input id="p89-dec-obs" type="number" step="0.1" required value="35" /></label>
+              <div><button type="submit" class="btn btn-primary">Record Decision Impact</button></div>
+            </form>
+            <div class="inline-controls">
+              <label>Cashback %<input id="p89-loy-pct" type="number" step="0.5" min="0" max="20" value="3" /></label>
+              <button type="button" id="btn-p89-loyalty-sim" class="btn btn-outline">Simulate Loyalty Cost</button>
+            </div>
+            <div id="p89-dec-loy-out" class="muted"></div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head"><h2>Multi-College Admin Invitations, Blueprints &amp; Cloud Readiness</h2></div>
+            <p id="p89-deploy-profiles-box" class="muted">Loading infrastructure deployment readiness…</p>
+            <form id="p89-invite-form" class="split-2">
+              <label>Tenant ID<input id="p89-inv-tid" type="number" min="1" value="1" required /></label>
+              <label>Admin Name<input id="p89-inv-name" type="text" required placeholder="Canteen Manager" /></label>
+              <label>Email<input id="p89-inv-email" type="email" required placeholder="manager@college.edu" /></label>
+              <label>Role
+                <select id="p89-inv-role">
+                  <option value="college_admin">College Admin</option>
+                  <option value="finance_admin">Finance Admin</option>
+                  <option value="canteen_manager">Canteen Manager</option>
+                  <option value="kitchen_manager">Kitchen Manager</option>
+                </select>
+              </label>
+              <div><button type="submit" class="btn btn-primary">Send Tenant Admin Invite</button></div>
+            </form>
+            <div class="inline-controls">
+              <input id="p89-plan-tid" type="number" min="1" value="1" placeholder="Tenant ID" />
+              <select id="p89-plan-tier"><option value="STARTER">STARTER</option><option value="PROFESSIONAL">PROFESSIONAL</option><option value="ENTERPRISE" selected>ENTERPRISE</option></select>
+              <button type="button" id="btn-p89-plan-change" class="btn btn-outline">Upgrade Tenant Plan</button>
+            </div>
+            <div id="p89-saas-action-out" class="muted"></div>
           </div>
         </div>
       </section>
