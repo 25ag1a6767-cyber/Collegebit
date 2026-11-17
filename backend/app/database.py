@@ -21,11 +21,19 @@ IS_SQLITE = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
 IS_POSTGRES = SQLALCHEMY_DATABASE_URL.startswith("postgresql")
 
 if IS_SQLITE:
-    engine = create_engine(
-        SQLALCHEMY_DATABASE_URL,
-        pool_pre_ping=True,
-        connect_args={"check_same_thread": False, "timeout": 30},
-    )
+    if ":memory:" in SQLALCHEMY_DATABASE_URL:
+        engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            pool_pre_ping=True,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+    else:
+        # Use NullPool for file-backed SQLite so concurrent threads waiting on locks never starve QueuePool.
+        engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            poolclass=NullPool,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
 elif settings.db_use_pgbouncer_transaction_pool:
     # Behind PgBouncer in transaction mode, disable client-side pooling and psycopg3 prepared statements.
     engine = create_engine(

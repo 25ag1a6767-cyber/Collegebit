@@ -566,6 +566,7 @@ def _execute_create_order_v1(
             db.commit()
             db.refresh(idem_record)
 
+    idem_id: int | None = idem_record.id if idem_record is not None else None
     try:
         counter = _assert_ordering_open_v1(db, counter_id)
         slot_start, slot_end = _resolve_pickup_slot_v1(db, counter.id, slot_raw)
@@ -823,9 +824,9 @@ def _execute_create_order_v1(
         return ok(request, response_data, status_code=201)
     except Exception:
         db.rollback()
-        if idem_record is not None and idem_record.id:
+        if idem_id is not None:
             try:
-                stale = db.get(CheckoutIdempotency, idem_record.id)
+                stale = db.get(CheckoutIdempotency, idem_id)
                 if stale and stale.state == "processing":
                     db.delete(stale)
                     db.commit()
