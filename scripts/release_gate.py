@@ -15,12 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def run(label: str, command: list[str], *, required: bool = True) -> bool:
     print(f"\n== {label} ==", flush=True)
-    if shutil.which(command[0]) is None:
+    resolved = shutil.which(command[0])
+    if resolved is None:
         print(f"SKIP: executable not found: {command[0]}")
         return not required
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "backend") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    result = subprocess.run(command, cwd=ROOT, env=env, check=False)
+    result = subprocess.run([resolved, *command[1:]], cwd=ROOT, env=env, check=False)
     print(f"{'PASS' if result.returncode == 0 else 'FAIL'}: {label} (exit {result.returncode})")
     return result.returncode == 0
 
@@ -32,13 +33,17 @@ def main() -> int:
     results = []
     results.append(run("Backend regression suite (isolated DB)", [py, "-m", "pytest", "-q", "backend/tests"]))
     results.append(run("Python compilation", [py, "-m", "compileall", "-q", "backend/app", "backend/tests", "scripts"]))
+    results.append(run("Frontend JavaScript syntax (config.js)", ["node", "--check", "frontend/config.js"], required=True))
     results.append(run("Frontend JavaScript syntax (app.js)", ["node", "--check", "frontend/js/app.js"], required=True))
     results.append(run("Frontend JavaScript syntax (v1-platform.js)", ["node", "--check", "frontend/js/v1-platform.js"], required=True))
     results.append(run("Frontend JavaScript syntax (charts-v2.js)", ["node", "--check", "frontend/js/charts-v2.js"], required=True))
     results.append(run("Frontend JavaScript syntax (staff-portal.js)", ["node", "--check", "frontend/js/staff-portal.js"], required=True))
     results.append(run("Frontend JavaScript syntax (admin-portal.js)", ["node", "--check", "frontend/js/admin-portal.js"], required=True))
     results.append(run("Service worker syntax (sw.js)", ["node", "--check", "frontend/sw.js"], required=True))
-    results.append(run("Playwright browser acceptance", ["npx", "playwright", "test"], required=args.browser) if args.browser else True)
+    if args.browser:
+        pw_cli = ROOT / "node_modules" / "@playwright" / "test" / "cli.js"
+        pw_cmd = ["node", str(pw_cli), "test"] if pw_cli.is_file() else ["npx", "playwright", "test"]
+        results.append(run("Playwright browser acceptance", pw_cmd, required=True))
     print("\nRelease gate: " + ("PASS" if all(results) else "FAIL"))
     if not args.browser:
         print("Browser acceptance was not run. Use --browser after installing npm dependencies and Playwright browsers.")
