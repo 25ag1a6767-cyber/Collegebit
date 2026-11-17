@@ -633,13 +633,29 @@
       stopCamera();
       return;
     }
+    if (!window.isSecureContext) {
+      showBanner("Camera scanning requires HTTPS (or localhost). Open the staff portal over HTTPS or use the 6-char manual code.", "error");
+      return;
+    }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       showBanner("Camera access is not supported in this browser; paste the QR token or use the 6-char manual code.", "error");
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      } catch (constraintErr) {
+        if (constraintErr && constraintErr.name === "OverconstrainedError") {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        } else {
+          throw constraintErr;
+        }
+      }
       state.cameraStream = stream;
+      video.setAttribute("playsinline", "true");
+      video.setAttribute("autoplay", "true");
+      video.muted = true;
       video.srcObject = stream;
       video.hidden = false;
       await video.play();
@@ -658,10 +674,19 @@
           } catch (_) {}
         }, 600);
       } else {
-        showBanner("Camera active — browser lacks native BarcodeDetector; use scanner input or manual 6-char code.", "");
+        showBanner("Camera live (iOS Safari uses manual QR token or 6-char backup code when BarcodeDetector is unavailable).", "");
       }
     } catch (err) {
-      showBanner("Could not open camera: " + err.message, "error");
+      const name = err?.name || "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        showBanner("Camera permission denied. Enable Camera access in Safari/Browser Settings and tap Toggle Camera Scanner again, or use the 6-char manual code.", "error");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        showBanner("No camera found on this device. Use a USB scanner or enter the 6-char manual code.", "error");
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        showBanner("Camera is busy in another app. Close the other camera app and retry, or use the 6-char manual code.", "error");
+      } else {
+        showBanner("Could not open camera: " + (err?.message || name || "unknown error") + " — use the 6-char manual code.", "error");
+      }
     }
   }
 

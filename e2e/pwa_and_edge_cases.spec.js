@@ -58,4 +58,24 @@ test.describe('Customer PWA feel, install prompts, offline recovery & WS reconne
     await expect.poll(() => page.locator('#v1-ws-label').textContent(), { timeout: 12000 }).toBe('Live updates');
     expect(pageErrors).toEqual([]);
   });
+
+  test('offline fallback page renders cleanly and iOS Safari explains Home Screen prerequisite for push notifications', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+    });
+    const page = await context.newPage();
+    await page.goto('/offline.html');
+    await expect(page.locator('h1')).toContainText(/You are offline/i);
+    await expect(page.locator('a.primary-button')).toHaveAttribute('href', '/customer/');
+
+    // Load /customer/, tap Enable push alerts on non-standalone iOS -> shows Home Screen guidance without requesting OS permission
+    await page.goto('/customer/');
+    await page.evaluate(() => {
+      document.querySelector('#account-panel')?.removeAttribute('hidden');
+    });
+    await page.locator('#v1-push-toggle-btn').click();
+    await expect(page.locator('#v1-profile-msg')).toContainText(/Add to Home Screen/i);
+    await context.close();
+  });
 });

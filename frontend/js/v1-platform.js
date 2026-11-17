@@ -178,7 +178,7 @@
     for (let i = 0; i < 8; i++) grid[8][n - 1 - i] = ((fmt >> i) & 1) === 1;
     for (let i = 8; i < 15; i++) grid[n - 15 + i][8] = ((fmt >> i) & 1) === 1;
 
-    const quiet = 2;
+    const quiet = 4;
     const dim = n + quiet * 2;
     let paths = "";
     for (let r = 0; r < n; r++) {
@@ -197,7 +197,7 @@
     bg.setAttribute("fill", "#ffffff");
     const path = document.createElementNS(svgNS, "path");
     path.setAttribute("d", paths);
-    path.setAttribute("fill", "#12372a");
+    path.setAttribute("fill", "#000000");
     svg.append(bg, path);
     return svg;
   }
@@ -334,9 +334,27 @@
     }
   });
 
+  let liveToastTimer = null;
+  function showLiveToast(title, bodyText) {
+    const toast = $("#v1-live-toast");
+    if (!toast) return;
+    toast.textContent = bodyText ? `${title}: ${bodyText}` : title;
+    toast.hidden = false;
+    clearTimeout(liveToastTimer);
+    liveToastTimer = setTimeout(() => {
+      toast.hidden = true;
+    }, 6500);
+  }
+
   function handleRealtimeEvent(msg) {
     const topic = String(msg?.topic || "");
     if (!topic || topic === "connected" || topic === "authenticated" || topic === "pong") return;
+    if (topic === "notification.created" && msg?.payload) {
+      showLiveToast(msg.payload.title || "Canteen update", msg.payload.message || "");
+    } else if (topic === "order.ready") {
+      const tok = msg?.payload?.tokenNumber ? `Token #${msg.payload.tokenNumber}` : "Your order";
+      showLiveToast("Order ready for pickup", `${tok} — show your pickup QR at the counter.`);
+    }
     if (topic.startsWith("order.") || topic.startsWith("pickup.")) {
       loadCounters();
       if (window.aceCanteenUser?.role === "student") loadStudentActiveOrders();
@@ -922,6 +940,35 @@
       const manual = document.createElement("div");
       manual.className = "v1-manual-code";
       manual.textContent = tok.manualPickupCode || tok.manualCode || "—";
+      const brightBtn = document.createElement("button");
+      brightBtn.type = "button";
+      brightBtn.className = "secondary-button";
+      brightBtn.textContent = "Show large bright QR";
+      brightBtn.addEventListener("click", () => {
+        const modal = $("#v1-item-modal");
+        const title = $("#v1-modal-title");
+        const cat = $("#v1-modal-category");
+        const body = $("#v1-modal-body");
+        if (!modal || !body) return;
+        modal.hidden = false;
+        cat.textContent = tok.counterName || "PICKUP PASS";
+        title.textContent = tok.tokenDisplay || `Token #${tok.tokenNumber}`;
+        body.replaceChildren();
+        const stage = document.createElement("div");
+        stage.className = "v1-qr-modal-stage";
+        const bigBox = document.createElement("div");
+        bigBox.className = "v1-qr-svg-wrap";
+        bigBox.append(renderQrSvg(tok.pickupToken || tok.qrUrl));
+        const bigCode = document.createElement("div");
+        bigCode.className = "v1-manual-code";
+        bigCode.textContent = tok.manualPickupCode || tok.manualCode || "—";
+        const tip = document.createElement("small");
+        tip.className = "muted";
+        tip.textContent = "Tip: Increase screen brightness at the counter for instant QR scanning.";
+        stage.append(bigBox, bigCode, tip);
+        body.append(stage);
+      });
+
       const expNote = document.createElement("small");
       expNote.className = "muted";
       const expTime = new Date(tok.expiresAt).getTime();
@@ -935,7 +982,7 @@
       if (state.qrCountdownTimers.has(orderId)) clearInterval(state.qrCountdownTimers.get(orderId));
       state.qrCountdownTimers.set(orderId, setInterval(updateCountdown, 1000));
 
-      info.append(manualTitle, manual, document.createElement("br"), expNote);
+      info.append(manualTitle, manual, document.createElement("br"), expNote, document.createElement("br"), brightBtn);
       wrap.append(svgBox, info);
       container.append(wrap);
     } catch (err) {
@@ -1087,24 +1134,50 @@
     return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)));
   }
 
+  function syncPushButtonState(subscribed) {
+    const btn = $("#v1-push-toggle-btn");
+    if (!btn) return;
+    btn.textContent = subscribed ? "Disable push alerts" : "Enable push alerts";
+  }
+
   async function toggleWebPush() {
     const msg = $("#v1-profile-msg");
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      if (msg) msg.textContent = "Web Push is not supported in this browser.";
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+    if (isIOS && !isStandalone) {
+      if (msg) {
+        msg.textContent = "On iPhone/iPad (iOS 16.4+), tap Share → Add to Home Screen first, then open the installed CollegeBits app to enable push notifications. Live WebSocket alerts stay active here.";
+        msg.className = "management-message";
+      }
+      return;
+    }
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
+      if (msg) msg.textContent = "Web Push is unsupported here; live WebSocket & in-app alerts remain active.";
       return;
     }
     try {
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        await v1Fetch(`/api/v1/push/subscribe?endpoint=${encodeURIComponent(existing.endpoint)}`, { method: "DELETE" });
+        await existing.unsubscribe().catch(() => {});
+        syncPushButtonState(false);
+        if (msg) {
+          msg.textContent = "Push notifications paused; in-app WebSocket updates stay active.";
+          msg.className = "management-message";
+        }
+        return;
+      }
       const keyData = await v1Fetch("/api/v1/push/vapid-public-key");
       if (!keyData?.publicKey) {
-        if (msg) msg.textContent = "Push VAPID key is not configured on this server yet; in-app WebSocket notifications remain active.";
+        if (msg) msg.textContent = "Push VAPID key is not configured on this server yet; live WebSocket & in-app alerts remain active.";
         return;
       }
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
-        if (msg) msg.textContent = "Notification permission was not granted.";
+        if (msg) msg.textContent = "Notification permission was denied; live WebSocket & in-app status updates remain active.";
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(keyData.publicKey)
@@ -1120,12 +1193,13 @@
           }
         })
       });
+      syncPushButtonState(true);
       if (msg) {
-        msg.textContent = "Push notifications enabled for ready-to-collect alerts!";
+        msg.textContent = "Push notifications enabled for order accepted & ready-for-pickup alerts!";
         msg.className = "management-message success";
       }
     } catch (err) {
-      if (msg) msg.textContent = err.message;
+      if (msg) msg.textContent = (err?.message || "Push setup failed") + " — WebSocket updates remain active.";
     }
   }
 

@@ -56,6 +56,16 @@
     </div>
   </section>
 
+  <!-- Service Worker Version Update & Offline Status Banners -->
+  <section id="pwa-update-banner" class="pwa-status-banner pwa-status-banner--update" role="status" aria-live="polite" hidden>
+    <span>New version available</span>
+    <button type="button" class="pwa-banner-btn" id="pwa-update-refresh-btn">Tap to refresh</button>
+  </section>
+  <section id="pwa-offline-banner" class="pwa-status-banner pwa-status-banner--offline" role="status" aria-live="polite" hidden>
+    <span>Offline mode — reconnect to place orders, track live kitchen updates, or load pickup QR codes.</span>
+  </section>
+  <div id="v1-live-toast" class="v1-live-toast" role="status" aria-live="polite" hidden></div>
+
   <main>
     <section class="hero">
       <div class="hero-copy">

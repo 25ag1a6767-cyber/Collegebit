@@ -1,11 +1,68 @@
 // Phase 21: installable app shell. Offline mode never submits orders or caches API/private data.
 (() => {
+  const updateBanner = document.querySelector("#pwa-update-banner");
+  const updateRefreshBtn = document.querySelector("#pwa-update-refresh-btn");
+  const offlineBanner = document.querySelector("#pwa-offline-banner");
+  let waitingWorker = null;
+  let refreshingForSwUpdate = false;
+  let userRequestedSwUpdate = false;
+
+  function syncOfflineBanner() {
+    if (!offlineBanner) return;
+    offlineBanner.hidden = navigator.onLine !== false;
+  }
+  syncOfflineBanner();
+  window.addEventListener("online", syncOfflineBanner);
+  window.addEventListener("offline", syncOfflineBanner);
+
+  function showSwUpdatePrompt(worker) {
+    waitingWorker = worker || waitingWorker;
+    if (updateBanner) updateBanner.hidden = false;
+  }
+
+  updateRefreshBtn?.addEventListener("click", () => {
+    userRequestedSwUpdate = true;
+    if (waitingWorker) {
+      waitingWorker.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
+  });
+
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    let hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController && !userRequestedSwUpdate) {
+        hadController = true;
+        return;
+      }
+      if (refreshingForSwUpdate) return;
+      refreshingForSwUpdate = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.addEventListener("message", event => {
+      if (event.data?.type === "NAVIGATE_ORDER") {
+        const target = document.querySelector("#my-orders-section");
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
     (async () => {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
         await Promise.all(registrations.filter(registration => registration.scope === `${location.origin}/`).map(registration => registration.unregister()));
-        await navigator.serviceWorker.register("/sw.js", { scope: "/customer/" });
+        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/customer/" });
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showSwUpdatePrompt(reg.waiting);
+        }
+        reg.addEventListener("updatefound", () => {
+          const installing = reg.installing;
+          if (!installing) return;
+          installing.addEventListener("statechange", () => {
+            if (installing.state === "installed" && navigator.serviceWorker.controller) {
+              showSwUpdatePrompt(reg.waiting || installing);
+            }
+          });
+        });
       } catch (error) {
         console.warn("ACE Canteen offline shell unavailable:", error);
       }
@@ -1037,13 +1094,29 @@ document.querySelector('#pickup-qr-check')?.addEventListener('click', () => veri
 function startPickupQrScanner() {
   const panel = document.querySelector('#pickup-qr-scanner-panel');
   if (!panel || !['admin', 'staff'].includes(window.aceCanteenUser?.role) || !window.Html5Qrcode || pickupQrScanner) return;
+  const msg = document.querySelector('#pickup-qr-scan-message');
+  if (!window.isSecureContext) {
+    if (msg) msg.textContent = 'Camera scanning requires HTTPS. Use an HTTPS URL or paste the QR code manually.';
+    return;
+  }
   try {
     pickupQrScanner = new window.Html5Qrcode('pickup-qr-reader');
     pickupQrScanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 220, height: 220 } }, async decodedText => {
       await pickupQrScanner.stop().catch(() => {}); pickupQrScanner = null;
       const input = document.querySelector('#pickup-qr-code-input'); if (input) input.value = decodedText;
       await verifyPickupQr(decodedText);
-    }, () => {}).catch(() => { pickupQrScanner = null; const msg = document.querySelector('#pickup-qr-scan-message'); if (msg) msg.textContent = 'Camera scan unavailable. Allow camera access or paste the QR code manually.'; });
+    }, () => {}).catch(err => {
+      pickupQrScanner = null;
+      if (!msg) return;
+      const name = err?.name || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || String(err).includes('NotAllowed')) {
+        msg.textContent = 'Camera permission denied. Allow Camera access in Safari/Browser Settings or paste the QR code manually.';
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        msg.textContent = 'No rear camera detected. Paste the QR code or 6-character code manually.';
+      } else {
+        msg.textContent = 'Camera scan unavailable on this browser. Allow camera access or paste the QR code manually.';
+      }
+    });
   } catch (_) { pickupQrScanner = null; }
 }
 document.querySelector('#refresh-kitchen-board')?.addEventListener('click', loadStaffWorkflow);
