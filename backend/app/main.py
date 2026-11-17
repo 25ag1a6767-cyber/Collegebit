@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, get_db
 from app import models  # noqa: F401 - registers ORM models with Base.metadata
-from app.envelope import ApiError, fail, http_exception_to_v1, is_v1_request, validation_exception_to_v1
+from app.envelope import ApiError, fail, http_exception_to_v1, is_v1_request, sanitize_validation_errors, validation_exception_to_v1
 from app.models import Category, Product, User, UserRole, Order, OrderItem, OrderStatus, PaymentStatus, InventoryMovement, InventoryMovementType, AuditEvent, Notification, Favorite, OrderReview, PaymentWebhookEvent, CheckoutIdempotency, PickupToken
 from app.realtime import build_ws_client_for_user, flush_outbox_async, hub
 from app.schemas import CategoryOut, ProductOut, ProductCreate, RegisterIn, LoginIn, UserOut, TokenOut, RoleUpdateIn, CategoryCreate, ProductUpdate, CategoryUpdate, ChangePasswordIn, ForgotPasswordIn, ResetPasswordIn, AdminUserCreateIn, OrderCreateIn, OrderOut, OrderStatusIn, StockAdjustmentIn, StockThresholdUpdate
@@ -442,7 +442,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     if is_v1_request(request):
         return validation_exception_to_v1(request, exc)
-    return JSONResponse(status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": "The request contains invalid data.", "details": jsonable_encoder(exc.errors())}})
+    return JSONResponse(status_code=422, content={"error": {"code": "VALIDATION_ERROR", "message": "The request contains invalid data.", "details": jsonable_encoder(sanitize_validation_errors(exc.errors()))}})
 
 @app.exception_handler(Exception)
 async def unexpected_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -1676,15 +1676,26 @@ def public_pickup_status(payload: dict[str, Any], db: Session = Depends(get_db))
 @app.post("/api/staff/pickup/scan", tags=["staff tools"], summary="Read a student's signed pickup QR")
 def scan_pickup_qr(payload: dict[str, Any], staff: User = Depends(require_roles("staff", "admin")), db: Session = Depends(get_db)):
     code = _pickup_code_from_input(str(payload.get("code", "")))
-    order_id = _validate_pickup_qr(code)
+    if code.startswith("pk_"):
+        pt = db.scalar(select(PickupToken).where(PickupToken.token_hash == hash_opaque_token(code)))
+        if pt is None:
+            raise HTTPException(status_code=404, detail="Pickup token not found")
+        if pt.used_at is not None:
+            raise HTTPException(status_code=409, detail="This pickup QR token has already been used.")
+        exp = pt.expires_at if pt.expires_at.tzinfo else pt.expires_at.replace(tzinfo=timezone.utc)
+        if exp <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=410, detail="Pickup QR code has expired. Refresh your QR in the app.")
+        order_id = pt.order_id
+    else:
+        order_id = _validate_pickup_qr(code)
     order = db.scalar(select(Order).where(Order.id == order_id).options(joinedload(Order.items), joinedload(Order.user)))
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
     if order.payment_status != PaymentStatus.PAID:
         raise HTTPException(status_code=409, detail="Payment is not verified. Do not hand over this order.")
-    if order.status == OrderStatus.COMPLETED:
+    if order.status in {OrderStatus.COMPLETED, OrderStatus.COLLECTED} or order.collected_at is not None:
         raise HTTPException(status_code=409, detail="This order has already been collected.")
-    if order.status != OrderStatus.READY:
+    if order.status not in {OrderStatus.READY, OrderStatus.PARTIALLY_COLLECTED}:
         raise HTTPException(status_code=409, detail=f"Order is {order.status.value}. It must be marked ready before collection.")
     return {
         "order_id": order.id, "token_number": order.token_number, "status": order.status.value,
@@ -2287,6 +2298,23 @@ async def _handle_realtime_ws(websocket: WebSocket) -> None:
                     parsed = json.loads(msg)
                     if isinstance(parsed, dict) and parsed.get("type") == "ping":
                         await websocket.send_json({"topic": "pong", "timestamp": datetime.now(timezone.utc).isoformat()})
+                    elif isinstance(parsed, dict) and parsed.get("type") == "auth" and isinstance(parsed.get("token"), str):
+                        # Authenticate via frame payload instead of putting JWT tokens in URL query strings.
+                        tok = parsed["token"].strip()
+                        with SessionLocal() as db:
+                            auth_user, auth_payload = decode_access_token(tok, db) if tok else (None, None)
+                            if auth_user is not None and auth_user.mfa_enabled and not (auth_payload or {}).get("mfa", True):
+                                auth_user = None
+                            client = build_ws_client_for_user(db, auth_user, websocket)
+                        hub.update_client(client)
+                        await websocket.send_json({
+                            "topic": "authenticated",
+                            "role": client.role,
+                            "userId": client.user_id,
+                            "counterIds": sorted(client.counter_ids),
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        })
+                        await flush_outbox_async()
                 except ValueError:
                     pass
     except WebSocketDisconnect:

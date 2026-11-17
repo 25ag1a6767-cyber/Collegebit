@@ -48,6 +48,11 @@ class RealtimeHub:
         with self._lock:
             self._clients = [c for c in self._clients if c.websocket is not websocket]
 
+    def update_client(self, client: ConnectedClient) -> None:
+        with self._lock:
+            self._clients = [c for c in self._clients if c.websocket is not client.websocket]
+            self._clients.append(client)
+
     async def broadcast_event(
         self,
         topic: str,

@@ -10,11 +10,11 @@ logger = logging.getLogger("ace_canteen.email")
 def send_email(to_address: str, subject: str, body: str) -> bool:
     settings = get_settings()
     if not settings.smtp_host:
-        if settings.environment.lower() in {"production", "prod"}:
-            logger.warning("SMTP is not configured; email '%s' was not sent. Set SMTP_HOST and related settings.", subject)
-        else:
-            # Development convenience only: lets you click the link from the console.
+        if settings.environment.lower() in {"development", "test"}:
+            # Local development/test convenience only; never log reset/verification links in staging or production.
             logger.info("DEV EMAIL (SMTP not configured) to=%s subject=%s\n%s", to_address, subject, body)
+        else:
+            logger.warning("SMTP is not configured; email '%s' was not sent. Set SMTP_HOST and related settings.", subject)
         return False
     message = EmailMessage()
     message["From"] = settings.smtp_from or settings.smtp_username

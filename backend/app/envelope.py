@@ -114,11 +114,23 @@ def http_exception_to_v1(request: Request, exc: HTTPException) -> JSONResponse:
     )
 
 
+def sanitize_validation_errors(errors: Any) -> list[dict[str, Any]]:
+    """Remove raw submitted values ('input') so failed passwords/secrets never leak in 422 details or logs."""
+    cleaned: list[dict[str, Any]] = []
+    for err in errors or []:
+        if isinstance(err, dict):
+            item = {k: v for k, v in err.items() if k != "input"}
+            cleaned.append(item)
+        else:
+            cleaned.append({"message": str(err)})
+    return cleaned
+
+
 def validation_exception_to_v1(request: Request, exc: RequestValidationError) -> JSONResponse:
     return fail(
         request,
         status_code=422,
         code="VALIDATION_ERROR",
         message="The request contains invalid fields.",
-        details=exc.errors(),
+        details=sanitize_validation_errors(exc.errors()),
     )

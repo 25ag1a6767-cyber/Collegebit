@@ -639,8 +639,17 @@ def forgot_password_request_v1(
     payload: ForgotPasswordIn,
     db: Session = Depends(get_db),
 ):
+    from app.main import _check_login_rate, _login_rate_key, _record_failed_login
+
     email_norm = payload.email.strip().lower()
-    user = db.scalar(select(User).where(User.email == email_norm))
+    rate_key = "pwforgot:" + _login_rate_key(request, email_norm)
+    retry_after = _check_login_rate(rate_key)
+    if retry_after:
+        raise ApiError(429, "RATE_LIMITED", "Too many password reset requests. Try again later.", headers={"Retry-After": str(retry_after)})
+    _record_failed_login(rate_key)
+
+    user = db.scalar(select(User).where(func.lower(User.email) == email_norm))
+    is_dev = get_settings().environment.lower() in {"development", "test"}
     if not user:
         return ok(request, {"submitted": True})
     raw_tok = f"rst_{user.id}_{secrets.token_urlsafe(24)}"
@@ -652,8 +661,10 @@ def forgot_password_request_v1(
     db.add(rec)
     record_audit(db, "auth.password_reset_requested", "user", user.id, user.id, {"method": "token_hash"})
     db.commit()
-    is_dev = get_settings().environment.lower() not in {"production", "prod"}
-    return ok(request, {"submitted": True, "sandboxResetToken": raw_tok if is_dev else None})
+    data: dict[str, Any] = {"submitted": True}
+    if is_dev:
+        data["sandboxResetToken"] = raw_tok
+    return ok(request, data)
 
 
 @router.post("/auth/password/reset")

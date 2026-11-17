@@ -456,6 +456,8 @@ def request_role_otp_v1(
     payload: GuestOtpRequestIn,
     db: Session = Depends(get_db),
 ):
+    from app.main import _check_login_rate, _login_rate_key, _record_failed_login
+
     ident = payload.phoneOrEmail.strip()
     role_cat = payload.roleCategory.lower()
 
@@ -471,6 +473,12 @@ def request_role_otp_v1(
             raise ApiError(422, "INVALID_COLLEGE_EMAIL", "Student/Faculty OTP requires a valid college email address.")
         ident = ident.lower()
 
+    rate_key = "otp_req:" + _login_rate_key(request, ident)
+    retry_after = _check_login_rate(rate_key)
+    if retry_after:
+        raise ApiError(429, "RATE_LIMITED", "Too many OTP requests. Try again later.", headers={"Retry-After": str(retry_after)})
+    _record_failed_login(rate_key)
+
     otp_code = f"{secrets.randbelow(900000) + 100000}"
     otp_hash = hashlib.sha256(otp_code.encode("utf-8")).hexdigest()
     challenge = GuestOtpChallenge(
@@ -483,17 +491,16 @@ def request_role_otp_v1(
     db.add(challenge)
     db.commit()
 
-    is_dev = get_settings().environment.lower() not in {"production", "prod"}
-    return ok(
-        request,
-        {
-            "identifier": ident,
-            "roleCategory": role_cat,
-            "expiresInSeconds": 600,
-            "deliveryChannel": "sms_otp" if role_cat == "guest" else "college_email_otp",
-            "sandboxOtpPreview": otp_code if is_dev else None,
-        },
-    )
+    is_dev = get_settings().environment.lower() in {"development", "test"}
+    data = {
+        "identifier": ident,
+        "roleCategory": role_cat,
+        "expiresInSeconds": 600,
+        "deliveryChannel": "sms_otp" if role_cat == "guest" else "college_email_otp",
+    }
+    if is_dev:
+        data["sandboxOtpPreview"] = otp_code
+    return ok(request, data)
 
 
 @router.post("/auth/guest-otp/verify")
@@ -502,8 +509,10 @@ def verify_role_otp_v1(
     payload: GuestOtpVerifyIn,
     db: Session = Depends(get_db),
 ):
+    from app.main import _check_login_rate, _clear_login_failures, _login_rate_key, _record_failed_login
+
     ident = payload.phoneOrEmail.strip()
-    if not "@" in ident:
+    if "@" not in ident:
         digits = re.sub(r"\D", "", ident)
         if len(digits) == 12 and digits.startswith("91"):
             digits = digits[2:]
@@ -511,13 +520,23 @@ def verify_role_otp_v1(
     else:
         ident = ident.lower()
 
+    rate_key = "otp_ver:" + _login_rate_key(request, ident)
+    retry_after = _check_login_rate(rate_key)
+    if retry_after:
+        raise ApiError(429, "RATE_LIMITED", "Too many invalid OTP attempts. Request a new code later.", headers={"Retry-After": str(retry_after)})
+
     ch = db.scalar(
         select(GuestOtpChallenge)
         .where(GuestOtpChallenge.phone_or_email == ident, GuestOtpChallenge.verified.is_(False))
         .order_by(GuestOtpChallenge.created_at.desc())
     )
     if not ch:
+        _record_failed_login(rate_key)
         raise ApiError(404, "OTP_CHALLENGE_NOT_FOUND", "No active OTP challenge found.")
+    if ch.attempts >= 5:
+        ch.verified = True
+        db.commit()
+        raise ApiError(429, "OTP_MAX_ATTEMPTS", "Maximum OTP verification attempts exceeded. Request a new code.")
     exp = ch.expires_at if ch.expires_at.tzinfo else ch.expires_at.replace(tzinfo=timezone.utc)
     if exp < datetime.now(timezone.utc):
         raise ApiError(410, "OTP_EXPIRED", "OTP code has expired.")
@@ -525,17 +544,26 @@ def verify_role_otp_v1(
     given_hash = hashlib.sha256(payload.otpCode.strip().encode("utf-8")).hexdigest()
     if not hmac.compare_digest(ch.otp_hash, given_hash):
         ch.attempts += 1
+        if ch.attempts >= 5:
+            ch.verified = True
         db.commit()
+        _record_failed_login(rate_key)
         raise ApiError(400, "INVALID_OTP", "Invalid OTP verification code.")
 
-    ch.verified = True
     synthetic_email = ident if "@" in ident else f"guest.{re.sub(r'\\D', '', ident)}@visitor.collegebits.edu"
-    user = db.scalar(select(User).where(User.email == synthetic_email))
+    user = db.scalar(select(User).where(func.lower(User.email) == synthetic_email.lower()))
+    if user is None and "@" not in ident:
+        user = db.scalar(select(User).where(User.phone == ident))
+    if user is not None and user.role != UserRole.STUDENT:
+        raise ApiError(403, "FORBIDDEN", "Staff and administrator accounts cannot sign in via guest OTP.")
+
+    _clear_login_failures(rate_key)
+    ch.verified = True
     if not user:
         user = User(
             full_name=payload.fullName.strip(),
             email=synthetic_email,
-            phone=ident if not "@" in ident else None,
+            phone=ident if "@" not in ident else None,
             password_hash=hash_password(secrets.token_urlsafe(24)),
             role=UserRole.STUDENT,
             is_active=True,

@@ -1620,6 +1620,7 @@ def _lookup_order_for_pickup(
     token_string: str | None = None,
     *,
     for_update: bool = False,
+    client_ip: str = "unknown",
 ) -> tuple[Order | None, PickupToken | None, str]:
     now = datetime.now(timezone.utc)
     today_str = datetime.now(ZoneInfo(get_settings().canteen_timezone)).date().isoformat()
@@ -1647,9 +1648,9 @@ def _lookup_order_for_pickup(
             pt_row = db.scalar(q)
             if pt_row is None:
                 raise ApiError(404, "INVALID_PICKUP_TOKEN", "Pickup QR token was not recognized.")
-            if pt_row.used_at is not None and for_update:
+            if pt_row.used_at is not None:
                 raise ApiError(409, "ORDER_ALREADY_COLLECTED", "This pickup QR token has already been redeemed.")
-            if as_utc(pt_row.expires_at) <= now and for_update:
+            if as_utc(pt_row.expires_at) <= now:
                 raise ApiError(410, "PICKUP_TOKEN_EXPIRED", "Pickup QR token has expired. Ask the student to refresh their QR or enter the manual code.")
             oq = select(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.counter), joinedload(Order.user), joinedload(Order.status_history), joinedload(Order.counter)).where(Order.id == pt_row.order_id)
             if for_update:
@@ -1672,16 +1673,30 @@ def _lookup_order_for_pickup(
             used_hash = hash_opaque_token(raw_tok)
         else:
             raise ApiError(422, "INVALID_PICKUP_TOKEN", "Unrecognized pickup token format.")
+
+        if order is not None and order_id is not None and order.id != order_id:
+            raise ApiError(409, "PICKUP_ORDER_MISMATCH", "Pickup QR token does not belong to the requested order.")
+        if order is not None and token_number is not None and order.token_number != token_number:
+            raise ApiError(409, "PICKUP_ORDER_MISMATCH", "Pickup QR token does not match the requested token number.")
     elif order_id is not None and manual_code and manual_code.strip():
+        from app.main import _check_login_rate, _clear_login_failures, _record_failed_login
+
+        m_key = f"manual_pickup:{order_id}:{client_ip}"
+        retry_after = _check_login_rate(m_key)
+        if retry_after:
+            raise ApiError(429, "RATE_LIMITED", "Too many invalid manual pickup code attempts.", headers={"Retry-After": str(retry_after)})
         oq = select(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.counter), joinedload(Order.user), joinedload(Order.status_history), joinedload(Order.counter)).where(Order.id == order_id)
         if for_update:
             oq = oq.with_for_update()
         order = db.scalar(oq)
         if order is None:
+            _record_failed_login(m_key)
             raise ApiError(404, "ORDER_NOT_FOUND", "Order not found.")
         supplied_code = manual_code.strip().upper()
         if not order.manual_pickup_code or not hmac.compare_digest(order.manual_pickup_code.upper(), supplied_code):
+            _record_failed_login(m_key)
             raise ApiError(400, "INVALID_MANUAL_PICKUP_CODE", "Manual pickup code does not match this order.")
+        _clear_login_failures(m_key)
         used_hash = hash_opaque_token(f"manual:{order.id}:{supplied_code}")
     elif order_id is not None:
         oq = select(Order).options(joinedload(Order.items).joinedload(OrderItem.product).joinedload(Product.counter), joinedload(Order.user), joinedload(Order.status_history), joinedload(Order.counter)).where(Order.id == order_id)
@@ -1716,6 +1731,7 @@ def inspect_pickup_order_v1(
         token_number=payload.tokenNumber,
         token_string=payload.tokenString,
         for_update=False,
+        client_ip=request.client.host if request.client else "unknown",
     )
     if order is None:
         raise ApiError(404, "ORDER_NOT_FOUND", "No matching order found for this token or QR.")
@@ -1849,6 +1865,7 @@ def verify_and_collect_pickup_v1(
         token_number=payload.tokenNumber,
         token_string=payload.tokenString,
         for_update=True,
+        client_ip=request.client.host if request.client else "unknown",
     )
 
     if order is None:
@@ -1887,9 +1904,11 @@ def verify_and_collect_pickup_v1(
     all_done = all(getattr(it, "is_collected", False) for it in order.items)
     prev_status = order.status.value
 
+    if pt_row is not None:
+        # Strict single-use guarantee: consume scanned pk_ token immediately on handover (including partial).
+        pt_row.used_at = now
+
     if all_done:
-        if pt_row is not None:
-            pt_row.used_at = now
 
         existing_pickup = db.scalar(select(Pickup).where(Pickup.order_id == order.id))
         if existing_pickup is None:
