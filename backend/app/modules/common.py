@@ -324,7 +324,18 @@ def notify_user(
         target_user_id=user_id,
     )
     if push:
-        send_web_push_to_user(db, user_id, title, message, {"entityType": entity_type, "entityId": str(entity_id) if entity_id else None})
+        send_web_push_to_user(
+            db,
+            user_id,
+            title,
+            message,
+            {
+                "entityType": entity_type,
+                "entityId": str(entity_id) if entity_id else None,
+                "url": "/customer/#my-orders-section",
+                "tag": f"{entity_type or 'canteen'}-{entity_id or '0'}-{notification_type}",
+            },
+        )
     return notif
 
 

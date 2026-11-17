@@ -385,7 +385,10 @@ def _apply_cache_policy(response, request: Request) -> None:
     from reusing stock/capacity data without revalidation. Short shared TTLs bound
     staleness without introducing a process-local cache that diverges across workers.
     """
-    if not request.url.path.startswith("/api/") or request.method != "GET":
+    if not request.url.path.startswith("/api/"):
+        return
+    if request.method != "GET":
+        response.headers.setdefault("Cache-Control", "no-store")
         return
 
     # Public endpoints must remain safe even if a frontend accidentally sends a token.
@@ -419,7 +422,11 @@ def _apply_security_headers(response: JSONResponse, request: Request):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    perm_policy = "camera=(self), microphone=(), geolocation=()" if request.url.path == "/staff" else "camera=(), microphone=(), geolocation=()"
+    perm_policy = (
+        "camera=(self), microphone=(), geolocation=()"
+        if request.url.path in {"/staff", "/staff/", "/customer", "/customer/"}
+        else "camera=(), microphone=(), geolocation=()"
+    )
     response.headers.setdefault("Permissions-Policy", perm_policy)
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     ws_schemes = "wss:" if IS_PRODUCTION else "ws: wss:"
@@ -483,6 +490,14 @@ async def public_token_display_board_page() -> FileResponse:
     """Public real-time TV token display board for cafeteria monitors (CampusBite AI v2.0)."""
     return FileResponse(FRONTEND_DIR / "display.html")
 
+@app.get("/offline.html", include_in_schema=False)
+async def offline_fallback_page() -> FileResponse:
+    return FileResponse(
+        FRONTEND_DIR / "offline.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
 @app.get("/manifest.webmanifest", include_in_schema=False)
 async def web_app_manifest() -> FileResponse:
     return FileResponse(
@@ -493,7 +508,11 @@ async def web_app_manifest() -> FileResponse:
 
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript", headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/customer/"})
+    return FileResponse(
+        FRONTEND_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/customer/"},
+    )
 
 APK_RELEASE_URL = "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk"
 IOS_IPA_RELEASE_URL = os.getenv(

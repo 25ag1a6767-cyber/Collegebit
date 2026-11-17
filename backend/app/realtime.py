@@ -154,7 +154,16 @@ def send_web_push_to_user(db: Session, user_id: int, title: str, body: str, data
     except Exception:
         return 0
     sent = 0
-    message = json.dumps({"title": title, "body": body, "data": data or {}})
+    payload_data = dict(data or {})
+    target_url = str(payload_data.get("url") or "/customer/#my-orders-section")
+    notif_tag = str(payload_data.get("tag") or "canteen-order-update")
+    message = json.dumps({
+        "title": title,
+        "body": body,
+        "url": target_url,
+        "tag": notif_tag,
+        "data": payload_data,
+    })
     for sub in subs:
         try:
             webpush(
