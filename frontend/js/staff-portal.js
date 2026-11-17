@@ -995,6 +995,31 @@
     }
 
     $("btn-refresh-kitchen-batches")?.addEventListener("click", loadKitchenBatches);
+    $("btn-staff-packing-labels")?.addEventListener("click", async () => {
+      try {
+        const res = await api("/kitchen/packing-list");
+        const box = $("staff-prepack-poster-box");
+        if (!box) return;
+        const c1 = (res.counter1IndividualLabels || []).slice(0, 8).map((l) => `${l.labelCode} (${l.stagingRack})`).join(", ");
+        const c2 = (res.counter2BulkCrateLabels || []).slice(0, 5).map((l) => `${l.labelCode} (${l.stagingRack})`).join(", ");
+        box.textContent = `Total Pre-Pack Labels: ${res.totalPrepackLabels || 0} | C1 Individual: ${c1 || "None"} | C2 Bulk Crates: ${c2 || "None"}`;
+        box.hidden = false;
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+    $("btn-staff-qr-poster")?.addEventListener("click", async () => {
+      try {
+        const res = await api("/qr/entrance-poster");
+        const box = $("staff-prepack-poster-box");
+        if (!box) return;
+        const locs = (res.placements || []).map((p) => `${p.location}: ${p.url}`).join(" | ");
+        box.textContent = `Browser-First Ordering URL (No app install needed): ${res.browserFirstOrderingUrl} — Zones: ${locs}`;
+        box.hidden = false;
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
 
     $("staff-group-pickup-form")?.addEventListener("submit", async (e) => {
       e.preventDefault();

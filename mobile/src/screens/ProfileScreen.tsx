@@ -20,18 +20,37 @@ export const ProfileScreen: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [prefs, setPrefs] = useState({ inAppEnabled: true, webPushEnabled: true, emailEnabled: false });
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
-      const res = await apiRequest<NotificationItem[] | { items: NotificationItem[] }>(
-        "/api/v1/users/me/notifications"
-      );
+      const [res, prefRes] = await Promise.all([
+        apiRequest<NotificationItem[] | { items: NotificationItem[] }>("/api/v1/users/me/notifications"),
+        apiRequest<{ inAppEnabled: boolean; webPushEnabled: boolean; emailEnabled: boolean }>(
+          "/api/v1/users/me/notification-preferences"
+        ).catch(() => null)
+      ]);
       setNotifications(Array.isArray(res) ? res : res.items || []);
+      if (prefRes) setPrefs(prefRes);
     } catch {
       // Ignore
     }
   }, []);
+
+  const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled") => {
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefs(next);
+    try {
+      await apiRequest("/api/v1/users/me/notification-preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ [key]: next[key] })
+      });
+      setStatusMsg("Notification delivery preference saved.");
+    } catch {
+      setPrefs(prefs);
+    }
+  };
 
   useEffect(() => {
     loadNotifications();
@@ -148,6 +167,19 @@ export const ProfileScreen: React.FC = () => {
             <Text style={styles.notifBody}>{n.message}</Text>
           </View>
         ))}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Notification Channel Preferences</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("inAppEnabled")}>
+          <Text style={styles.primaryBtnText}>In-App Alerts: {prefs.inAppEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("webPushEnabled")}>
+          <Text style={styles.primaryBtnText}>Push Alerts: {prefs.webPushEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("emailEnabled")}>
+          <Text style={styles.primaryBtnText}>Email Receipts: {prefs.emailEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
       </View>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>

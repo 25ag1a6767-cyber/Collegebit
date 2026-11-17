@@ -424,6 +424,18 @@
             </table>
           </div>
         </div>
+
+        <div class="section-card">
+          <h3>Item Fulfillment &amp; Parcel Packaging Configuration</h3>
+          <form id="p89-fulfillment-form" class="split-2">
+            <label>Menu Item ID<input id="p89-ful-item-id" type="number" min="1" value="1" required /></label>
+            <label>Parcel Packaging Fee (₹)<input id="p89-ful-fee" type="number" step="1" min="0" value="5" required /></label>
+            <label>Allow Parcel<select id="p89-ful-parcel"><option value="true" selected>Yes</option><option value="false">No</option></select></label>
+            <label>Allow Eat Now<select id="p89-ful-rte"><option value="true" selected>Yes</option><option value="false">No</option></select></label>
+            <label>Packaging Instructions<input id="p89-ful-notes" type="text" placeholder="Seal leak-proof lid + tissues" /></label>
+            <div><button type="submit" class="btn btn-primary">Save Fulfillment Rule</button></div>
+          </form>
+        </div>
       </section>
 
       <!-- ===================================================================== -->
@@ -591,6 +603,28 @@
           <div class="section-card">
             <div class="card-head"><h2>Canteen Crowd, Support SLA &amp; Multi-College Governance</h2></div>
             <div id="admin-saas-governance-box" class="muted">Loading crowd &amp; governance summary…</div>
+          </div>
+        </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Strict No-Refunds Payment Incidents Desk</h2></div>
+            <p class="muted">All failed/unfulfilled paid transactions stay recorded; resolve incidents cleanly after administrative settlement.</p>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Incident</th><th>Type</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="admin-incidents-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="section-card">
+            <div class="card-head"><h2>Customer Support Ticket Triage &amp; Resolution</h2></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Ticket</th><th>Subject</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="admin-tickets-tbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>

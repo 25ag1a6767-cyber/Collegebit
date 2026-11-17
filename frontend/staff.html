@@ -93,8 +93,13 @@
         <div class="panel-card" id="staff-batch-prep-card">
           <div class="panel-head">
             <h2>Confirmed Batch Preparation &amp; Bulk Order Packing (6-Stage Workflow)</h2>
-            <button type="button" class="btn btn-outline" id="btn-refresh-kitchen-batches">Refresh Batch Demand</button>
+            <div class="inline-row">
+              <button type="button" class="btn btn-outline" id="btn-refresh-kitchen-batches">Refresh Batch Demand</button>
+              <button type="button" class="btn btn-outline" id="btn-staff-packing-labels">Pre-Pack Labels</button>
+              <button type="button" class="btn btn-outline" id="btn-staff-qr-poster">Entrance QR Poster URLs</button>
+            </div>
           </div>
+          <div id="staff-prepack-poster-box" class="muted" hidden></div>
           <p class="muted">Displays ONLY verified/paid demand across individual orders and bulk allocations. Unpaid drafts are excluded.</p>
           <div class="data-table-wrap">
             <table class="data-table">

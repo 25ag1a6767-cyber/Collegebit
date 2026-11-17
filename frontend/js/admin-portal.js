@@ -1073,6 +1073,67 @@
       }
     } catch { /* non-blocking if permissions scoped */ }
 
+    try {
+      const [incRes, tckRes] = await Promise.all([
+        apiFetch("/api/v1/admin/payment-incidents").catch(() => ({ items: [] })),
+        apiFetch("/api/v1/support/tickets").catch(() => ({ items: [] }))
+      ]);
+      const incFrag = document.createDocumentFragment();
+      (incRes.items || []).slice(0, 30).forEach((inc) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", "mono", "#" + inc.id));
+        tr.appendChild(el("td", "", inc.incidentType));
+        tr.appendChild(el("td", "mono", formatINRFromPaise(inc.amountPaise || 0)));
+        tr.appendChild(el("td", "", inc.status));
+        const actTd = el("td");
+        if (inc.status !== "resolved") {
+          const btn = el("button", "btn btn-primary", "Resolve Incident");
+          btn.type = "button";
+          btn.addEventListener("click", async () => {
+            await apiFetch("/api/v1/admin/payment-incidents/" + inc.id + "/resolve", {
+              method: "POST",
+              body: { status: "resolved", resolutionNotes: "Resolved administratively under strict no-refund policy" }
+            });
+            showAlert("Payment incident #" + inc.id + " resolved.", "success");
+            await loadOperationsModule();
+          });
+          actTd.appendChild(btn);
+        } else {
+          actTd.textContent = "Resolved";
+        }
+        tr.appendChild(actTd);
+        incFrag.appendChild(tr);
+      });
+      if ($("admin-incidents-tbody")) $("admin-incidents-tbody").replaceChildren(incFrag);
+
+      const tckFrag = document.createDocumentFragment();
+      (tckRes.items || []).slice(0, 30).forEach((t) => {
+        const tr = el("tr");
+        tr.appendChild(el("td", "mono", t.ticketNumber));
+        tr.appendChild(el("td", "", t.subject));
+        tr.appendChild(el("td", "", t.status));
+        const actTd = el("td");
+        if (!["RESOLVED", "CLOSED"].includes(t.status)) {
+          const btn = el("button", "btn btn-outline", "Resolve Ticket");
+          btn.type = "button";
+          btn.addEventListener("click", async () => {
+            await apiFetch("/api/v1/support/tickets/" + t.id, {
+              method: "PATCH",
+              body: { status: "RESOLVED", resolutionSummary: "Addressed and closed by canteen administration." }
+            });
+            showAlert("Support ticket " + t.ticketNumber + " resolved.", "success");
+            await loadOperationsModule();
+          });
+          actTd.appendChild(btn);
+        } else {
+          actTd.textContent = t.status;
+        }
+        tr.appendChild(actTd);
+        tckFrag.appendChild(tr);
+      });
+      if ($("admin-tickets-tbody")) $("admin-tickets-tbody").replaceChildren(tckFrag);
+    } catch { /* non-blocking */ }
+
     // Orders table
     const oFrag = document.createDocumentFragment();
     (ordRes.items || []).forEach((o) => {
@@ -1807,6 +1868,27 @@
           const r = await apiFetch("/api/v1/enterprise/ai/compliance/query", { method: "POST", body: { question: q } });
           const summary = (r.citations || []).map((c) => "[" + c.policy + "] " + c.detail).join(" | ");
           $("p89-compliance-answer").textContent = summary || "No policy match found.";
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-fulfillment-form")) {
+      $("p89-fulfillment-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const itemId = Number($("p89-ful-item-id").value || 1);
+          await apiFetch("/api/v1/menu/items/" + itemId + "/fulfillment", {
+            method: "PUT",
+            body: {
+              supportsParcel: $("p89-ful-parcel").value === "true",
+              supportsReadyToEat: $("p89-ful-rte").value === "true",
+              packagingChargePaise: Math.round(Number($("p89-ful-fee").value || 0) * 100),
+              packagingInstructions: $("p89-ful-notes").value.trim() || null
+            }
+          });
+          showAlert("Fulfillment & parcel packaging rules saved for Item #" + itemId + ".", "success");
         } catch (err) {
           showAlert(err.message, "error");
         }
