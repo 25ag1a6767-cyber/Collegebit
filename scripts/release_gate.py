@@ -38,6 +38,7 @@ def main() -> int:
     results.append(run("Frontend JavaScript syntax (v1-platform.js)", ["node", "--check", "frontend/js/v1-platform.js"], required=True))
     results.append(run("Frontend JavaScript syntax (charts-v2.js)", ["node", "--check", "frontend/js/charts-v2.js"], required=True))
     results.append(run("Frontend JavaScript syntax (staff-portal.js)", ["node", "--check", "frontend/js/staff-portal.js"], required=True))
+    results.append(run("Vendor QR decoder syntax (jsQR.js)", ["node", "--check", "frontend/js/vendor/jsQR.js"], required=True))
     results.append(run("Frontend JavaScript syntax (admin-portal.js)", ["node", "--check", "frontend/js/admin-portal.js"], required=True))
     results.append(run("Service worker syntax (sw.js)", ["node", "--check", "frontend/sw.js"], required=True))
     if args.browser:

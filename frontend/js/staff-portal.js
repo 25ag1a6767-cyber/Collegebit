@@ -673,8 +673,28 @@
             }
           } catch (_) {}
         }, 600);
+      } else if (typeof window.jsQR === "function") {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        showBanner("Camera live (iOS Safari / Firefox QR auto-scan enabled) — point camera at student QR code.", "");
+        state.scanTimer = setInterval(async () => {
+          try {
+            if (!ctx || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const decoded = window.jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" });
+            if (decoded && decoded.data) {
+              const raw = decoded.data;
+              stopCamera();
+              $("qr-token-input").value = raw;
+              await inspectPickupPayload({ pickupToken: raw });
+            }
+          } catch (_) {}
+        }, 350);
       } else {
-        showBanner("Camera live (iOS Safari uses manual QR token or 6-char backup code when BarcodeDetector is unavailable).", "");
+        showBanner("Camera live — paste QR token or enter the 6-char manual code if auto-scan is unavailable.", "");
       }
     } catch (err) {
       const name = err?.name || "";
