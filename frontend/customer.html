@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#12372a">
   <meta name="description" content="ACE Canteen — live campus pre-order, UPI checkout, QR pickup and kitchen operations platform.">
   <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png">
   <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-title" content="CollegeBits">
@@ -22,18 +23,19 @@
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/v1-platform.css">
   <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+  <script src="/config.js" defer></script>
   <script src="/js/app.js" defer></script>
   <script src="/js/v1-platform.js" defer></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="/customer/" aria-label="ACE Canteen customer app home">
+    <a class="brand" href="/customer/">
       <img class="brand-logo" src="/assets/ace-logo.png" alt="ACE Engineering College logo">
       <span><strong>ACE Canteen</strong><small>Campus food &amp; essentials</small></span>
     </a>
     <div class="header-account">
       <span class="ws-live-pill offline" id="v1-ws-status" title="Real-time order &amp; queue stream"><span class="ws-dot"></span><span id="v1-ws-label">Connecting…</span></span>
-      <button class="install-app-button" id="install-app-button" type="button" aria-label="Install CollegeBits app on your phone" hidden>📲 Install app</button>
+      <button class="install-app-button" id="install-app-button" type="button" aria-label="Install app on your phone" hidden>📲 Install app</button>
       <a class="header-account-link" id="header-account-link" href="#account">Sign in / Account</a>
       <span class="header-account-user" id="header-account-user" hidden></span>
     </div>
@@ -91,7 +93,7 @@
               <button type="button" class="link-button" id="auth-forgot">Forgot your password?</button>
             </form>
             <div class="v1-mini-card" id="v1-guest-otp-box">
-              <h4>Visitor / Faculty Quick OTP Sign-In</h4>
+              <h2 class="mini-card-heading">Visitor / Faculty Quick OTP Sign-In</h2>
               <div class="form-pair">
                 <input id="v1-otp-contact" type="text" placeholder="Email or Phone for OTP">
                 <input id="v1-otp-code" type="text" placeholder="OTP Code">
@@ -108,7 +110,7 @@
               <strong id="account-name"></strong>
               <span id="account-role"></span>
               <div id="v1-profile-security" class="v1-mini-card">
-                <h4>Profile, Dietary &amp; Security</h4>
+                <h2 class="mini-card-heading">Profile, Dietary &amp; Security</h2>
                 <div class="form-pair">
                   <label>Phone<input id="v1-profile-phone" type="tel" maxlength="20" placeholder="+91 9876543210"></label>
                   <label>Dietary preference

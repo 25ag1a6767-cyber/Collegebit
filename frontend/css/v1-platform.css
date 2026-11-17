@@ -671,7 +671,12 @@
   }
 }
 
-/* Mobile Install Sticky / Top Banner */
+.mini-card-heading {
+  font-size: 0.96rem;
+  margin: 0 0 8px;
+}
+
+/* Mobile Install Floating Overlay Banner (prevents CLS layout shifts) */
 .pwa-install-banner {
   background: #0f3d2e;
   color: #ffffff;
@@ -680,10 +685,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  border-bottom: 2px solid #166534;
-  box-shadow: 0 4px 14px rgba(15, 61, 46, 0.25);
-  z-index: 50;
-  position: relative;
+  border: 1px solid #166534;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(15, 61, 46, 0.28);
+  z-index: 940;
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  top: calc(env(safe-area-inset-top, 0px) + 74px);
 }
 .pwa-install-banner[hidden] {
   display: none !important;
