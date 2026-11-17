@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+import json
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -38,6 +39,7 @@ from app.modules.common import (
     get_effective_staff_permissions,
     notify_counter_staff,
     notify_user,
+    parse_json_safe,
     record_audit,
     record_order_status_change,
     record_product_stock_movement,
@@ -302,6 +304,36 @@ def start_staff_order_v1(
     return ok(request, {"order": out})
 
 
+@router.post("/orders/{order_id}/verify-packing")
+def verify_staff_order_parcel_packing_v1(
+    order_id: int,
+    request: Request,
+    payload: OrderTransitionNoteIn | None = None,
+    staff: User = Depends(require_roles("staff", "admin")),
+    db: Session = Depends(get_db),
+):
+    assert_staff_permission(staff, "canUpdatePrep")
+    order = _load_staff_order_locked(db, order_id, staff)
+    now = datetime.now(timezone.utc)
+    from app.models import OrderItemFulfillment
+    f_rows = db.scalars(select(OrderItemFulfillment).where(OrderItemFulfillment.order_id == order.id)).all()
+    for fr in f_rows:
+        if fr.fulfillment_type == "PARCEL":
+            fr.packing_status = "packed"
+            fr.packing_verified = True
+            fr.packed_by_staff_id = staff.id
+            fr.packed_at = now
+    for item in order.items:
+        cust = parse_json_safe(item.customizations_json, {})
+        if str(cust.get("_fulfillmentType", "")).upper() == "PARCEL":
+            cust["_packingVerified"] = True
+            item.customizations_json = json.dumps(cust, separators=(",", ":"))
+    record_order_status_change(db, order, order.status.value, "PACKED", staff.id, (payload.note if payload else None) or "Parcel items packed & verified")
+    record_audit(db, "staff.order_packed", "order", order.id, staff.id, {"counter_id": order.counter_id})
+    commit_and_flush_outbox(db)
+    return ok(request, {"order": serialize_order_v1(order, include_customer=True, include_history=True)})
+
+
 @router.post("/orders/{order_id}/ready")
 def mark_staff_order_ready_v1(
     order_id: int,
@@ -315,6 +347,14 @@ def mark_staff_order_ready_v1(
     order = _load_staff_order_locked(db, order_id, staff)
     if order.status not in {OrderStatus.CONFIRMED, OrderStatus.ACCEPTED, OrderStatus.PREPARING}:
         raise ApiError(409, "INVALID_STATE_TRANSITION", f"Cannot mark READY from state '{order.status.value}'.")
+    for item in order.items:
+        cust = parse_json_safe(item.customizations_json, {})
+        if str(cust.get("_fulfillmentType", "")).upper() == "PARCEL" and not bool(cust.get("_packingVerified", False)):
+            raise ApiError(
+                409,
+                "PACKING_VERIFICATION_REQUIRED",
+                f"Parcel item '{item.product_name}' must complete packing verification before the order can be marked READY.",
+            )
     now = datetime.now(timezone.utc)
     prev = order.status.value
     order.status = OrderStatus.READY

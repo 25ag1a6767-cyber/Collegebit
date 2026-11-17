@@ -219,12 +219,15 @@ function addToCart(product) {
 }
 function checkoutPayload(overrides = {}) {
   const counterValue = document.querySelector('#v1-checkout-counter')?.value || '';
+  const fulfillmentType = document.querySelector('#v1-checkout-fulfillment')?.value || 'READY_TO_EAT';
   return {
     items: cartLines().map(line => ({
       menuItemId: line.product_id,
       quantity: line.quantity,
+      fulfillmentType,
       customizations: {}
     })),
+    fulfillmentType,
     counterId: counterValue ? Number(counterValue) : null,
     pickupSlot: document.querySelector('#pickup-slot')?.value || null,
     notes: document.querySelector('#checkout-notes')?.value.trim() || null,
@@ -270,6 +273,8 @@ async function reviewCart() {
   const quoteBreakdown = document.querySelector('#v1-quote-breakdown');
   if (quoteBreakdown) quoteBreakdown.hidden = false;
   document.querySelector('#v1-q-subtotal').textContent = money(Number(data.subtotalPaise) / 100);
+  const pkgEl = document.querySelector('#v1-q-packaging');
+  if (pkgEl) pkgEl.textContent = money(Number(data.packagingChargePaise || 0) / 100);
   document.querySelector('#v1-q-discount').textContent = '−' + money(Number(data.couponDiscountPaise ?? data.discountPaise) / 100);
   document.querySelector('#v1-q-rewards').textContent = '−' + money(Number(data.loyaltyDiscountPaise || 0) / 100);
   document.querySelector('#v1-q-tax').textContent = money(Number(data.taxPaise) / 100);

@@ -855,7 +855,14 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
                 "name": item.product_name,
                 "unitPricePaise": item.unit_price_paise if item.unit_price_paise is not None else rupees_to_paise(item.unit_price),
                 "quantity": item.quantity,
-                "customizations": parse_json_safe(item.customizations_json, {}),
+                "customizations": {
+                    k: v
+                    for k, v in parse_json_safe(item.customizations_json, {}).items()
+                    if not str(k).startswith("_")
+                },
+                "fulfillmentType": str(parse_json_safe(item.customizations_json, {}).get("_fulfillmentType", "READY_TO_EAT")).upper(),
+                "packagingChargePaise": int(parse_json_safe(item.customizations_json, {}).get("_packagingChargePaise", 0) or 0),
+                "packingVerified": bool(parse_json_safe(item.customizations_json, {}).get("_packingVerified", True)),
                 "lineTotalPaise": item.line_total_paise if item.line_total_paise is not None else rupees_to_paise(item.line_total),
                 "counterId": item.product.counter_id if getattr(item, "product", None) else None,
                 "counterName": item.product.counter.name if (getattr(item, "product", None) and item.product.counter) else None,
@@ -866,6 +873,9 @@ def serialize_order_v1(order: Order, *, include_customer: bool = False, include_
             for item in order.items
         ],
     }
+    out["packagingChargePaise"] = sum(it["packagingChargePaise"] for it in out["items"])
+    out["hasParcelItems"] = any(it["fulfillmentType"] == "PARCEL" for it in out["items"])
+    out["allParcelItemsPacked"] = all(it["packingVerified"] for it in out["items"] if it["fulfillmentType"] == "PARCEL")
     if include_customer and order.user is not None:
         raw_phone = order.user.phone or ""
         masked_phone = (raw_phone[:3] + "****" + raw_phone[-3:]) if len(raw_phone) >= 7 else raw_phone

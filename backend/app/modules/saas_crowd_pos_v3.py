@@ -846,9 +846,23 @@ def _assert_tenant_isolation(
             "TENANT_ISOLATION_VIOLATION",
             f"Access denied: User #{user.id} is not an authorized member of tenant '{tenant.tenant_slug}'.",
         )
-    if require_admin_role and membership.tenant_role not in {"college_admin", "canteen_manager"}:
+    if require_admin_role and membership.tenant_role not in {"college_owner", "college_admin", "canteen_manager", "finance_admin"}:
         raise ApiError(403, "TENANT_ROLE_FORBIDDEN", "College administrator role required for this tenant operation.")
     return tenant
+
+
+def _require_platform_operator(
+    user: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+) -> User:
+    from app.models import PlatformSuperAdmin
+    explicit = db.scalar(select(PlatformSuperAdmin).where(PlatformSuperAdmin.user_id == user.id, PlatformSuperAdmin.is_active.is_(True)))
+    if explicit is not None:
+        return user
+    is_tenant_only = db.scalar(select(SaasTenantMember.id).where(SaasTenantMember.user_id == user.id))
+    if is_tenant_only is not None:
+        raise ApiError(403, "PLATFORM_SUPER_ADMIN_REQUIRED", "College tenant admins cannot perform platform super-admin operations.")
+    return user
 
 
 def _serialize_tenant(t: SaasTenant) -> dict[str, Any]:
@@ -881,7 +895,7 @@ def _serialize_tenant(t: SaasTenant) -> dict[str, Any]:
 def create_saas_tenant_v1(
     request: Request,
     payload: SaasTenantCreateIn,
-    super_admin: User = Depends(require_roles("admin")),
+    super_admin: User = Depends(_require_platform_operator),
     db: Session = Depends(get_db),
 ):
     slug = payload.tenantSlug.strip().lower()
@@ -943,7 +957,7 @@ def create_saas_tenant_v1(
 @router.get("/saas/tenants")
 def list_saas_tenants_v1(
     request: Request,
-    _: User = Depends(require_roles("admin")),
+    _: User = Depends(_require_platform_operator),
     db: Session = Depends(get_db),
 ):
     rows = db.scalars(select(SaasTenant).order_by(SaasTenant.id.asc())).all()
@@ -1202,7 +1216,7 @@ def list_tenant_scoped_orders_v1(
 def suspend_saas_tenant_v1(
     tenant_id: int,
     request: Request,
-    super_admin: User = Depends(require_roles("admin")),
+    super_admin: User = Depends(_require_platform_operator),
     db: Session = Depends(get_db),
 ):
     tenant = db.get(SaasTenant, tenant_id)
@@ -1218,7 +1232,7 @@ def suspend_saas_tenant_v1(
 def reactivate_saas_tenant_v1(
     tenant_id: int,
     request: Request,
-    super_admin: User = Depends(require_roles("admin")),
+    super_admin: User = Depends(_require_platform_operator),
     db: Session = Depends(get_db),
 ):
     tenant = db.get(SaasTenant, tenant_id)

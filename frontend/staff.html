@@ -188,6 +188,46 @@
             <button type="submit" class="btn btn-primary">Verify &amp; Record Group Handover</button>
           </form>
         </div>
+
+        <div class="two-col">
+          <div class="panel-card">
+            <div class="panel-head"><h3>4. Walk-In Canteen POS (Cash / In-Person)</h3></div>
+            <form id="staff-walkin-pos-form" class="staff-form-group">
+              <label>Customer Category
+                <select id="pos-customer-category">
+                  <option value="student">Student (Campus Pricing)</option>
+                  <option value="faculty">Faculty (Campus Pricing)</option>
+                  <option value="guest">External Guest / Visitor (+15% Guest Tier)</option>
+                </select>
+              </label>
+              <label>Payment Method
+                <select id="pos-payment-method">
+                  <option value="cash">Walk-In Cash</option>
+                  <option value="upi_pos">Counter UPI</option>
+                </select>
+              </label>
+              <label>Menu Item ID<input id="pos-item-id" type="number" min="1" required value="1"></label>
+              <label>Quantity<input id="pos-item-qty" type="number" min="1" max="50" required value="1"></label>
+              <button type="submit" class="btn btn-primary">Record Walk-In Sale</button>
+            </form>
+          </div>
+
+          <div class="panel-card">
+            <div class="panel-head"><h3>5. Food Safety &amp; Temperature Log</h3></div>
+            <form id="staff-food-safety-form" class="staff-form-group">
+              <label>Equipment / Chiller<input id="fs-equipment" type="text" required placeholder="e.g. Chiller #1"></label>
+              <label>Storage Zone
+                <select id="fs-zone">
+                  <option value="cold_storage">Cold Storage (0–5 °C)</option>
+                  <option value="freezer">Freezer (&lt;= -15 °C)</option>
+                  <option value="hot_holding">Hot Holding (&gt;= 60 °C)</option>
+                </select>
+              </label>
+              <label>Temperature (°C)<input id="fs-temp" type="number" step="0.1" required value="3.5"></label>
+              <button type="submit" class="btn btn-outline">Record Temperature Log</button>
+            </form>
+          </div>
+        </div>
       </section>
 
       <!-- TAB 2.5: Smart Token Management Dashboard (Part 3) -->

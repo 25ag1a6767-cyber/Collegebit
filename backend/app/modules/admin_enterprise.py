@@ -75,7 +75,7 @@ def get_admin_runtime_diagnostics_v1(
     db: Session = Depends(get_db),
 ):
     cfg = get_settings()
-    head_revision = "0023_collegebits_v3_no_refunds"
+    head_revision = "0024_phase60_to_85_enterprise"
     database: dict[str, Any] = {
         "available": False,
         "schemaReady": False,

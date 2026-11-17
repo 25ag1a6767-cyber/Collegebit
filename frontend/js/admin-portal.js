@@ -1056,6 +1056,21 @@
       apiFetch("/api/v1/admin/payments/reconciliation"),
       apiFetch("/api/v1/admin/feedback")
     ]);
+    try {
+      const [settleRes, crowdRes, slaRes] = await Promise.all([
+        apiFetch("/api/v1/admin/settlements/daily"),
+        apiFetch("/api/v1/admin/crowd-analytics"),
+        apiFetch("/api/v1/support/sla-metrics")
+      ]);
+      if ($("admin-daily-settlement-box")) {
+        $("admin-daily-settlement-box").textContent =
+          `Gross: ${formatINRFromPaise(settleRes.grossSalesPaise)} · Verified Online: ${formatINRFromPaise(settleRes.verifiedOnlineCollectionsPaise)} · Walk-In Cash: ${formatINRFromPaise(settleRes.walkinCashCollectionsPaise)} · Net Vendor Settlement: ${formatINRFromPaise(settleRes.netVendorSettlementPaise)}`;
+      }
+      if ($("admin-saas-governance-box")) {
+        $("admin-saas-governance-box").textContent =
+          `Completed Pickups: ${crowdRes.completedPickupsTotal || 0} (C1: ${crowdRes.counterUtilization?.counter1IndividualPickups || 0}, C2: ${crowdRes.counterUtilization?.counter2BulkPickups || 0}) · Support Open Tickets: ${slaRes.openCount || 0} / Resolved: ${slaRes.resolvedCount || 0}`;
+      }
+    } catch { /* non-blocking if permissions scoped */ }
 
     // Orders table
     const oFrag = document.createDocumentFragment();

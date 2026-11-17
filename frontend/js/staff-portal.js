@@ -334,6 +334,13 @@
       }
 
       if (raw === "accepted" || raw === "preparing") {
+        if (o.hasParcelItems && !o.allParcelItemsPacked) {
+          const btnPack = el("button", "btn btn-accent", "Verify Parcel Packing");
+          btnPack.type = "button";
+          btnPack.disabled = perms.canUpdatePrep === false;
+          btnPack.addEventListener("click", () => transitionOrder(o.id, "verify-packing"));
+          actions.appendChild(btnPack);
+        }
         const btnReady = el("button", "btn btn-ok", "Mark Ready");
         btnReady.type = "button";
         btnReady.disabled = perms.canUpdatePrep === false;
@@ -1007,6 +1014,48 @@
         );
         e.target.reset();
         await loadKitchenBatches();
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
+    $("staff-walkin-pos-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const res = await api("/pos/walkin-orders", {
+          method: "POST",
+          body: {
+            counterId: 1,
+            customerCategory: $("pos-customer-category").value,
+            paymentMethod: $("pos-payment-method").value,
+            items: [{ menuItemId: Number($("pos-item-id").value || 1), quantity: Number($("pos-item-qty").value || 1) }]
+          }
+        });
+        showBanner(`Walk-in sale recorded: ${res.posReceiptNumber} (${rupeesFromPaise(res.totalPaise)})`, "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
+    $("staff-food-safety-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const res = await api("/food-safety/temperatures", {
+          method: "POST",
+          body: {
+            equipmentOrItem: $("fs-equipment").value.trim(),
+            storageZone: $("fs-zone").value,
+            temperatureCelsius: Number($("fs-temp").value),
+            sourceType: "manual"
+          }
+        });
+        showBanner(
+          res.withinSafeRange
+            ? `Temperature logged safely (${res.temperatureCelsius} °C).`
+            : `ALERT: Unsafe temperature (${res.temperatureCelsius} °C) logged for corrective action!`,
+          res.withinSafeRange ? "success" : "error"
+        );
+        e.target.reset();
       } catch (err) {
         showBanner(err.message, "error");
       }

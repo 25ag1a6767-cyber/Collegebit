@@ -302,6 +302,7 @@ def handle_late_captured_payment(
 class OrderLineInputV1(BaseModel):
     menuItemId: int = Field(gt=0)
     quantity: int = Field(ge=1, le=50)
+    fulfillmentType: str | None = Field(default=None, pattern="^(PARCEL|READY_TO_EAT|parcel|ready_to_eat)$")
     customizations: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -313,6 +314,7 @@ class OrderQuoteOrCreateIn(BaseModel):
     couponCode: str | None = Field(default=None, max_length=50)
     loyaltyPointsRedeemed: int = Field(default=0, ge=0, le=1_000_000)
     payWithWallet: bool = False
+    fulfillmentType: str | None = Field(default=None, pattern="^(PARCEL|READY_TO_EAT|parcel|ready_to_eat)$")
     notes: str | None = Field(default=None, max_length=500)
     idempotencyKey: str | None = Field(default=None, max_length=100)
 
@@ -367,7 +369,12 @@ def _extract_requested_lines(db: Session, user: User, payload: OrderQuoteOrCreat
             OrderLineInputV1(
                 menuItemId=ci.product_id,
                 quantity=ci.quantity,
-                customizations=parse_json_safe(ci.customizations_json, {}),
+                fulfillmentType=parse_json_safe(ci.customizations_json, {}).get("_fulfillmentType"),
+                customizations={
+                    k: v
+                    for k, v in parse_json_safe(ci.customizations_json, {}).items()
+                    if not str(k).startswith("_")
+                },
             )
             for ci in cart.items
         ]
@@ -413,18 +420,34 @@ def quote_order_v1(
 
     quote_lines = []
     subtotal_paise = 0
+    total_packaging_paise = 0
     max_prep = 6
+    from app.models import KitchenStation, ProductFulfillmentConfig
     for ln in lines_in:
         p = by_id[ln.menuItemId]
         extra_paise, cleaned_cust = compute_customization_extra_paise(p, ln.customizations)
+        f_type = str(ln.fulfillmentType or payload.fulfillmentType or "READY_TO_EAT").upper()
+        f_cfg = db.scalar(select(ProductFulfillmentConfig).where(ProductFulfillmentConfig.product_id == p.id))
+        pkg_unit_paise = 0
+        if f_cfg is not None:
+            if f_type == "PARCEL" and not f_cfg.supports_parcel:
+                raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{p.name} does not support PARCEL takeaway.")
+            if f_type == "READY_TO_EAT" and not f_cfg.supports_ready_to_eat:
+                raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{p.name} is only available as PARCEL takeaway.")
+            if f_type == "PARCEL":
+                pkg_unit_paise = int(f_cfg.packaging_charge_paise or 0)
         unit_p = p.effective_price_paise + extra_paise
-        line_p = unit_p * ln.quantity
+        pkg_line_paise = pkg_unit_paise * ln.quantity
+        line_p = (unit_p * ln.quantity) + pkg_line_paise
         subtotal_paise += line_p
+        total_packaging_paise += pkg_line_paise
         max_prep = max(max_prep, p.preparation_minutes or 10)
         quote_lines.append({
             "menuItemId": p.id,
             "itemName": p.name,
             "quantity": ln.quantity,
+            "fulfillmentType": f_type,
+            "packagingChargePaise": pkg_line_paise,
             "customizations": cleaned_cust,
             "unitPricePaise": unit_p,
             "lineTotalPaise": line_p,
@@ -454,6 +477,7 @@ def quote_order_v1(
             "pickupSlotEnd": slot_end,
             "items": quote_lines,
             "subtotalPaise": subtotal_paise,
+            "packagingChargePaise": total_packaging_paise,
             "discountPaise": discount_paise,
             "couponDiscountPaise": discount_paise - loyalty_discount_paise,
             "loyaltyDiscountPaise": loyalty_discount_paise,
@@ -572,17 +596,46 @@ def _execute_create_order_v1(
             if not in_win or (win_qty or 0) < total_q or p.stock_quantity < total_q:
                 raise ApiError(409, "ITEM_UNAVAILABLE", f"{p.name} is unavailable or has insufficient stock.")
 
-        resolved_lines: list[tuple[Product, int, int, int, dict[str, Any]]] = []
+        resolved_lines: list[tuple[Product, int, int, int, dict[str, Any], str, int, int | None, str | None]] = []
         subtotal_paise = 0
         max_prep = 6
+        from app.models import KitchenStation, OrderItemFulfillment, ProductFulfillmentConfig
         for ln in lines_in:
             p = by_id[ln.menuItemId]
             extra_paise, cleaned_cust = compute_customization_extra_paise(p, ln.customizations)
+            f_type = str(ln.fulfillmentType or payload.fulfillmentType or "READY_TO_EAT").upper()
+            f_cfg = db.scalar(select(ProductFulfillmentConfig).where(ProductFulfillmentConfig.product_id == p.id))
+            pkg_unit_paise = 0
+            station_id = None
+            pkg_instr = None
+            if f_cfg is not None:
+                if f_type == "PARCEL" and not f_cfg.supports_parcel:
+                    raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{p.name} does not support PARCEL takeaway.")
+                if f_type == "READY_TO_EAT" and not f_cfg.supports_ready_to_eat:
+                    raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{p.name} is only available as PARCEL takeaway.")
+                if f_type == "PARCEL":
+                    pkg_unit_paise = int(f_cfg.packaging_charge_paise or 0)
+                station_id = f_cfg.station_id
+                pkg_instr = f_cfg.packaging_instructions
+                if station_id is not None:
+                    st_row = db.get(KitchenStation, station_id)
+                    if st_row and (st_row.auto_paused or not st_row.is_active or st_row.active_order_count >= st_row.max_concurrent_orders):
+                        st_row.auto_paused = True
+                        db.flush()
+                        raise ApiError(
+                            409,
+                            "STATION_CAPACITY_FULL",
+                            f"Kitchen station '{st_row.name}' has reached maximum preparation capacity ({st_row.max_concurrent_orders} orders). Please wait for manager reopen.",
+                        )
+            pkg_line_paise = pkg_unit_paise * ln.quantity
             unit_p = p.effective_price_paise + extra_paise
-            line_p = unit_p * ln.quantity
+            line_p = (unit_p * ln.quantity) + pkg_line_paise
             subtotal_paise += line_p
             max_prep = max(max_prep, p.preparation_minutes or 10)
-            resolved_lines.append((p, ln.quantity, unit_p, line_p, cleaned_cust))
+            cleaned_cust["_fulfillmentType"] = f_type
+            cleaned_cust["_packagingChargePaise"] = pkg_line_paise
+            cleaned_cust["_packingVerified"] = (f_type != "PARCEL")
+            resolved_lines.append((p, ln.quantity, unit_p, line_p, cleaned_cust, f_type, pkg_line_paise, station_id, pkg_instr))
 
         discount_paise, offer = evaluate_discount_paise(db, coupon_code, subtotal_paise, lock_for_update=True)
         if offer is not None:
@@ -671,19 +724,38 @@ def _execute_create_order_v1(
             if p.stock_quantity == 0:
                 p.is_available = False
 
-        for p, qty, unit_p, line_p, cleaned_cust in resolved_lines:
-            order.items.append(
-                OrderItem(
+        for p, qty, unit_p, line_p, cleaned_cust, f_type, pkg_line_paise, station_id, pkg_instr in resolved_lines:
+            oi = OrderItem(
+                product_id=p.id,
+                product_name=p.name,
+                unit_price=paise_to_rupees(unit_p),
+                unit_price_paise=unit_p,
+                quantity=qty,
+                customizations_json=json.dumps(cleaned_cust, separators=(",", ":")),
+                line_total=paise_to_rupees(line_p),
+                line_total_paise=line_p,
+            )
+            order.items.append(oi)
+            db.flush()
+            db.add(
+                OrderItemFulfillment(
+                    order_id=order.id,
+                    order_item_id=oi.id,
                     product_id=p.id,
-                    product_name=p.name,
-                    unit_price=paise_to_rupees(unit_p),
-                    unit_price_paise=unit_p,
-                    quantity=qty,
-                    customizations_json=json.dumps(cleaned_cust, separators=(",", ":")),
-                    line_total=paise_to_rupees(line_p),
-                    line_total_paise=line_p,
+                    fulfillment_type=f_type,
+                    packaging_charge_paise=pkg_line_paise,
+                    packaging_instructions=pkg_instr or ("Seal in leak-proof takeaway container" if f_type == "PARCEL" else "Serve fresh on tray"),
+                    station_id=station_id,
+                    packing_status="pending" if f_type == "PARCEL" else "serving",
+                    packing_verified=(f_type != "PARCEL"),
                 )
             )
+            if station_id is not None:
+                st_row = db.get(KitchenStation, station_id)
+                if st_row:
+                    st_row.active_order_count += 1
+                    if st_row.active_order_count >= st_row.max_concurrent_orders:
+                        st_row.auto_paused = True
 
         record_order_status_change(db, order, "NONE", "PENDING_PAYMENT", user.id, "Order placed; awaiting UPI payment")
         if payload.payWithWallet:

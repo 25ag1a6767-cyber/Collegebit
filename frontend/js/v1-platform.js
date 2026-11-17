@@ -644,16 +644,18 @@
       return null;
     }
     const counterId = Number($("#v1-checkout-counter")?.value || 0) || null;
+    const fulfillmentType = $("#v1-checkout-fulfillment")?.value || "READY_TO_EAT";
     const couponCode = $("#v1-coupon-code")?.value.trim() || null;
     const pickupSlot = $("#pickup-slot")?.value || null;
     try {
       const q = await v1Fetch("/api/v1/orders/quote", {
         method: "POST",
-        body: JSON.stringify({ items, counterId, couponCode, pickupSlot })
+        body: JSON.stringify({ items: items.map(x => ({ ...x, fulfillmentType })), fulfillmentType, counterId, couponCode, pickupSlot })
       });
       if (breakdown) {
         breakdown.hidden = false;
         $("#v1-q-subtotal").textContent = paise(q.subtotalPaise);
+        if ($("#v1-q-packaging")) $("#v1-q-packaging").textContent = paise(q.packagingChargePaise || 0);
         $("#v1-q-discount").textContent = `−${paise(q.discountPaise || 0)}`;
         $("#v1-q-tax").textContent = paise(q.taxPaise || 0);
         $("#v1-q-total").textContent = paise(q.totalPaise);
@@ -1609,6 +1611,80 @@
     if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=pdf`, "_blank");
   });
 
+  async function loadSupportTicketsHub() {
+    const listEl = $("#v1-support-tickets-list");
+    if (!listEl || !window.aceCanteenToken) return;
+    try {
+      const res = await v1Fetch("/api/v1/support/tickets");
+      const items = res?.items || [];
+      listEl.replaceChildren();
+      for (const t of items.slice(0, 10)) {
+        const card = document.createElement("div");
+        card.className = "v1-order-card";
+        const head = document.createElement("div");
+        head.className = "management-list-head";
+        const title = document.createElement("strong");
+        title.textContent = `${t.ticketNumber} · ${t.subject} (${t.category})`;
+        const badge = document.createElement("span");
+        badge.className = `badge-tag ${["RESOLVED", "CLOSED"].includes(t.status) ? "badge-green" : "badge-amber"}`;
+        badge.textContent = t.status;
+        head.append(title, badge);
+        card.append(head);
+        if (t.resolutionSummary) {
+          const note = document.createElement("p");
+          note.className = "muted";
+          note.textContent = `Resolution: ${t.resolutionSummary}`;
+          card.append(note);
+        }
+        listEl.append(card);
+      }
+    } catch { /* non-blocking */ }
+  }
+
+  $("#v1-group-create-form")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#v1-group-msg");
+    try {
+      const grp = await v1Fetch("/api/v1/group-orders", {
+        method: "POST",
+        body: JSON.stringify({
+          title: $("#v1-group-title").value.trim(),
+          pickupSlot: $("#v1-group-slot").value.trim(),
+          closesInMinutes: Number($("#v1-group-mins").value || 20)
+        })
+      });
+      msg.textContent = `Group Order created! Share Invite Code: ${grp.inviteCode}`;
+      msg.className = "management-message success";
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
+  $("#v1-support-ticket-form")?.addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("#v1-ticket-msg");
+    try {
+      const oidVal = $("#v1-ticket-order-id")?.value;
+      const t = await v1Fetch("/api/v1/support/tickets", {
+        method: "POST",
+        body: JSON.stringify({
+          orderId: oidVal ? Number(oidVal) : null,
+          category: $("#v1-ticket-category").value,
+          subject: $("#v1-ticket-subject").value.trim(),
+          description: $("#v1-ticket-desc").value.trim()
+        })
+      });
+      msg.textContent = `Ticket ${t.ticketNumber} submitted (${t.status}).`;
+      msg.className = "management-message success";
+      e.target.reset();
+      await loadSupportTicketsHub();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
   function syncV1ForAuth(user) {
     connectRealtimeWs();
     loadRecommendations();
@@ -1617,6 +1693,7 @@
     if (!user) return;
     loadUserProfileV1();
     loadBulkOrdersHub();
+    loadSupportTicketsHub();
     if (user.role === "student") loadStudentActiveOrders();
     if (["staff", "admin"].includes(user.role)) {
       loadStaffKds();

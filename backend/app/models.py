@@ -1310,6 +1310,534 @@ class SaasApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+# ==============================================================================
+# Phase 61–82 Operational, Intelligence, Support, Safety & Fulfillment Models
+# ==============================================================================
+class ProductFulfillmentConfig(Base):
+    """Per-item Parcel vs Ready-to-Eat rules, packaging charges, and station routing."""
+    __tablename__ = "product_fulfillment_configs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    supports_parcel: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    supports_ready_to_eat: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    packaging_charge_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    packaging_instructions: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("kitchen_stations.id", ondelete="SET NULL"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class OrderItemFulfillment(Base):
+    """Authoritative per-order-item fulfillment record (PARCEL vs READY_TO_EAT) and packing verification."""
+    __tablename__ = "order_item_fulfillments"
+    __table_args__ = (
+        Index("ix_order_item_fulfillments_order_type", "order_id", "fulfillment_type"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_item_id: Mapped[int] = mapped_column(ForeignKey("order_items.id", ondelete="CASCADE"), unique=True, nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    fulfillment_type: Mapped[str] = mapped_column(String(20), default="READY_TO_EAT", nullable=False)  # PARCEL | READY_TO_EAT
+    packaging_charge_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    packaging_instructions: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("kitchen_stations.id", ondelete="SET NULL"), nullable=True)
+    packing_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | preparing | packed | serving | ready
+    packing_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    packed_by_staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    packed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class KitchenStation(Base):
+    """Kitchen preparation station with capacity-based admission and auto-pause controls."""
+    __tablename__ = "kitchen_stations"
+    __table_args__ = (
+        Index("ix_kitchen_stations_counter_active", "counter_id", "is_active"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="CASCADE"), nullable=True)
+    counter_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    station_type: Mapped[str] = mapped_column(String(40), default="general", nullable=False)  # grill | tandoor | beverages | meals | packing
+    max_concurrent_orders: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    active_order_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    auto_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SupportTicket(Base):
+    """Customer support & complaint management ticket (Phase 66)."""
+    __tablename__ = "support_tickets"
+    __table_args__ = (
+        Index("ix_support_tickets_user_status", "user_id", "status"),
+        Index("ix_support_tickets_tenant_status", "tenant_id", "status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)  # payment | order | missing_item | incorrect_item | delayed_order | pickup | hygiene | account | other
+    priority: Mapped[str] = mapped_column(String(20), default="normal", nullable=False)  # low | normal | high | urgent
+    status: Mapped[str] = mapped_column(String(30), default="OPEN", nullable=False)  # OPEN | ASSIGNED | IN_PROGRESS | WAITING_FOR_CUSTOMER | RESOLVED | CLOSED
+    subject: Mapped[str] = mapped_column(String(180), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    assigned_staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    escalated_to_manager: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    internal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolution_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class SupportTicketMessage(Base):
+    """Conversation thread & audit log on a customer support ticket."""
+    __tablename__ = "support_ticket_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("support_tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    is_internal_note: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class FoodSafetyChecklist(Base):
+    """Daily kitchen cleaning, staff hygiene, and equipment maintenance inspection records (Phase 67)."""
+    __tablename__ = "food_safety_checklists"
+    __table_args__ = (
+        Index("ix_food_safety_checklists_date_type", "inspection_date", "checklist_type"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="CASCADE"), nullable=True)
+    inspection_date: Mapped[date] = mapped_column(Date, default=date.today, nullable=False)
+    checklist_type: Mapped[str] = mapped_column(String(40), nullable=False)  # daily_cleaning | staff_hygiene | equipment_maintenance | receiving_verification
+    station_name: Mapped[str] = mapped_column(String(120), default="Main Kitchen", nullable=False)
+    items_checked_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    corrective_action: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    submitted_by_staff_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by_manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TemperatureLog(Base):
+    """Refrigerator, freezer, and hot-holding food temperature monitoring log (Phase 67)."""
+    __tablename__ = "temperature_logs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="CASCADE"), nullable=True)
+    equipment_or_item: Mapped[str] = mapped_column(String(140), nullable=False)
+    storage_Zone: Mapped[str] = mapped_column(String(30), default="cold_storage", nullable=False)  # cold_storage | freezer | hot_holding
+    temperature_celsius: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    within_safe_range: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    corrective_action: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recorded_by_staff_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class NotificationDeliveryLog(Base):
+    """Reliable notification delivery tracking with exponential backoff retry & dead-letter queue (Phase 65)."""
+    __tablename__ = "notification_delivery_logs"
+    __table_args__ = (
+        Index("ix_notif_delivery_status_retry", "status", "next_retry_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(30), default="in_app", nullable=False)  # in_app | email | web_push | sms
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="delivered", nullable=False)  # queued | sent | delivered | failed | dead_letter
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class UserNotificationPreference(Base):
+    """Per-user channel preferences for reliable notifications (Phase 65)."""
+    __tablename__ = "user_notification_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    web_push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    sms_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class WasteRecord(Base):
+    """Sustainability & food/ingredient waste ledger with single-deduction inventory integration (Phase 81 Module 1)."""
+    __tablename__ = "waste_records"
+    __table_args__ = (
+        Index("ix_waste_records_tenant_date", "tenant_id", "recorded_at"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    ingredient_id: Mapped[int | None] = mapped_column(ForeignKey("ingredients.id", ondelete="SET NULL"), nullable=True)
+    item_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    waste_category: Mapped[str] = mapped_column(String(40), nullable=False)  # prepared_food | unserved_food | returned_food | spoiled_food | expired_ingredient | prep_waste
+    quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), default="units", nullable=False)
+    cost_loss_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    evidence_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    stock_deducted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    recorded_by_staff_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by_manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PackagingLedger(Base):
+    """Disposable vs reusable packaging tracking (Phase 81 Module 1)."""
+    __tablename__ = "packaging_ledgers"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    packaging_type: Mapped[str] = mapped_column(String(40), nullable=False)  # disposable_used | reusable_issued | reusable_returned | damaged_packaging
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    recorded_by_staff_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class StaffShift(Base):
+    """Workforce & shift scheduling with station allocation and conflict detection (Phase 81 Module 2)."""
+    __tablename__ = "staff_shifts"
+    __table_args__ = (
+        Index("ix_staff_shifts_staff_start", "staff_user_id", "shift_start"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    staff_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    station_role: Mapped[str] = mapped_column(String(40), default="kitchen_prep", nullable=False)  # kitchen_prep | packing | pickup | inventory | counter
+    shift_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    shift_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    break_minutes: Mapped[int] = mapped_column(Integer, default=30, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="scheduled", nullable=False)  # scheduled | active | completed | absent | cancelled
+    checked_in_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checked_out_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    late_minutes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    handover_notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by_manager_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PurchaseRequisition(Base):
+    """Procurement requisition workflow connected to PO generation and goods receiving (Phase 81 Module 4)."""
+    __tablename__ = "purchase_requisitions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requisition_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    supplier_id: Mapped[int | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True)
+    items_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    estimated_total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending_approval", nullable=False)  # pending_approval | approved | po_generated | rejected
+    purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id", ondelete="SET NULL"), nullable=True)
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SupplierInvoice(Base):
+    """Supplier invoice matched against Purchase Order and Goods Receipt with discrepancy flagging (Phase 81 Module 4)."""
+    __tablename__ = "supplier_invoices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invoice_reference: Mapped[str] = mapped_column(String(60), unique=True, index=True, nullable=False)
+    purchase_order_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False)
+    invoice_amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    po_expected_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    discrepancy_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    discrepancy_flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(30), default="recorded", nullable=False)  # recorded | verified | disputed | settled_offline
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recorded_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MenuPricingRule(Base):
+    """Smart Menu & Dynamic Pricing rule with manager approval and min/max safeguards (Phase 81 Module 5)."""
+    __tablename__ = "menu_pricing_rules"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    outlet_id: Mapped[int | None] = mapped_column(ForeignKey("saas_outlets.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    rule_type: Mapped[str] = mapped_column(String(30), default="scheduled_window", nullable=False)  # scheduled_window | outlet_override | promo | combo
+    meal_window: Mapped[str] = mapped_column(String(30), default="lunch", nullable=False)  # breakfast | lunch | evening | all_day
+    proposed_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    min_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    max_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending_approval", nullable=False)  # pending_approval | approved | rejected | expired
+    reason: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GroupOrder(Base):
+    """Collaborative friend/classmate/department group cart & checkout (Phase 82 Module 2)."""
+    __tablename__ = "group_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    invite_code: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
+    organizer_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    title: Mapped[str] = mapped_column(String(140), nullable=False)
+    counter_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    pickup_slot: Mapped[str] = mapped_column(String(60), default="12:45-13:00", nullable=False)
+    closes_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False)  # open | locked | paid | collected | cancelled
+    payment_status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | paid
+    total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GroupOrderParticipantItem(Base):
+    """Individual participant item line inside a collaborative GroupOrder (Phase 82 Module 2)."""
+    __tablename__ = "group_order_participant_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_order_id: Mapped[int] = mapped_column(ForeignKey("group_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    participant_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    participant_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    fulfillment_type: Mapped[str] = mapped_column(String(20), default="READY_TO_EAT", nullable=False)  # PARCEL | READY_TO_EAT
+    unit_price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    packaging_charge_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    line_total_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    pickup_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class OrderQualityFeedback(Base):
+    """Multi-dimensional food quality, taste, packaging, wait-time & hygiene feedback (Phase 82 Module 4)."""
+    __tablename__ = "order_quality_feedbacks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    food_quality_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    taste_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    packaging_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    wait_time_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    outlet_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    missing_or_incorrect_items: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    hygiene_concern: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    manager_response: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    escalated_ticket_id: Mapped[int | None] = mapped_column(ForeignKey("support_tickets.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MealPassPlan(Base):
+    """Configurable Daily, Weekly, and Monthly prepaid meal pass plans (Phase 82 Module 5)."""
+    __tablename__ = "meal_pass_plans"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    plan_code: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    pass_period: Mapped[str] = mapped_column(String(20), nullable=False)  # daily | weekly | monthly
+    total_meals: Mapped[int] = mapped_column(Integer, nullable=False)
+    validity_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class StudentMealPass(Base):
+    """Student's purchased meal pass activated only after verified online payment (Phase 82 Module 5)."""
+    __tablename__ = "student_meal_passes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("meal_pass_plans.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="payment_pending", nullable=False)  # payment_pending | active | exhausted | expired | cancelled
+    remaining_meals: Mapped[int] = mapped_column(Integer, nullable=False)
+    gateway_order_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    gateway_payment_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MealPassUsage(Base):
+    """Atomic single-meal deduction record preventing duplicate meal pass usage (Phase 82 Module 5)."""
+    __tablename__ = "meal_pass_usages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_pass_id: Mapped[int] = mapped_column(ForeignKey("student_meal_passes.id", ondelete="CASCADE"), nullable=False, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    meals_deducted: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class DailyCanteenClosing(Base):
+    """End-of-day financial & operational reconciliation lock with auditable adjustment entries (Phase 82 Module 7)."""
+    __tablename__ = "daily_canteen_closings"
+    __table_args__ = (
+        UniqueConstraint("business_date", "counter_id", name="uq_daily_closing_date_counter"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    business_date: Mapped[date] = mapped_column(Date, nullable=False)
+    counter_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    total_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completed_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cancelled_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    uncollected_orders: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    successful_payments_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    pending_payments_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    failed_payments_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    wastage_loss_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    discrepancy_notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    adjustments_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    is_locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    submitted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    approved_by_manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PlatformSuperAdmin(Base):
+    """Explicit platform-level operator registry separating SaaS Super Admins from College Tenant Admins."""
+    __tablename__ = "platform_super_admins"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    privilege_level: Mapped[str] = mapped_column(String(30), default="platform_operator", nullable=False)  # platform_owner | platform_operator
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    granted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SaasTenantProfile(Base):
+    """College profile, legal/contact settings & verified email sender config isolated per tenant."""
+    __tablename__ = "saas_tenant_profiles"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    tenant_code: Mapped[str] = mapped_column(String(24), unique=True, index=True, nullable=False)
+    official_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    campus_info: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    operating_hours_json: Mapped[str] = mapped_column(Text, default='{"open":"08:00","close":"18:00"}', nullable=False)
+    canteen_settings_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    approved_domains_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    terms_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    privacy_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notification_sender_mode: Mapped[str] = mapped_column(String(30), default="collegebits_default", nullable=False)  # collegebits_default | custom_domain
+    custom_sender_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sender_domain_verified: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class AdminInvitation(Base):
+    """Single-use cryptographic invitation for college owners, admins, finance & managers (stores ONLY SHA-256 hash)."""
+    __tablename__ = "admin_invitations"
+    __table_args__ = (
+        Index("ix_admin_invitations_tenant_email", "tenant_id", "email", "status"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(140), nullable=False)
+    tenant_role: Mapped[str] = mapped_column(String(40), nullable=False)  # college_owner | college_admin | finance_admin | canteen_manager | kitchen_manager | staff_admin | read_only_auditor
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | accepted | revoked | expired
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    invited_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EmailChangeRequest(Base):
+    """Verified admin email change workflow with optional platform-approved recovery when old email is lost."""
+    __tablename__ = "email_change_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    old_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    new_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)  # pending | verified | cancelled | expired
+    recovery_approved_by_super_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class PasswordResetTokenRecord(Base):
+    """Single-use expiring password reset token ledger (stores ONLY SHA-256 token hash)."""
+    __tablename__ = "password_reset_token_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class OwnershipTransferRequest(Base):
+    """Auditable College Ownership Transfer & Emergency Platform Recovery workflow."""
+    __tablename__ = "ownership_transfer_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    target_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    transfer_type: Mapped[str] = mapped_column(String(30), default="owner_initiated", nullable=False)  # owner_initiated | platform_recovery
+    previous_owner_action: Mapped[str] = mapped_column(String(30), default="demote_to_admin", nullable=False)  # demote_to_admin | revoke
+    status: Mapped[str] = mapped_column(String(30), default="pending_target", nullable=False)  # pending_target | pending_platform | completed | cancelled
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    platform_approved_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EquipmentAsset(Base):
+    """Canteen kitchen & cooling equipment registry with maintenance tracking (Phase 83 Module 5)."""
+    __tablename__ = "equipment_assets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("kitchen_stations.id", ondelete="SET NULL"), nullable=True)
+    name: Mapped[str] = mapped_column(String(140), nullable=False)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)  # chiller | freezer | oven | stove | fryer | pos
+    asset_code: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
+    operational_status: Mapped[str] = mapped_column(String(30), default="operational", nullable=False)  # operational | degraded | maintenance | down
+    last_maintenance_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_maintenance_due: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EquipmentMaintenanceTicket(Base):
+    """Staff breakdown report & manager maintenance assignment (Phase 83 Module 5)."""
+    __tablename__ = "equipment_maintenance_tickets"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    equipment_id: Mapped[int] = mapped_column(ForeignKey("equipment_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="high", nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False)  # open | assigned | in_progress | resolved
+    issue_summary: Mapped[str] = mapped_column(String(500), nullable=False)
+    resolution_notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reported_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    assigned_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
 # --- Automatic Decimal <-> integer paise synchronization ---
 @event.listens_for(Product, "before_insert")
 @event.listens_for(Product, "before_update")

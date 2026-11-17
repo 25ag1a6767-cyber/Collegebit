@@ -211,9 +211,16 @@
             <label>Pickup counter
               <select id="v1-checkout-counter"><option value="">Main Canteen Counter</option></select>
             </label>
+            <label>Fulfillment mode (Parcel vs Ready-to-Eat)
+              <select id="v1-checkout-fulfillment">
+                <option value="READY_TO_EAT">Ready-to-Eat / Serve Now (Fresh on Tray)</option>
+                <option value="PARCEL">Parcel / Takeaway (Packed Container)</option>
+              </select>
+            </label>
           </div>
           <div class="v1-quote-lines" id="v1-quote-breakdown" hidden>
             <div class="v1-quote-line"><span>Items subtotal</span><span id="v1-q-subtotal">₹0.00</span></div>
+            <div class="v1-quote-line"><span>Parcel packaging charge</span><span id="v1-q-packaging">₹0.00</span></div>
             <div class="v1-quote-line"><span>Approved discount</span><span id="v1-q-discount">−₹0.00</span></div>
             <div class="v1-quote-line"><span>Rewards applied</span><span id="v1-q-rewards">−₹0.00</span></div>
             <div class="v1-quote-line"><span>Applicable tax</span><span id="v1-q-tax">₹0.00</span></div>
@@ -320,6 +327,46 @@
         </div>
 
         <div id="v1-bulk-orders-list"></div>
+      </div>
+
+      <!-- Group Ordering & Customer Support Tickets Hub -->
+      <div class="management-card" id="v1-support-group-hub">
+        <div class="v1-subgrid">
+          <form class="v1-mini-card" id="v1-group-create-form">
+            <h4>Collaborative Group Ordering</h4>
+            <label>Group Order Title<input id="v1-group-title" required maxlength="140" value="Lunch Squad Group Order"></label>
+            <div class="form-pair">
+              <label>Pickup Slot<input id="v1-group-slot" required value="12:45-13:00"></label>
+              <label>Close After (Mins)<input id="v1-group-mins" type="number" min="5" max="120" value="20"></label>
+            </div>
+            <button type="submit" class="primary-button">Create Group Order Link</button>
+            <p id="v1-group-msg" class="management-message" role="status"></p>
+          </form>
+
+          <form class="v1-mini-card" id="v1-support-ticket-form">
+            <h4>Customer Support &amp; Complaint Desk</h4>
+            <div class="form-pair">
+              <label>Category
+                <select id="v1-ticket-category">
+                  <option value="order">Order Issue</option>
+                  <option value="missing_item">Missing Item</option>
+                  <option value="incorrect_item">Incorrect Item</option>
+                  <option value="delayed_order">Delayed Order</option>
+                  <option value="pickup">Pickup Problem</option>
+                  <option value="hygiene">Food Safety / Hygiene</option>
+                  <option value="payment">Payment Inquiry</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>Order ID (optional)<input id="v1-ticket-order-id" type="number" min="1" placeholder="e.g. 42"></label>
+            </div>
+            <label>Subject<input id="v1-ticket-subject" required minlength="3" maxlength="180" placeholder="Brief summary of your issue"></label>
+            <label>Details<textarea id="v1-ticket-desc" rows="2" required minlength="5" placeholder="Describe the issue clearly..."></textarea></label>
+            <button type="submit" class="primary-button">Submit Support Ticket</button>
+            <p id="v1-ticket-msg" class="management-message" role="status"></p>
+          </form>
+        </div>
+        <div id="v1-support-tickets-list"></div>
       </div>
     </section>
 

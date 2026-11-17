@@ -209,14 +209,14 @@ async def lifespan(_: FastAPI):
                     conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
                     res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
                     if not res:
-                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0023_collegebits_v3_no_refunds')"))
+                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0024_phase60_to_85_enterprise')"))
             except Exception as ale_err:
                 logger.warning("Could not stamp alembic_version: %s", ale_err)
             with SessionLocal() as db:
                 seed_demo_data(db)
             logger.info("Database schema and bootstrap accounts created successfully.")
         else:
-            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables or "saas_tenants" not in existing_tables:
+            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables or "saas_tenants" not in existing_tables or "support_tickets" not in existing_tables or "admin_invitations" not in existing_tables:
                 Base.metadata.create_all(bind=engine)
             try:
                 with engine.begin() as conn:
@@ -2296,10 +2296,12 @@ from app.modules import (
     auth_profile,
     bulk_orders_v3,
     menu_cart,
+    operations_intelligence_v3,
     orders_payments,
     reporting_engine,
     retention_backup,
     rewards_wallet,
+    saas_admin_governance_v3,
     saas_crowd_pos_v3,
     staff_ops,
 )
@@ -2308,6 +2310,8 @@ v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_profile.router)
 v1_router.include_router(menu_cart.router)
 v1_router.include_router(saas_crowd_pos_v3.router)
+v1_router.include_router(saas_admin_governance_v3.router)
+v1_router.include_router(operations_intelligence_v3.router)
 v1_router.include_router(bulk_orders_v3.router)
 v1_router.include_router(orders_payments.router)
 v1_router.include_router(rewards_wallet.router)

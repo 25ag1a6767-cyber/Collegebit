@@ -385,6 +385,7 @@ def check_menu_availability_v1(
 # --- Server-side persistent student cart ---
 class CartItemUpsertIn(BaseModel):
     quantity: int = Field(ge=0, le=50)
+    fulfillmentType: str | None = Field(default=None, pattern="^(PARCEL|READY_TO_EAT|parcel|ready_to_eat)$")
     customizations: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -407,25 +408,35 @@ def _get_or_create_cart(db: Session, user_id: int) -> Cart:
 def serialize_cart_v1(db: Session, cart: Cart) -> dict[str, Any]:
     lines = []
     subtotal_paise = 0
+    total_packaging_paise = 0
+    from app.models import ProductFulfillmentConfig
     for ci in cart.items:
         p = ci.product
         if p is None or p.is_archived:
             continue
-        cust = parse_json_safe(ci.customizations_json, {})
+        raw_cust = parse_json_safe(ci.customizations_json, {})
+        f_type = str(raw_cust.get("_fulfillmentType", "READY_TO_EAT")).upper()
+        user_cust = {k: v for k, v in raw_cust.items() if not str(k).startswith("_")}
         try:
-            extra_paise, cleaned_cust = compute_customization_extra_paise(p, cust)
+            extra_paise, cleaned_cust = compute_customization_extra_paise(p, user_cust)
         except ApiError:
             extra_paise, cleaned_cust = 0, {}
+        f_cfg = db.scalar(select(ProductFulfillmentConfig).where(ProductFulfillmentConfig.product_id == p.id))
+        pkg_unit_paise = int(f_cfg.packaging_charge_paise or 0) if (f_cfg and f_type == "PARCEL") else 0
+        pkg_line_paise = pkg_unit_paise * ci.quantity
         unit_p = p.effective_price_paise + extra_paise
-        line_p = unit_p * ci.quantity
+        line_p = (unit_p * ci.quantity) + pkg_line_paise
         avail, avail_qty = is_item_available_in_window(db, p)
         if avail and (avail_qty or 0) >= ci.quantity:
             subtotal_paise += line_p
+            total_packaging_paise += pkg_line_paise
         lines.append({
             "menuItemId": p.id,
             "name": p.name,
             "imageUrl": p.image_url,
             "quantity": ci.quantity,
+            "fulfillmentType": f_type,
+            "packagingChargePaise": pkg_line_paise,
             "customizations": cleaned_cust,
             "unitPricePaise": unit_p,
             "lineTotalPaise": line_p,
@@ -452,6 +463,7 @@ def serialize_cart_v1(db: Session, cart: Cart) -> dict[str, Any]:
         "pickupSlot": as_utc(cart.pickup_slot),
         "notes": cart.notes,
         "items": lines,
+        "packagingChargePaise": total_packaging_paise,
         "subtotalPaise": subtotal_paise,
         "discountPaise": discount_paise,
         "taxRateBps": tax_bps,
@@ -529,9 +541,18 @@ def put_cart_item_v1(
     if not avail or (avail_qty or 0) < payload.quantity:
         raise ApiError(409, "ITEM_UNAVAILABLE", f"{product.name} is unavailable or has insufficient stock ({avail_qty or 0} available).")
     _, cleaned_cust = compute_customization_extra_paise(product, payload.customizations)
+    from app.models import ProductFulfillmentConfig
+    f_type = str(payload.fulfillmentType or (parse_json_safe(existing.customizations_json, {}).get("_fulfillmentType") if existing else None) or "READY_TO_EAT").upper()
+    f_cfg = db.scalar(select(ProductFulfillmentConfig).where(ProductFulfillmentConfig.product_id == product.id))
+    if f_cfg is not None:
+        if f_type == "PARCEL" and not f_cfg.supports_parcel:
+            raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{product.name} does not support PARCEL takeaway.")
+        if f_type == "READY_TO_EAT" and not f_cfg.supports_ready_to_eat:
+            raise ApiError(409, "FULFILLMENT_TYPE_UNSUPPORTED", f"{product.name} is only available as PARCEL takeaway.")
+    cleaned_cust["_fulfillmentType"] = f_type
 
     if existing is None:
-        db.add(CartItem(cart_id=cart.id, product_id=product.id, quantity=payload.quantity, customizations_json=json.dumps(cleaned_cust, separators=(",", ":"))))
+        cart.items.append(CartItem(cart_id=cart.id, product_id=product.id, quantity=payload.quantity, customizations_json=json.dumps(cleaned_cust, separators=(",", ":"))))
     else:
         existing.quantity = payload.quantity
         existing.customizations_json = json.dumps(cleaned_cust, separators=(",", ":"))
@@ -539,6 +560,7 @@ def put_cart_item_v1(
         cart.counter_id = product.counter_id
     cart.updated_at = datetime.now(timezone.utc)
     db.commit()
+    db.refresh(cart)
     return ok(request, serialize_cart_v1(db, _get_or_create_cart(db, user.id)))
 
 
