@@ -13,10 +13,27 @@
   }
 
   let installPrompt = null;
+  const DISMISS_KEY = "collegebits_pwa_banner_dismissed";
   const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const isAndroid = /android/i.test(navigator.userAgent);
   const isInApp = /FBAN|FBAV|Instagram|WhatsApp|Telegram|Line|Twitter|Snapchat|MicroMessenger/i.test(navigator.userAgent);
+  const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(navigator.userAgent);
+
+  function wasBannerDismissed() {
+    try {
+      return localStorage.getItem(DISMISS_KEY) === "1" || sessionStorage.getItem("pwa_install_dismissed") === "true";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function persistBannerDismissed() {
+    try {
+      localStorage.setItem(DISMISS_KEY, "1");
+      sessionStorage.setItem("pwa_install_dismissed", "true");
+    } catch (_) {}
+  }
 
   function hideAllInstallPrompts() {
     const installButton = document.querySelector("#install-app-button");
@@ -81,49 +98,71 @@
         console.warn("Install prompt error:", err);
       }
     }
-    // Show step-by-step guidance & direct downloads for iOS and Android
     showInstallModal(isIOS ? "ios" : "android");
   }
 
+  function setupMobileBottomNav() {
+    const nav = document.querySelector("#mobile-bottom-nav");
+    if (!nav) return;
+    const items = Array.from(nav.querySelectorAll(".mobile-nav-item"));
+    items.forEach(item => {
+      item.addEventListener("click", event => {
+        const targetId = item.getAttribute("data-nav-target");
+        const targetEl = targetId ? document.getElementById(targetId) : null;
+        items.forEach(el => el.classList.toggle("is-active", el === item));
+        if (targetEl && targetEl.hidden && targetId === "my-orders-section") {
+          event.preventDefault();
+          const acct = document.getElementById("account");
+          const msg = document.getElementById("auth-message");
+          if (msg) msg.textContent = "Sign in to view your active orders & QR tokens.";
+          acct?.scrollIntoView({ behavior: "smooth" });
+        }
+      });
+    });
+  }
+
   function setupInstallUI() {
+    setupMobileBottomNav();
     if (isStandalone) {
       hideAllInstallPrompts();
       return;
     }
 
     const installButton = document.querySelector("#install-app-button");
-    if (installButton) {
-      installButton.hidden = false;
-      installButton.onclick = () => triggerInstallFlow();
-    }
-
     const installBanner = document.querySelector("#pwa-install-banner");
+    const bannerTitle = document.querySelector("#pwa-banner-title");
+    const bannerSub = document.querySelector("#pwa-banner-subtitle");
     const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
     const bannerDismissBtn = document.querySelector("#pwa-banner-dismiss-btn");
     const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
     const bannerIosBtn = document.querySelector("#pwa-banner-ios-btn");
 
-    if (bannerApkBtn && isIOS) {
-      bannerApkBtn.hidden = true;
-    }
-    if (bannerIosBtn && isAndroid) {
-      bannerIosBtn.hidden = true;
+    if (installButton) {
+      installButton.onclick = () => triggerInstallFlow();
+      installButton.hidden = !isIOS;
     }
 
-    let dismissed = false;
-    try {
-      dismissed = sessionStorage.getItem("pwa_install_dismissed") === "true";
-    } catch (_) {}
-
-    if (installBanner && !dismissed) {
+    if (installBanner && isIOS && !wasBannerDismissed()) {
+      if (bannerTitle) bannerTitle.textContent = "Install CollegeBits on iPhone";
+      if (bannerSub) {
+        bannerSub.textContent = isInApp
+          ? "Open in Safari, then tap Share ⎋ and 'Add to Home Screen'"
+          : "To install: tap the Share button ⎋, then 'Add to Home Screen'";
+      }
+      if (bannerInstallBtn) bannerInstallBtn.textContent = "⎋ How to install";
+      if (bannerApkBtn) bannerApkBtn.hidden = true;
+      if (bannerIosBtn) bannerIosBtn.hidden = true;
       installBanner.hidden = false;
+    } else if (installBanner && !installPrompt) {
+      // Wait for Chrome/Android beforeinstallprompt before displaying install banner.
+      installBanner.hidden = true;
     }
 
     if (bannerInstallBtn) bannerInstallBtn.onclick = () => triggerInstallFlow();
     if (bannerDismissBtn) {
       bannerDismissBtn.onclick = () => {
         if (installBanner) installBanner.hidden = true;
-        try { sessionStorage.setItem("pwa_install_dismissed", "true"); } catch (_) {}
+        persistBannerDismissed();
       };
     }
 
@@ -148,14 +187,22 @@
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
     installPrompt = event;
-    if (!isStandalone) {
-      const installButton = document.querySelector("#install-app-button");
-      if (installButton) installButton.hidden = false;
-      const installBanner = document.querySelector("#pwa-install-banner");
-      let dismissed = false;
-      try { dismissed = sessionStorage.getItem("pwa_install_dismissed") === "true"; } catch (_) {}
-      if (installBanner && !dismissed) installBanner.hidden = false;
+    if (isStandalone) {
+      hideAllInstallPrompts();
+      return;
     }
+    const installButton = document.querySelector("#install-app-button");
+    const installBanner = document.querySelector("#pwa-install-banner");
+    const bannerTitle = document.querySelector("#pwa-banner-title");
+    const bannerSub = document.querySelector("#pwa-banner-subtitle");
+    const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
+    const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
+    if (installButton) installButton.hidden = false;
+    if (bannerTitle) bannerTitle.textContent = "Install CollegeBits App";
+    if (bannerSub) bannerSub.textContent = "1-tap canteen ordering & live token alerts";
+    if (bannerInstallBtn) bannerInstallBtn.textContent = "📲 Install app";
+    if (bannerApkBtn && isAndroid) bannerApkBtn.hidden = false;
+    if (installBanner && !wasBannerDismissed()) installBanner.hidden = false;
   });
 
   window.addEventListener("appinstalled", () => {
@@ -208,6 +255,12 @@ function renderCart(message = '') {
   const checkout = document.querySelector('#cart-checkout'); const review = document.querySelector('#cart-review');
   if (checkout) checkout.disabled = !lines.length || window.aceCanteenClosed === true;
   if (review) review.disabled = !lines.length;
+  const mobileBadge = document.querySelector('#mobile-cart-badge');
+  if (mobileBadge) {
+    const totalCount = lines.reduce((sum, line) => sum + line.quantity, 0);
+    mobileBadge.textContent = String(totalCount);
+    mobileBadge.hidden = totalCount === 0;
+  }
 }
 function addToCart(product) {
   if (!window.aceCanteenToken || !window.aceCanteenUser) { document.querySelector('#account')?.scrollIntoView({ behavior: 'smooth' }); const msg = document.querySelector('#auth-message'); if (msg) msg.textContent = 'Sign in as a student before adding items to your order.'; return; }

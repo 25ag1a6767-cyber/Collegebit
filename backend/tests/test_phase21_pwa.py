@@ -55,3 +55,10 @@ def test_ios_pwa_meta_tags_opaque_apple_icon_splashes_and_safe_areas():
         css = client.get("/css/style.css").text + client.get("/css/v1-platform.css").text
         assert "env(safe-area-inset-top" in css
         assert "env(safe-area-inset-bottom" in css
+        assert "overscroll-behavior-y: contain" in css
+        assert "user-select: none" in css
+        assert "min-height: 44px" in css
+        assert "font-size: 16px !important" in css
+        assert 'id="mobile-bottom-nav"' in html
+        assert 'id="mobile-cart-badge"' in html
+        assert "Add to Home Screen" in html

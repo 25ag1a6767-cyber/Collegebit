@@ -571,6 +571,10 @@
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
   transition: background-color 0.15s ease, transform 0.1s ease;
 }
+
+.install-app-button[hidden] {
+  display: none !important;
+}
 .install-app-button:hover {
   background: #166534;
   transform: translateY(-1px);
@@ -622,16 +626,11 @@
   font-size: 0.95rem;
   font-weight: 700;
   color: #ffffff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .pwa-banner-text span {
-  font-size: 0.78rem;
-  color: #bbf7d0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.8rem;
+  color: #dcfce7;
+  line-height: 1.35;
 }
 .pwa-banner-buttons {
   display: flex;
@@ -681,6 +680,8 @@
   color: #bbf7d0;
   font-size: 1.2rem;
   line-height: 1;
+  min-width: 44px;
+  min-height: 44px;
   padding: 6px;
   cursor: pointer;
   display: flex;
@@ -781,8 +782,10 @@
   border: none;
   color: #475569;
   font-size: 1rem;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
@@ -972,4 +975,92 @@
 }
 .pwa-modal-confirm:hover {
   background: #166534;
+}
+
+/* Mobile Native-Feel Bottom Navigation Bar & Touch Ergonomics */
+.mobile-bottom-nav {
+  display: none;
+}
+@media (max-width: 850px), (display-mode: standalone) {
+  body {
+    padding-bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+  }
+  .v1-ai-fab {
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    min-height: 44px;
+  }
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+  button,
+  .primary-button,
+  .secondary-button,
+  .header-account-link,
+  .auth-tab,
+  .install-app-button,
+  .pwa-banner-btn,
+  .cart-line-controls button {
+    min-height: 44px;
+  }
+  .cart-line-controls button {
+    min-width: 44px;
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 900;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    background: rgba(250, 249, 245, 0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid #d5e0d8;
+    padding: 6px max(10px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px));
+    box-shadow: 0 -8px 24px rgba(18, 55, 42, 0.08);
+  }
+  .mobile-nav-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 48px;
+    border-radius: 12px;
+    color: #496257;
+    font-size: 11px;
+    font-weight: 700;
+    text-decoration: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .mobile-nav-item.is-active {
+    background: #e7f2e5;
+    color: #12372a;
+  }
+  .mobile-nav-icon {
+    font-size: 18px;
+    line-height: 1.1;
+  }
+  .mobile-nav-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 20px);
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #12372a;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mobile-nav-badge[hidden] {
+    display: none !important;
+  }
 }

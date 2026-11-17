@@ -33,25 +33,25 @@
     </a>
     <div class="header-account">
       <span class="ws-live-pill offline" id="v1-ws-status" title="Real-time order &amp; queue stream"><span class="ws-dot"></span><span id="v1-ws-label">Connecting…</span></span>
-      <button class="install-app-button" id="install-app-button" type="button" aria-label="Install CollegeBits app on your phone">📲 Install app</button>
+      <button class="install-app-button" id="install-app-button" type="button" aria-label="Install CollegeBits app on your phone" hidden>📲 Install app</button>
       <a class="header-account-link" id="header-account-link" href="#account">Sign in / Account</a>
       <span class="header-account-user" id="header-account-user" hidden></span>
     </div>
   </header>
 
-  <!-- Mobile PWA Install Banner (Visible on Phones & Mobile Browsers) -->
+  <!-- Mobile PWA Install Banner (Chrome beforeinstallprompt or iOS Safari Add to Home Screen) -->
   <section id="pwa-install-banner" class="pwa-install-banner" aria-label="Install CollegeBits application" hidden>
     <div class="pwa-banner-content">
       <img class="pwa-banner-icon" src="/assets/icon-192.png" alt="CollegeBits icon" width="40" height="40">
       <div class="pwa-banner-text">
-        <strong>CollegeBits App</strong>
-        <span>Instant ordering &amp; live kitchen token tracking</span>
+        <strong id="pwa-banner-title">Install CollegeBits</strong>
+        <span id="pwa-banner-subtitle">To install: tap Share ⎋, then &lsquo;Add to Home Screen&rsquo;</span>
       </div>
     </div>
     <div class="pwa-banner-buttons">
-      <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">📲 Install</button>
-      <a class="pwa-banner-apk-btn" id="pwa-banner-ios-btn" href="/download/ios.mobileconfig">🍎 iPhone App</a>
-      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">🤖 Android APK</a>
+      <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">📲 Install app</button>
+      <a class="pwa-banner-apk-btn" id="pwa-banner-ios-btn" href="/download/ios.mobileconfig" hidden>🍎 iPhone Profile</a>
+      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk" hidden>🤖 Android APK</a>
       <button type="button" class="pwa-banner-close" id="pwa-banner-dismiss-btn" aria-label="Dismiss install prompt">✕</button>
     </div>
   </section>
@@ -967,6 +967,26 @@
       </div>
     </div>
   </div>
+
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Primary customer navigation">
+    <a class="mobile-nav-item is-active" href="#catalogue" data-nav-target="catalogue">
+      <span class="mobile-nav-icon" aria-hidden="true">🍽️</span>
+      <span class="mobile-nav-label">Menu</span>
+    </a>
+    <a class="mobile-nav-item" href="#cart-section" data-nav-target="cart-section">
+      <span class="mobile-nav-icon" aria-hidden="true">🛒</span>
+      <span class="mobile-nav-label">Cart</span>
+      <span class="mobile-nav-badge" id="mobile-cart-badge" hidden>0</span>
+    </a>
+    <a class="mobile-nav-item" href="#my-orders-section" data-nav-target="my-orders-section">
+      <span class="mobile-nav-icon" aria-hidden="true">🎟️</span>
+      <span class="mobile-nav-label">Orders</span>
+    </a>
+    <a class="mobile-nav-item" href="#account" data-nav-target="account">
+      <span class="mobile-nav-icon" aria-hidden="true">👤</span>
+      <span class="mobile-nav-label">Account</span>
+    </a>
+  </nav>
 
   <footer><a class="footer-brand" href="/customer/">ACE Canteen</a><span>Live campus canteen pre-order, UPI &amp; QR collection platform.</span><span>Secure student ordering and live order tracking</span></footer>
 </body>
