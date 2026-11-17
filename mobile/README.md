@@ -39,7 +39,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_android_apk.ps1
 
 ## 3. Push Notification Status (Mobile vs PWA)
 - **Customer PWA (`/customer/`):** Supports full background Web Push via VAPID keys (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`) + `pywebpush` + Service Worker (`frontend/sw.js`), with WebSocket & in-app toast fallback.
-- **Native Expo App (`mobile/`):** Declares `POST_NOTIFICATIONS` on Android and maintains real-time order updates while open via authenticated WebSocket (`/api/v1/ws`) + `/api/v1/users/me/notifications` inbox. Closed-app push notifications in standalone Android APK / iOS IPA require adding `expo-notifications` + FCM (`google-services.json`) / APNs credentials on top of this build.
+- **Native Expo App (`mobile/`):** Wires `expo-notifications` (`POST /api/v1/push/device/register`) -> Expo Push API (`https://exp.host/--/api/v2/push/send`) alongside live WebSockets while open. For production Android APKs, attach Firebase `google-services.json` and your `EXPO_PUBLIC_EAS_PROJECT_ID` in Expo EAS (and APNs key for iOS) so background tokens issue cleanly on physical devices.
+- **SMS / WhatsApp Hook (Optional):** Enable `SMS_ENABLED=true`, `SMS_WEBHOOK_URL=https://...`, and `SMS_WEBHOOK_BEARER_TOKEN` in `.env` for opted-in students (`smsEnabled: true`).
 
 ## 4. Security Architecture
 - **Zero embedded secrets:** Razorpay keys and AI tokens reside strictly on the backend.

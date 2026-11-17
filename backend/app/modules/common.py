@@ -43,7 +43,7 @@ from app.models import (
     paise_to_rupees,
     rupees_to_paise,
 )
-from app.realtime import hub, send_web_push_to_user, stage_outbox_event
+from app.realtime import hub, send_expo_push_to_user, send_sms_to_user, send_web_push_to_user, stage_outbox_event
 
 
 # Canonical uppercase external state mapping for /api/v1
@@ -324,18 +324,15 @@ def notify_user(
         target_user_id=user_id,
     )
     if push:
-        send_web_push_to_user(
-            db,
-            user_id,
-            title,
-            message,
-            {
-                "entityType": entity_type,
-                "entityId": str(entity_id) if entity_id else None,
-                "url": "/customer/#my-orders-section",
-                "tag": f"{entity_type or 'canteen'}-{entity_id or '0'}-{notification_type}",
-            },
-        )
+        push_payload = {
+            "entityType": entity_type,
+            "entityId": str(entity_id) if entity_id else None,
+            "url": "/customer/#my-orders-section",
+            "tag": f"{entity_type or 'canteen'}-{entity_id or '0'}-{notification_type}",
+        }
+        send_web_push_to_user(db, user_id, title, message, push_payload)
+        send_expo_push_to_user(db, user_id, title, message, push_payload)
+        send_sms_to_user(db, user_id, title, message, notification_type=notification_type)
     return notif
 
 

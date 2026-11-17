@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:canteen@example.edu"
+    # Optional Expo mobile push & generic SMS/WhatsApp webhook notifications
+    expo_push_enabled: bool = True
+    sms_enabled: bool = False
+    sms_webhook_url: str = ""
+    sms_webhook_bearer_token: str = ""
     # Optional S3-compatible object storage configuration
     object_storage_bucket: str = ""
     object_storage_public_url: str = ""

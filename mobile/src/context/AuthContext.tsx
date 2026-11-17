@@ -1,3 +1,4 @@
+import * as Notifications from "expo-notifications";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import {
   apiRequest,
@@ -8,6 +9,7 @@ import {
   saveTokens
 } from "../api/client";
 import { AuthTokenResponse, UserProfile } from "../types/api";
+import { unregisterDevicePushNotificationsAsync } from "../utils/notifications";
 
 interface AuthContextValue {
   user: UserProfile | null;
@@ -78,6 +80,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => cleanup?.();
   }, [user?.id]);
 
+  useEffect(() => {
+    const sub1 = Notifications.addNotificationReceivedListener(() => {
+      setLastRealtimeTick(Date.now());
+    });
+    const sub2 = Notifications.addNotificationResponseReceivedListener(() => {
+      setLastRealtimeTick(Date.now());
+    });
+    return () => {
+      sub1.remove();
+      sub2.remove();
+    };
+  }, []);
+
   const signIn = useCallback(async (identifier: string, password: string) => {
     const trimmed = identifier.trim();
     const data = await apiRequest<AuthTokenResponse>("/api/v1/auth/login", {
@@ -128,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = useCallback(async () => {
     try {
+      await unregisterDevicePushNotificationsAsync();
       const rt = await getRefreshToken();
       await apiRequest("/api/v1/auth/logout", {
         method: "POST",

@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import OutboxEvent, PushSubscription, User, UserCounterAssignment, UserRole
+from app.models import (
+    DevicePushToken,
+    OutboxEvent,
+    PushSubscription,
+    User,
+    UserCounterAssignment,
+    UserNotificationPreference,
+    UserRole,
+)
 
 logger = logging.getLogger("ace_canteen.realtime")
 
@@ -141,10 +149,17 @@ def stage_outbox_event(
     return row
 
 
+def _user_pref(db: Session, user_id: int) -> UserNotificationPreference | None:
+    return db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id))
+
+
 def send_web_push_to_user(db: Session, user_id: int, title: str, body: str, data: dict[str, Any] | None = None) -> int:
     """Deliver Web Push notifications when VAPID credentials are configured."""
     cfg = get_settings()
     if not (cfg.vapid_public_key and cfg.vapid_private_key):
+        return 0
+    pref = _user_pref(db, user_id)
+    if pref is not None and not pref.web_push_enabled:
         return 0
     subs = db.scalars(select(PushSubscription).where(PushSubscription.user_id == user_id)).all()
     if not subs:
@@ -181,6 +196,104 @@ def send_web_push_to_user(db: Session, user_id: int, title: str, body: str, data
         except Exception:
             logger.debug("Web push delivery failed", exc_info=True)
     return sent
+
+
+def send_expo_push_to_user(db: Session, user_id: int, title: str, body: str, data: dict[str, Any] | None = None) -> int:
+    """Deliver closed-app mobile notifications through the Expo Push API when device tokens exist."""
+    cfg = get_settings()
+    if not cfg.expo_push_enabled:
+        return 0
+    pref = _user_pref(db, user_id)
+    if pref is not None and not pref.web_push_enabled:
+        return 0
+    tokens = db.scalars(select(DevicePushToken).where(DevicePushToken.user_id == user_id)).all()
+    if not tokens:
+        return 0
+    try:
+        import httpx
+    except Exception:
+        return 0
+
+    messages = [
+        {
+            "to": row.expo_push_token,
+            "sound": "default",
+            "title": title[:120],
+            "body": body[:240],
+            "channelId": "orders",
+            "data": data or {},
+        }
+        for row in tokens
+    ]
+    sent = 0
+    try:
+        resp = httpx.post(
+            "https://exp.host/--/api/v2/push/send",
+            json=messages,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=3.0,
+        )
+        if resp.status_code == 200:
+            tickets = (resp.json() or {}).get("data") or []
+            if isinstance(tickets, list):
+                for row, ticket in zip(tokens, tickets):
+                    status_str = (ticket or {}).get("status")
+                    err_code = ((ticket or {}).get("details") or {}).get("error")
+                    if status_str == "ok":
+                        sent += 1
+                    elif err_code == "DeviceNotRegistered":
+                        db.delete(row)
+    except Exception:
+        logger.debug("Expo push delivery failed", exc_info=True)
+    return sent
+
+
+def send_sms_to_user(
+    db: Session,
+    user_id: int,
+    title: str,
+    body: str,
+    *,
+    notification_type: str = "order_status",
+) -> bool:
+    """Optional SMS / WhatsApp webhook bridge (fires only when configured & user opted in)."""
+    cfg = get_settings()
+    webhook_url = (cfg.sms_webhook_url or "").strip()
+    if not cfg.sms_enabled or not webhook_url:
+        return False
+    if notification_type != "order_status":
+        return False
+    if cfg.environment.lower() in {"prod", "production"} and not webhook_url.startswith("https://"):
+        return False
+    if not webhook_url.startswith(("https://", "http://")):
+        return False
+
+    pref = _user_pref(db, user_id)
+    if pref is None or not pref.sms_enabled:
+        return False
+    user = db.get(User, user_id)
+    if user is None or not (user.phone or "").strip():
+        return False
+
+    try:
+        import httpx
+        headers = {"Content-Type": "application/json"}
+        if cfg.sms_webhook_bearer_token.strip():
+            headers["Authorization"] = f"Bearer {cfg.sms_webhook_bearer_token.strip()}"
+        resp = httpx.post(
+            webhook_url,
+            json={
+                "to": user.phone.strip(),
+                "message": f"{title}: {body}"[:320],
+                "eventType": notification_type,
+            },
+            headers=headers,
+            timeout=3.0,
+        )
+        return 200 <= resp.status_code < 300
+    except Exception:
+        logger.debug("SMS webhook delivery failed", exc_info=True)
+        return False
 
 
 async def flush_outbox_async(limit: int = 100) -> int:

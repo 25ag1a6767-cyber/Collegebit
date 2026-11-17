@@ -57,7 +57,8 @@
             "deploymentTarget": "15.1"
           }
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "extra": {
       "apiBaseUrl": ""

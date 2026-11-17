@@ -542,6 +542,18 @@ class PushSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class DevicePushToken(Base):
+    """Native mobile push token (Expo Push / FCM / APNs bridge) per authenticated user."""
+    __tablename__ = "device_push_tokens"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expo_push_token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(24), default="unknown", nullable=False)
+    app_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class OutboxEvent(Base):
     """Transactional outbox event for reliable WebSocket and push delivery."""
     __tablename__ = "outbox_events"

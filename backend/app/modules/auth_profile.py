@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.emailer import send_email
 from app.envelope import ApiError, ok
-from app.models import Notification, Order, PushSubscription, SecurityEvent, User, UserRole
+from app.models import DevicePushToken, Notification, Order, PushSubscription, SecurityEvent, User, UserRole
 from app.modules.common import record_audit, serialize_order_v1, serialize_user_v1
 from app.security import (
     consume_recovery_code,
@@ -157,6 +157,12 @@ class ProfilePatchIn(BaseModel):
 class PushSubscribeIn(BaseModel):
     endpoint: str = Field(min_length=12, max_length=600)
     keys: dict[str, str]
+
+
+class DevicePushRegisterIn(BaseModel):
+    expoPushToken: str = Field(min_length=12, max_length=255)
+    platform: str = Field(default="unknown", max_length=24)
+    appVersion: str | None = Field(default=None, max_length=32)
 
 
 @router.post("/auth/register", status_code=201)
@@ -672,3 +678,47 @@ def push_unsubscribe_v1(
         db.delete(sub)
         db.commit()
     return ok(request, {"subscribed": False})
+
+
+@router.post("/push/device/register", status_code=201)
+def register_mobile_device_push_v1(
+    payload: DevicePushRegisterIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tok = payload.expoPushToken.strip()
+    if not tok.startswith(("ExponentPushToken[", "ExpoPushToken[")) or not tok.endswith("]"):
+        raise ApiError(422, "VALIDATION_ERROR", "Invalid Expo push token format.")
+    platform_clean = (payload.platform or "unknown").strip().lower()[:24] or "unknown"
+    existing = db.scalar(select(DevicePushToken).where(DevicePushToken.expo_push_token == tok))
+    if existing:
+        existing.user_id = user.id
+        existing.platform = platform_clean
+        existing.app_version = (payload.appVersion or "").strip()[:32] or None
+    else:
+        db.add(
+            DevicePushToken(
+                user_id=user.id,
+                expo_push_token=tok,
+                platform=platform_clean,
+                app_version=(payload.appVersion or "").strip()[:32] or None,
+            )
+        )
+    db.commit()
+    return ok(request, {"registered": True, "platform": platform_clean}, status_code=201)
+
+
+@router.delete("/push/device/register")
+def unregister_mobile_device_push_v1(
+    expoPushToken: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tok = expoPushToken.strip()
+    row = db.scalar(select(DevicePushToken).where(DevicePushToken.expo_push_token == tok, DevicePushToken.user_id == user.id))
+    if row:
+        db.delete(row)
+        db.commit()
+    return ok(request, {"registered": False})

@@ -11,6 +11,7 @@ import {
 import { API_BASE_URL, apiRequest, saveTokens } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { NotificationItem } from "../types/api";
+import { registerDeviceForPushNotificationsAsync } from "../utils/notifications";
 
 export const ProfileScreen: React.FC = () => {
   const { user, wsConnected, refreshProfile, signOut } = useAuth();
@@ -21,14 +22,14 @@ export const ProfileScreen: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [prefs, setPrefs] = useState({ inAppEnabled: true, webPushEnabled: true, emailEnabled: false });
+  const [prefs, setPrefs] = useState({ inAppEnabled: true, webPushEnabled: true, emailEnabled: false, smsEnabled: false });
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
       const [res, prefRes] = await Promise.all([
         apiRequest<NotificationItem[] | { items: NotificationItem[] }>("/api/v1/users/me/notifications"),
-        apiRequest<{ inAppEnabled: boolean; webPushEnabled: boolean; emailEnabled: boolean }>(
+        apiRequest<{ inAppEnabled: boolean; webPushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean }>(
           "/api/v1/users/me/notification-preferences"
         ).catch(() => null)
       ]);
@@ -39,7 +40,7 @@ export const ProfileScreen: React.FC = () => {
     }
   }, []);
 
-  const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled") => {
+  const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled" | "smsEnabled") => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
     try {
@@ -180,6 +181,18 @@ export const ProfileScreen: React.FC = () => {
         </TouchableOpacity>
         <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("emailEnabled")}>
           <Text style={styles.primaryBtnText}>Email Receipts: {prefs.emailEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("smsEnabled")}>
+          <Text style={styles.primaryBtnText}>SMS Order Alerts: {prefs.smsEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.primaryBtn}
+          onPress={async () => {
+            const res = await registerDeviceForPushNotificationsAsync();
+            setStatusMsg(res.message);
+          }}
+        >
+          <Text style={styles.primaryBtnText}>Register Device for Closed-App Push</Text>
         </TouchableOpacity>
       </View>
 
