@@ -134,3 +134,7 @@ npx expo start --android
 | **SMTP Email Delivery** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | Logs verification links & daily report summaries locally while recording `GeneratedReport` in DB |
 | **Gemini AI Provider** | `GEMINI_API_KEY` | Uses deterministic grounded PostgreSQL statistical & rule-based AI engine (`weekday-slot-wma-v1`) with zero downtime |
 | **Web Push VAPID** | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Live WebSocket push (`ws/v1/events`) and in-app notification center remain 100% active |
+
+---
+
+> **Full Step-by-Step Production HTTPS & Backup Runbook:** See [`docs/DEPLOYMENT-RUNBOOK.md`](./DEPLOYMENT-RUNBOOK.md) for copy-pasteable Ubuntu Server (Nginx + Certbot TLS + Cron Backups) and Cloud VM + Neon PostgreSQL instructions, plus full tested restore commands.

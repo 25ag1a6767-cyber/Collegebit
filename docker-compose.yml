@@ -42,6 +42,7 @@ services:
 
   migrate:
     build: .
+    restart: "no"
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ace_canteen}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ace_canteen}
@@ -53,7 +54,6 @@ services:
       db:
         condition: service_healthy
     networks: [canteen_internal]
-    profiles: [ops]
 
   app:
     build: .
@@ -71,6 +71,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       pgbouncer:
         condition: service_started
       redis:

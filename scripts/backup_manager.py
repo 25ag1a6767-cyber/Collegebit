@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env python3
 """Safe database backup, verification, and SQLite restore helper for ACE Canteen.
 
@@ -175,9 +174,10 @@ def main() -> int:
     p_restore.add_argument("--destination", type=Path, required=True)
     p_restore.add_argument("--confirm", action="store_true", help="Required acknowledgement of destructive restore")
     p_gfs = sub.add_parser("gfs-backup", help="Create encrypted GFS (7 daily / 4 weekly / 3 monthly) backup with secondary copy")
-    p_gfs.add_argument("--tier", choices=["daily", "weekly", "monthly", "auto"], default="auto")
+    p_gfs.add_argument("--database-url", default=None, help="Optional database URL override")
     p_drill = sub.add_parser("restore-drill", help="Run non-destructive encrypted backup decryption & restore drill")
-    p_drill.add_argument("--backup-id", type=int, default=None)
+    p_drill.add_argument("--backup-file", type=Path, default=None, help="Specific .enc backup path")
+    p_drill.add_argument("--backup-id", type=int, default=None, help="BackupRun ID in database")
     args = parser.parse_args()
     try:
         if args.command == "backup":
@@ -194,16 +194,30 @@ def main() -> int:
             from app.database import SessionLocal
             from app.modules.retention_backup import create_encrypted_gfs_backup
             with SessionLocal() as db:
-                run = create_encrypted_gfs_backup(db, tier=None if args.tier == "auto" else args.tier)
-                print(json.dumps({"id": run.id, "tier": run.tier, "primaryPath": run.primary_path, "secondaryPath": run.secondary_path, "sha256": run.sha256, "verified": run.verified}, indent=2))
+                result = create_encrypted_gfs_backup(db, db_url=args.database_url)
+                print(json.dumps(result, indent=2))
         elif args.command == "restore-drill":
             backend_dir = Path(__file__).resolve().parents[1] / "backend"
             if str(backend_dir) not in sys.path:
                 sys.path.insert(0, str(backend_dir))
+            from app.config import get_settings
             from app.database import SessionLocal
-            from app.modules.retention_backup import run_restore_drill
+            from app.models import BackupRun
+            from app.modules.retention_backup import _resolve_dir, run_restore_drill
             with SessionLocal() as db:
-                drill = run_restore_drill(db, backup_id=args.backup_id)
+                enc_path: Path | None = args.backup_file
+                if enc_path is None and args.backup_id is not None:
+                    row = db.get(BackupRun, args.backup_id)
+                    if row is None:
+                        raise FileNotFoundError(f"BackupRun #{args.backup_id} not found.")
+                    enc_path = Path(row.primary_path)
+                if enc_path is None:
+                    daily_dir = _resolve_dir(get_settings().backup_primary_dir) / "daily"
+                    candidates = sorted(daily_dir.glob("campusbite-*.enc"), key=lambda p: p.stat().st_mtime, reverse=True) if daily_dir.exists() else []
+                    if not candidates:
+                        raise FileNotFoundError(f"No encrypted daily backups found in '{daily_dir}'. Run gfs-backup first.")
+                    enc_path = candidates[0]
+                drill = run_restore_drill(enc_path, db=db)
                 print(json.dumps(drill, indent=2))
         else:
             safety = restore_sqlite(args.backup_file, args.destination, args.confirm)
