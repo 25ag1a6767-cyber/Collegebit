@@ -216,13 +216,25 @@
   };
 
   async function v1Fetch(path, options = {}) {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const offlineErr = new Error("You are offline. Reconnect to reach the canteen server.");
+      offlineErr.code = "NETWORK_OFFLINE";
+      throw offlineErr;
+    }
     const headers = {
       Accept: "application/json",
       ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(window.aceCanteenToken ? { Authorization: `Bearer ${window.aceCanteenToken}` } : {}),
       ...(options.headers || {})
     };
-    const res = await fetch(path, { ...options, headers, cache: "no-store" });
+    let res;
+    try {
+      res = await fetch(path, { ...options, headers, cache: "no-store" });
+    } catch {
+      const netErr = new Error("Network connection lost. Please retry once back online.");
+      netErr.code = "NETWORK_ERROR";
+      throw netErr;
+    }
     const json = await res.json().catch(() => null);
     if (!res.ok || (json && json.success === false)) {
       const msg = json?.error?.message || json?.detail || `Request failed (${res.status})`;
@@ -244,21 +256,44 @@
     label.textContent = text;
   }
 
+  function syncLiveStateAfterReconnect() {
+    loadCounters();
+    if (window.aceCanteenUser?.role === "student") loadStudentActiveOrders();
+    if (["staff", "admin"].includes(window.aceCanteenUser?.role)) loadStaffKds();
+    if (typeof window.loadPublicQueue === "function") window.loadPublicQueue();
+  }
+
   function connectRealtimeWs() {
     clearTimeout(state.wsReconnectTimer);
+    clearInterval(state.wsHeartbeatTimer);
     if (state.ws) {
       try { state.ws.onclose = null; state.ws.close(); } catch { /* ignore */ }
       state.ws = null;
     }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setWsBadge(false, "Offline");
+      return;
+    }
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const tokenParam = window.aceCanteenToken ? `?token=${encodeURIComponent(window.aceCanteenToken)}` : "";
-    const url = `${proto}//${location.host}/api/v1/ws${tokenParam}`;
+    const url = `${proto}//${location.host}/api/v1/ws`;
     try {
       const ws = new WebSocket(url);
       state.ws = ws;
       ws.onopen = () => {
         state.wsBackoffMs = 1500;
+        if (window.aceCanteenToken) {
+          try {
+            ws.send(JSON.stringify({ type: "auth", token: window.aceCanteenToken }));
+          } catch { /* ignore */ }
+        }
         setWsBadge(true, "Live updates");
+        syncLiveStateAfterReconnect();
+        clearInterval(state.wsHeartbeatTimer);
+        state.wsHeartbeatTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: "ping" })); } catch { /* ignore */ }
+          }
+        }, 25000);
       };
       ws.onmessage = ev => {
         try {
@@ -267,6 +302,11 @@
         } catch { /* ignore malformed frame */ }
       };
       ws.onclose = () => {
+        clearInterval(state.wsHeartbeatTimer);
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          setWsBadge(false, "Offline");
+          return;
+        }
         setWsBadge(false, "Reconnecting…");
         state.wsReconnectTimer = setTimeout(connectRealtimeWs, state.wsBackoffMs);
         state.wsBackoffMs = Math.min(state.wsBackoffMs * 1.8, 20000);
@@ -279,9 +319,24 @@
     }
   }
 
+  window.addEventListener("offline", () => {
+    setWsBadge(false, "Offline");
+  });
+  window.addEventListener("online", () => {
+    state.wsBackoffMs = 1500;
+    connectRealtimeWs();
+    if (typeof window.loadCatalogue === "function") window.loadCatalogue();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && (!state.ws || state.ws.readyState > WebSocket.OPEN)) {
+      state.wsBackoffMs = 1500;
+      connectRealtimeWs();
+    }
+  });
+
   function handleRealtimeEvent(msg) {
     const topic = String(msg?.topic || "");
-    if (!topic || topic === "connected" || topic === "pong") return;
+    if (!topic || topic === "connected" || topic === "authenticated" || topic === "pong") return;
     if (topic.startsWith("order.") || topic.startsWith("pickup.")) {
       loadCounters();
       if (window.aceCanteenUser?.role === "student") loadStudentActiveOrders();

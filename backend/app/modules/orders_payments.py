@@ -18,7 +18,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 from fastapi.responses import Response
 import httpx
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import case, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
@@ -707,10 +707,20 @@ def _execute_create_order_v1(
         # Deduct stock, FEFO batches and recipe ingredients atomically
         for pid, total_q in agg_qty.items():
             p = by_id[pid]
+            upd = db.execute(
+                update(Product)
+                .where(Product.id == p.id, Product.stock_quantity >= total_q)
+                .values(
+                    stock_quantity=Product.stock_quantity - total_q,
+                    is_available=case((Product.stock_quantity - total_q <= 0, False), else_=p.is_available),
+                )
+            )
+            if upd.rowcount != 1:
+                raise ApiError(409, "ITEM_UNAVAILABLE", f"{p.name} is unavailable or out of stock.")
+            db.refresh(p)
+            before_qty = p.stock_quantity + total_q
             reserve_batch_stock_fefo(db, p.id, total_q, order.id)
             consume_recipe_ingredients(db, p.id, total_q, order.id, actor_user_id=user.id)
-            before_qty = p.stock_quantity
-            p.stock_quantity -= total_q
             record_product_stock_movement(
                 db,
                 p,
@@ -721,8 +731,6 @@ def _execute_create_order_v1(
                 order_id=order.id,
                 before=before_qty,
             )
-            if p.stock_quantity == 0:
-                p.is_available = False
 
         for p, qty, unit_p, line_p, cleaned_cust, f_type, pkg_line_paise, station_id, pkg_instr in resolved_lines:
             oi = OrderItem(
