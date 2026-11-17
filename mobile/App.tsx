@@ -24,7 +24,7 @@ import { ProfileScreen } from "./src/screens/ProfileScreen";
 type TabKey = "home" | "menu" | "cart" | "orders" | "hub" | "ai" | "profile";
 
 const Shell: React.FC = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, liveBanner, dismissLiveBanner } = useAuth();
   const { lines } = useCart();
   const [tab, setTab] = useState<TabKey>("home");
 
@@ -55,6 +55,22 @@ const Shell: React.FC = () => {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar style="dark" />
+      {liveBanner && (
+        <TouchableOpacity
+          style={styles.liveToast}
+          activeOpacity={0.9}
+          onPress={() => {
+            dismissLiveBanner();
+            setTab("orders");
+          }}
+        >
+          <View style={styles.liveToastTextWrap}>
+            <Text style={styles.liveToastTitle}>{liveBanner.title}</Text>
+            {!!liveBanner.body && <Text style={styles.liveToastBody}>{liveBanner.body}</Text>}
+          </View>
+          <Text style={styles.liveToastDismiss} onPress={dismissLiveBanner}>✕</Text>
+        </TouchableOpacity>
+      )}
       <KeyboardAvoidingView
         style={styles.body}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -119,5 +135,20 @@ const styles = StyleSheet.create({
   },
   tabItem: { flex: 1, alignItems: "center", justifyContent: "center" },
   tabLabel: { fontSize: 11, fontWeight: "700", color: "#64756b" },
-  tabLabelActive: { color: "#12372a", fontWeight: "800" }
+  tabLabelActive: { color: "#12372a", fontWeight: "800" },
+  liveToast: {
+    marginHorizontal: 12,
+    marginTop: 6,
+    backgroundColor: "#12372a",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  liveToastTextWrap: { flex: 1, paddingRight: 10 },
+  liveToastTitle: { color: "#ffffff", fontWeight: "800", fontSize: 13 },
+  liveToastBody: { color: "#d7efe1", fontSize: 12, marginTop: 2 },
+  liveToastDismiss: { color: "#ffffff", fontWeight: "800", fontSize: 16, padding: 4 }
 });

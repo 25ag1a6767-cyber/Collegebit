@@ -11,7 +11,14 @@ import {
 import { API_BASE_URL, apiRequest, saveTokens } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { NotificationItem } from "../types/api";
-import { registerDeviceForPushNotificationsAsync } from "../utils/notifications";
+import { registerDeviceForPushNotificationsAsync, sendLocalTestNotificationAsync } from "../utils/notifications";
+
+interface FreeChannelsState {
+  ntfy: { enabled: boolean; connected: boolean; subscribeUrl?: string | null; httpsUrl?: string | null };
+  telegram: { enabled: boolean; connected: boolean; startUrl?: string | null };
+  whatsapp: { canteenChatUrl?: string | null; cloudApiEnabled: boolean; optedIn: boolean };
+  sms: { webhookEnabled: boolean; optedIn: boolean };
+}
 
 export const ProfileScreen: React.FC = () => {
   const { user, wsConnected, refreshProfile, signOut } = useAuth();
@@ -22,25 +29,38 @@ export const ProfileScreen: React.FC = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [prefs, setPrefs] = useState({ inAppEnabled: true, webPushEnabled: true, emailEnabled: false, smsEnabled: false });
+  const [prefs, setPrefs] = useState({
+    inAppEnabled: true,
+    webPushEnabled: true,
+    emailEnabled: false,
+    smsEnabled: false,
+    whatsappEnabled: false
+  });
+  const [freeChannels, setFreeChannels] = useState<FreeChannelsState | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
-      const [res, prefRes] = await Promise.all([
+      const [res, prefRes, freeRes] = await Promise.all([
         apiRequest<NotificationItem[] | { items: NotificationItem[] }>("/api/v1/users/me/notifications"),
-        apiRequest<{ inAppEnabled: boolean; webPushEnabled: boolean; emailEnabled: boolean; smsEnabled: boolean }>(
-          "/api/v1/users/me/notification-preferences"
-        ).catch(() => null)
+        apiRequest<{
+          inAppEnabled: boolean;
+          webPushEnabled: boolean;
+          emailEnabled: boolean;
+          smsEnabled: boolean;
+          whatsappEnabled?: boolean;
+        }>("/api/v1/users/me/notification-preferences").catch(() => null),
+        apiRequest<FreeChannelsState>("/api/v1/push/free-channels").catch(() => null)
       ]);
       setNotifications(Array.isArray(res) ? res : res.items || []);
-      if (prefRes) setPrefs(prefRes);
+      if (prefRes) setPrefs(prev => ({ ...prev, ...prefRes }));
+      if (freeRes) setFreeChannels(freeRes);
     } catch {
       // Ignore
     }
   }, []);
 
-  const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled" | "smsEnabled") => {
+  const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled" | "smsEnabled" | "whatsappEnabled") => {
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
     try {
@@ -185,6 +205,17 @@ export const ProfileScreen: React.FC = () => {
         <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("smsEnabled")}>
           <Text style={styles.primaryBtnText}>SMS Order Alerts: {prefs.smsEnabled ? "ON" : "OFF"}</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => togglePref("whatsappEnabled")}>
+          <Text style={styles.primaryBtnText}>WhatsApp Order Alerts: {prefs.whatsappEnabled ? "ON" : "OFF"}</Text>
+        </TouchableOpacity>
+        {freeChannels?.whatsapp?.canteenChatUrl && (
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={() => Linking.openURL(freeChannels.whatsapp.canteenChatUrl!)}
+          >
+            <Text style={styles.secondaryBtnText}>Open Canteen WhatsApp Chat ($0)</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           style={styles.primaryBtn}
           onPress={async () => {
@@ -193,6 +224,86 @@ export const ProfileScreen: React.FC = () => {
           }}
         >
           <Text style={styles.primaryBtnText}>Register Device for Closed-App Push</Text>
+        </TouchableOpacity>
+        {freeChannels?.ntfy?.enabled !== false && (
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={async () => {
+              try {
+                if (freeChannels?.ntfy?.connected) {
+                  await apiRequest("/api/v1/push/ntfy", { method: "DELETE" });
+                  setStatusMsg("Free ntfy phone push disconnected.");
+                } else {
+                  const res = await apiRequest<{ subscribeUrl?: string; httpsUrl?: string }>("/api/v1/push/ntfy/enable", {
+                    method: "POST"
+                  });
+                  setStatusMsg(
+                    `Free ntfy push ready! Subscribe in the free ntfy iOS/Android app: ${res.httpsUrl || res.subscribeUrl || ""}`
+                  );
+                  if (res.subscribeUrl) {
+                    Linking.openURL(res.subscribeUrl).catch(() => {});
+                  }
+                }
+                await loadNotifications();
+              } catch (err) {
+                setStatusMsg(err instanceof Error ? err.message : "Could not update ntfy channel");
+              }
+            }}
+          >
+            <Text style={styles.secondaryBtnText}>
+              {freeChannels?.ntfy?.connected
+                ? "Free ntfy Lock-Screen Push: CONNECTED (Tap to Disable)"
+                : "Enable Free ntfy Phone Push ($0 iOS/Android)"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {freeChannels?.telegram?.enabled && (
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={async () => {
+              try {
+                if (freeChannels.telegram.connected) {
+                  await apiRequest("/api/v1/push/telegram", { method: "DELETE" });
+                  setStatusMsg("Telegram alerts disconnected.");
+                } else if (freeChannels.telegram.startUrl) {
+                  await apiRequest("/api/v1/push/telegram/verify", { method: "POST" });
+                  setStatusMsg("Telegram linked for free unlimited order alerts!");
+                } else {
+                  const started = await apiRequest<{ startUrl: string }>("/api/v1/push/telegram/link-start", {
+                    method: "POST"
+                  });
+                  setStatusMsg("Tap Start in Telegram, then return and tap Verify Telegram Link.");
+                  Linking.openURL(started.startUrl).catch(() => {});
+                }
+                await loadNotifications();
+              } catch (err) {
+                setStatusMsg(err instanceof Error ? err.message : "Telegram action failed");
+              }
+            }}
+          >
+            <Text style={styles.secondaryBtnText}>
+              {freeChannels.telegram.connected
+                ? "Free Telegram Alerts: CONNECTED (Tap to Disconnect)"
+                : freeChannels.telegram.startUrl
+                  ? "Verify Telegram Link"
+                  : "Connect Free Telegram Alerts ($0)"}
+            </Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={async () => {
+            const localRes = await sendLocalTestNotificationAsync();
+            try {
+              await apiRequest("/api/v1/users/me/notifications/test", { method: "POST" });
+              setStatusMsg(`${localRes.message} Server free-channel test dispatched.`);
+            } catch (err) {
+              setStatusMsg(err instanceof Error ? err.message : localRes.message);
+            }
+            await loadNotifications();
+          }}
+        >
+          <Text style={styles.secondaryBtnText}>Send Test Mobile Alert</Text>
         </TouchableOpacity>
       </View>
 
@@ -252,6 +363,17 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   primaryBtnText: { color: "#fff", fontWeight: "700" },
+  secondaryBtn: {
+    marginTop: 10,
+    backgroundColor: "#f3f8f4",
+    borderWidth: 1,
+    borderColor: "#b8d4c3",
+    paddingVertical: 11,
+    borderRadius: 10,
+    alignItems: "center",
+    paddingHorizontal: 10
+  },
+  secondaryBtnText: { color: "#12372a", fontWeight: "700", fontSize: 13, textAlign: "center" },
   status: {
     backgroundColor: "#eaf6ef",
     color: "#155d3d",

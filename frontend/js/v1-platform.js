@@ -338,6 +338,22 @@
   });
 
   let liveToastTimer = null;
+  const shownLocalAlertTags = new Set();
+  function showFreeLocalBrowserAlert(title, bodyText, tag) {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted" || !document.hidden) return;
+    const dedupeKey = tag || `${title}:${bodyText}`;
+    if (shownLocalAlertTags.has(dedupeKey)) return;
+    shownLocalAlertTags.add(dedupeKey);
+    if (shownLocalAlertTags.size > 30) shownLocalAlertTags.clear();
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.ready
+        .then(reg => reg.showNotification(title, { body: bodyText || "", tag: dedupeKey, data: { url: "/customer/#my-orders-section" } }))
+        .catch(() => { try { new Notification(title, { body: bodyText || "", tag: dedupeKey }); } catch { /* ignore */ } });
+    } else {
+      try { new Notification(title, { body: bodyText || "", tag: dedupeKey }); } catch { /* ignore */ }
+    }
+  }
+
   function showLiveToast(title, bodyText) {
     const toast = $("#v1-live-toast");
     if (!toast) return;
@@ -353,10 +369,15 @@
     const topic = String(msg?.topic || "");
     if (!topic || topic === "connected" || topic === "authenticated" || topic === "pong") return;
     if (topic === "notification.created" && msg?.payload) {
-      showLiveToast(msg.payload.title || "Canteen update", msg.payload.message || "");
+      const title = msg.payload.title || "Canteen update";
+      const bodyText = msg.payload.message || "";
+      showLiveToast(title, bodyText);
+      showFreeLocalBrowserAlert(title, bodyText, `${msg.payload.entityType || "ntf"}-${msg.payload.entityId || "0"}`);
     } else if (topic === "order.ready") {
       const tok = msg?.payload?.tokenNumber ? `Token #${msg.payload.tokenNumber}` : "Your order";
-      showLiveToast("Order ready for pickup", `${tok} — show your pickup QR at the counter.`);
+      const bodyText = `${tok} — show your pickup QR at the counter.`;
+      showLiveToast("Order ready for pickup", bodyText);
+      showFreeLocalBrowserAlert("Order ready for pickup", bodyText, `ready-${msg?.payload?.id || tok}`);
     }
     if (topic.startsWith("order.") || topic.startsWith("pickup.")) {
       loadCounters();
@@ -1101,6 +1122,57 @@
           if (rewardInput) rewardInput.max = String(account.pointsBalance);
         }
       }
+      await loadFreeNotificationChannels();
+    } catch { /* ignore */ }
+  }
+
+  let freeChannelsState = null;
+  async function loadFreeNotificationChannels() {
+    if (!window.aceCanteenToken) return;
+    try {
+      const [channels, prefs] = await Promise.all([
+        v1Fetch("/api/v1/push/free-channels"),
+        v1Fetch("/api/v1/users/me/notification-preferences").catch(() => null)
+      ]);
+      freeChannelsState = channels;
+      const ntfyBtn = $("#v1-ntfy-btn");
+      if (ntfyBtn) {
+        ntfyBtn.hidden = channels?.ntfy?.enabled === false;
+        ntfyBtn.textContent = channels?.ntfy?.connected ? "Disable ntfy phone push" : "Enable free phone push (ntfy)";
+      }
+      const tgBtn = $("#v1-telegram-btn");
+      if (tgBtn) {
+        tgBtn.hidden = !channels?.telegram?.enabled;
+        tgBtn.textContent = channels?.telegram?.connected
+          ? "Disconnect Telegram"
+          : channels?.telegram?.startUrl
+            ? "Verify Telegram Link"
+            : "Connect Telegram ($0)";
+      }
+      const waLink = $("#v1-canteen-wa-link");
+      if (waLink) {
+        if (channels?.whatsapp?.canteenChatUrl) {
+          waLink.href = channels.whatsapp.canteenChatUrl;
+          waLink.hidden = false;
+        } else {
+          waLink.hidden = true;
+        }
+      }
+      if ($("#v1-whatsapp-optin") && prefs) $("#v1-whatsapp-optin").checked = Boolean(prefs.whatsappEnabled);
+      if ($("#v1-sms-optin") && prefs) $("#v1-sms-optin").checked = Boolean(prefs.smsEnabled);
+      const info = $("#v1-free-channels-msg");
+      if (info && channels?.ntfy?.connected && channels?.ntfy?.httpsUrl) {
+        info.replaceChildren();
+        const label = document.createTextNode("Free ntfy phone push connected — subscribe in the free ntfy app: ");
+        const a = document.createElement("a");
+        a.href = channels.ntfy.httpsUrl;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = channels.ntfy.topic;
+        info.append(label, a);
+      } else if (info) {
+        info.textContent = "";
+      }
     } catch { /* ignore */ }
   }
 
@@ -1471,6 +1543,79 @@
 
   $("#v1-save-profile-btn")?.addEventListener("click", saveUserProfileV1);
   $("#v1-push-toggle-btn")?.addEventListener("click", toggleWebPush);
+  $("#v1-ntfy-btn")?.addEventListener("click", async () => {
+    const info = $("#v1-free-channels-msg");
+    try {
+      if (freeChannelsState?.ntfy?.connected) {
+        await v1Fetch("/api/v1/push/ntfy", { method: "DELETE" });
+        if (info) info.textContent = "Free ntfy phone push disconnected.";
+      } else {
+        const res = await v1Fetch("/api/v1/push/ntfy/enable", { method: "POST" });
+        if (res?.subscribeUrl) {
+          try { window.open(res.subscribeUrl, "_blank", "noopener"); } catch { /* ignore */ }
+        }
+      }
+      await loadFreeNotificationChannels();
+    } catch (err) {
+      if (info) info.textContent = err.message;
+    }
+  });
+  $("#v1-telegram-btn")?.addEventListener("click", async () => {
+    const info = $("#v1-free-channels-msg");
+    try {
+      if (freeChannelsState?.telegram?.connected) {
+        await v1Fetch("/api/v1/push/telegram", { method: "DELETE" });
+        if (info) info.textContent = "Telegram alerts disconnected.";
+      } else if (freeChannelsState?.telegram?.startUrl) {
+        await v1Fetch("/api/v1/push/telegram/verify", { method: "POST" });
+        if (info) info.textContent = "Telegram connected for free unlimited order alerts!";
+      } else {
+        const started = await v1Fetch("/api/v1/push/telegram/link-start", { method: "POST" });
+        if (started?.startUrl) window.open(started.startUrl, "_blank", "noopener");
+        if (info) info.textContent = "Tap Start in Telegram, then click Verify Telegram Link here.";
+      }
+      await loadFreeNotificationChannels();
+    } catch (err) {
+      if (info) info.textContent = err.message;
+    }
+  });
+  $("#v1-whatsapp-optin")?.addEventListener("change", async e => {
+    try {
+      await v1Fetch("/api/v1/users/me/notification-preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ whatsappEnabled: Boolean(e.target.checked) })
+      });
+    } catch { /* ignore */ }
+  });
+  $("#v1-sms-optin")?.addEventListener("change", async e => {
+    try {
+      await v1Fetch("/api/v1/users/me/notification-preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ smsEnabled: Boolean(e.target.checked) })
+      });
+    } catch { /* ignore */ }
+  });
+  $("#v1-test-alert-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-profile-msg");
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        await Notification.requestPermission().catch(() => {});
+      }
+      const res = await v1Fetch("/api/v1/users/me/notifications/test", { method: "POST" });
+      showLiveToast("CollegeBits Test Alert", "Free notifications are active for your account.");
+      if (typeof Notification !== "undefined" && Notification.permission === "granted" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.ready
+          .then(reg => reg.showNotification("CollegeBits Test Alert", { body: "Free notifications are active for your account.", tag: "cb-test" }))
+          .catch(() => {});
+      }
+      if (msg) {
+        msg.textContent = `Test alert sent (${JSON.stringify(res?.delivery || {})}).`;
+        msg.className = "management-message success";
+      }
+    } catch (err) {
+      if (msg) msg.textContent = err.message;
+    }
+  });
   $("#v1-mfa-setup-btn")?.addEventListener("click", openMfaSetupModal);
   $("#v1-verify-email-btn")?.addEventListener("click", async () => {
     const msg = $("#v1-profile-msg");

@@ -37,10 +37,15 @@ $env:EXPO_PUBLIC_API_URL = "https://canteen.your-college.edu"
 powershell -ExecutionPolicy Bypass -File .\scripts\build_android_apk.ps1
 ```
 
-## 3. Push Notification Status (Mobile vs PWA)
-- **Customer PWA (`/customer/`):** Supports full background Web Push via VAPID keys (`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY`) + `pywebpush` + Service Worker (`frontend/sw.js`), with WebSocket & in-app toast fallback.
-- **Native Expo App (`mobile/`):** Wires `expo-notifications` (`POST /api/v1/push/device/register`) -> Expo Push API (`https://exp.host/--/api/v2/push/send`) alongside live WebSockets while open. For production Android APKs, attach Firebase `google-services.json` and your `EXPO_PUBLIC_EAS_PROJECT_ID` in Expo EAS (and APNs key for iOS) so background tokens issue cleanly on physical devices.
-- **SMS / WhatsApp Hook (Optional):** Enable `SMS_ENABLED=true`, `SMS_WEBHOOK_URL=https://...`, and `SMS_WEBHOOK_BEARER_TOKEN` in `.env` for opted-in students (`smsEnabled: true`).
+## 3. Free Mobile, WhatsApp & SMS Notifications ($0 Cost Options)
+- **Web Push PWA (`/customer/`):** 100% free background push on Android Chrome & iPhone Safari 16.4+ (Home Screen PWA). Generate VAPID keys offline in 1 command: `python scripts/generate_vapid_keys.py`.
+- **Native Expo App (`mobile/`):** Pop-up local notifications + floating live banners fire automatically via WebSocket (`Notifications.scheduleNotificationAsync`) at $0 even in Expo Go. For closed-app Expo push, attach Firebase `google-services.json` and `EXPO_PUBLIC_EAS_PROJECT_ID` in Expo EAS.
+- **Free Phone Push via `ntfy` ($0 iOS & Android):** Students can tap **Enable Free Phone Push (ntfy)** in Profile (PWA or Mobile App) to subscribe to a private topic in the free iOS/Android `ntfy` app — zero developer fees.
+- **Free Telegram Bot Alerts ($0 Unlimited):** Set `TELEGRAM_ENABLED=true`, `TELEGRAM_BOT_TOKEN`, and `TELEGRAM_BOT_USERNAME` from `@BotFather`; students link their Telegram account in 2 taps.
+- **WhatsApp ($0):**
+  1. **Zero-setup 1-tap Staff Notify:** On `/staff`, every order with a student phone number has **WhatsApp ($0)** and **SMS ($0)** buttons opening pre-filled `https://wa.me/...` and `sms:...` messages.
+  2. **Official Meta WhatsApp Cloud API:** Set `WHATSAPP_CLOUD_ENABLED=true`, `WHATSAPP_PHONE_NUMBER_ID`, and `WHATSAPP_ACCESS_TOKEN` (first 1,000 customer-initiated service messages/month are free from Meta within the 24h window when students message `CANTEEN_WHATSAPP_NUMBER` first).
+- **SMS ($0 API Cost via Android SIM Gateway):** Run an open-source Android SMS Gateway app on a counter phone on Wi-Fi using its SIM plan with `SMS_ENABLED=true`, `SMS_WEBHOOK_PRESET=android_sms_gate`, `SMS_WEBHOOK_URL=...`, and `SMS_WEBHOOK_USERNAME` / `SMS_WEBHOOK_PASSWORD`.
 
 ## 4. Security Architecture
 - **Zero embedded secrets:** Razorpay keys and AI tokens reside strictly on the backend.

@@ -129,9 +129,18 @@
                 <div class="v1-inline-actions">
                   <button type="button" class="secondary-button" id="v1-save-profile-btn">Save profile</button>
                   <button type="button" class="secondary-button" id="v1-push-toggle-btn">Enable push alerts</button>
+                  <button type="button" class="secondary-button" id="v1-ntfy-btn">Enable free phone push (ntfy)</button>
+                  <button type="button" class="secondary-button" id="v1-telegram-btn" hidden>Connect Telegram</button>
+                  <a class="secondary-button" id="v1-canteen-wa-link" href="#" target="_blank" rel="noopener" hidden>Chat on WhatsApp</a>
+                  <button type="button" class="secondary-button" id="v1-test-alert-btn">Test alert</button>
                   <button type="button" class="secondary-button" id="v1-verify-email-btn">Verify email</button>
                   <button type="button" class="secondary-button" id="v1-mfa-setup-btn" hidden>2FA / MFA</button>
                 </div>
+                <div class="form-pair">
+                  <label><input type="checkbox" id="v1-whatsapp-optin"> Free WhatsApp order updates (needs phone)</label>
+                  <label><input type="checkbox" id="v1-sms-optin"> SMS order updates (needs phone)</label>
+                </div>
+                <p id="v1-free-channels-msg" class="management-message" role="status"></p>
                 <p id="v1-profile-msg" class="management-message" role="status"></p>
               </div>
               <section class="notification-center" id="rewards-wallet-panel" aria-labelledby="rewards-wallet-heading">

@@ -29,6 +29,10 @@ test('student can sign in and add a menu item to the cart', async ({ page }) => 
 
   await expect(page.locator('#auth-message')).toContainText('Signed in successfully');
   await expect(page.locator('#account-role')).toHaveText('Role: student');
+  await expect(page.locator('#v1-ntfy-btn')).toBeVisible();
+  await expect(page.locator('#v1-whatsapp-optin')).toBeVisible();
+  await page.locator('#v1-test-alert-btn').click();
+  await expect(page.locator('#v1-live-toast')).toContainText('CollegeBits Test Alert');
   const firstProduct = page.locator('#catalogue-grid .product-card').first();
   await expect(firstProduct).toBeVisible();
   await firstProduct.getByRole('button', { name: 'Add to cart' }).click();
@@ -69,7 +73,7 @@ test('admin, wallet, payment error, no-refund enforcement, and staff QR pickup j
   expect(diagnosticsResponse.status()).toBe(200);
   const diagnostics = (await diagnosticsResponse.json()).data;
   expect(diagnostics.database.schemaReady).toBe(true);
-  expect(diagnostics.database.revision).toBe('0026_expo_mobile_push');
+  expect(diagnostics.database.revision).toBe('0027_free_notification_channels');
   expect(diagnostics.secretsDisplayed).toBe(false);
 
   const creditResponse = await request.post('/api/v1/admin/wallet/credit', {

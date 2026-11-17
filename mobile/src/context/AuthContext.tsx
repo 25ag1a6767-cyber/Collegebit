@@ -1,5 +1,5 @@
 import * as Notifications from "expo-notifications";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   apiRequest,
   clearTokens,
@@ -9,13 +9,24 @@ import {
   saveTokens
 } from "../api/client";
 import { AuthTokenResponse, UserProfile } from "../types/api";
-import { unregisterDevicePushNotificationsAsync } from "../utils/notifications";
+import {
+  scheduleLocalOrderNotificationAsync,
+  syncPushTokenIfAlreadyGrantedAsync,
+  unregisterDevicePushNotificationsAsync
+} from "../utils/notifications";
+
+interface LiveBanner {
+  title: string;
+  body: string;
+}
 
 interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
   wsConnected: boolean;
   lastRealtimeTick: number;
+  liveBanner: LiveBanner | null;
+  dismissLiveBanner: () => void;
   mfaChallengeToken: string | null;
   signIn: (identifier: string, password: string) => Promise<void>;
   verifyMfaLogin: (code: string) => Promise<void>;
@@ -40,7 +51,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [lastRealtimeTick, setLastRealtimeTick] = useState<number>(0);
+  const [liveBanner, setLiveBanner] = useState<LiveBanner | null>(null);
   const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null);
+  const seenEventKeysRef = useRef<Set<string>>(new Set());
+
+  const dismissLiveBanner = useCallback(() => setLiveBanner(null), []);
+
+  useEffect(() => {
+    if (!liveBanner) return;
+    const t = setTimeout(() => setLiveBanner(null), 6500);
+    return () => clearTimeout(t);
+  }, [liveBanner]);
 
   const refreshProfile = useCallback(async () => {
     const profile = await apiRequest<UserProfile>("/api/v1/users/me");
@@ -64,14 +85,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refreshProfile]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    syncPushTokenIfAlreadyGrantedAsync();
+  }, [user?.id]);
+
+  useEffect(() => {
     let cleanup: (() => void) | undefined;
     (async () => {
       const token = await getAccessToken();
       cleanup = createRealtimeSocket(
         token,
         event => {
-          if (event.topic && event.topic !== "connected" && event.topic !== "pong") {
+          const topic = String(event.topic || "");
+          if (topic && topic !== "connected" && topic !== "authenticated" && topic !== "pong") {
             setLastRealtimeTick(Date.now());
+            const payload = (event.payload || {}) as Record<string, unknown>;
+            if (topic === "notification.created") {
+              const title = String(payload.title || "CollegeBits Update");
+              const body = String(payload.message || "");
+              const key = `ntf:${String(payload.entityType || "")}:${String(payload.entityId || "")}:${title}:${body}`;
+              if (!seenEventKeysRef.current.has(key)) {
+                seenEventKeysRef.current.add(key);
+                if (seenEventKeysRef.current.size > 40) seenEventKeysRef.current.clear();
+                setLiveBanner({ title, body });
+                scheduleLocalOrderNotificationAsync(title, body, payload);
+              }
+            } else if (topic === "order.ready") {
+              const tokNum = payload.tokenNumber ? `Token #${String(payload.tokenNumber)}` : "Your order";
+              const title = "Order ready for pickup!";
+              const body = `${tokNum} — show your pickup QR at the counter.`;
+              const key = `ready:${String(payload.id || tokNum)}`;
+              if (!seenEventKeysRef.current.has(key)) {
+                seenEventKeysRef.current.add(key);
+                setLiveBanner({ title, body });
+                scheduleLocalOrderNotificationAsync(title, body, payload);
+              }
+            }
           }
         },
         connected => setWsConnected(connected)
@@ -165,6 +214,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         wsConnected,
         lastRealtimeTick,
+        liveBanner,
+        dismissLiveBanner,
         mfaChallengeToken,
         signIn,
         verifyMfaLogin,

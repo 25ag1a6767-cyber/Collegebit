@@ -372,11 +372,71 @@
       btnExc.addEventListener("click", () => openReasonModal(o.id, "exception"));
       actions.appendChild(btnExc);
 
+      if (o.customer && o.customer.phoneMasked) {
+        const btnWa = el("button", "btn btn-outline", "WhatsApp ($0)");
+        btnWa.type = "button";
+        btnWa.addEventListener("click", () => openFreeNotifyChannel(o.id, "whatsapp"));
+        actions.appendChild(btnWa);
+
+        const btnSms = el("button", "btn btn-outline", "SMS ($0)");
+        btnSms.type = "button";
+        btnSms.addEventListener("click", () => openFreeNotifyChannel(o.id, "sms"));
+        actions.appendChild(btnSms);
+      }
+
       card.appendChild(actions);
       frag.appendChild(card);
     });
 
     grid.replaceChildren(frag);
+  }
+
+  async function openFreeNotifyChannel(orderId, channel) {
+    const popup = channel === "whatsapp" ? window.open("", "_blank") : null;
+    if (popup) popup.opener = null;
+    try {
+      const data = await api(`/staff/orders/${orderId}/free-notify-links`);
+      if (!data || !data.phonePresent) {
+        if (popup) popup.close();
+        showBanner(`No valid mobile number saved on student profile for Order #${orderId}.`, "error");
+        return;
+      }
+      const targetUrl = channel === "whatsapp" ? data.whatsappUrl : data.smsUrl;
+      if (!targetUrl) {
+        if (popup) popup.close();
+        showBanner("Could not build free notification link for this number.", "error");
+        return;
+      }
+      if (channel === "whatsapp") {
+        if (popup && !popup.closed) {
+          popup.location.href = targetUrl;
+        } else {
+          window.open(targetUrl, "_blank", "noopener");
+        }
+      } else {
+        const link = document.createElement("a");
+        link.href = targetUrl;
+        link.hidden = true;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      const b = $("staff-banner");
+      if (b) {
+        b.className = "status-banner success";
+        b.hidden = false;
+        b.replaceChildren(document.createTextNode(`${channel === "whatsapp" ? "WhatsApp" : "SMS"} ready: "${data.messageText}" — `));
+        const a = document.createElement("a");
+        a.href = targetUrl;
+        a.target = channel === "whatsapp" ? "_blank" : "_self";
+        a.rel = "noopener";
+        a.textContent = "Open again";
+        b.appendChild(a);
+      }
+    } catch (err) {
+      if (popup) popup.close();
+      showBanner(err.message, "error");
+    }
   }
 
   async function transitionOrder(orderId, action) {
