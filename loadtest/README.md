@@ -1,4 +1,6 @@
-# ACE Canteen k6 load test
+# ACE Canteen Legacy k6 Read-Only Smoke Test
+
+> **Notice (CollegeBits 3.0):** This directory contains the legacy v1 read-only k6 probe (`k6-canteen.js`) and Locust script. For full CollegeBits 3.0 high-concurrency load testing (3,000-student 5-minute lunch spike, 3,000-recipient bulk CSV imports, duplicate QR pickup races, webhook bursts, and 500-vs-600 inventory contention), use **[load-tests/](../load-tests/README.md)** and `scripts/run_v3_bulk_and_lunch_spike_benchmark.py`.
 
 This test is deliberately read-only: homepage, database readiness (`SELECT 1`), categories, product catalogue, and canteen status. It does not register accounts, create orders, send email, or call Razorpay/payment APIs.
 

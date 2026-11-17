@@ -2041,10 +2041,12 @@ def get_pickup_history_v1(
 @router.get("/kitchen/dashboard")
 def get_kitchen_batch_dashboard_v1(
     request: Request,
+    lookback_days: int = Query(default=14, ge=1, le=365, alias="lookbackDays"),
     user: User = Depends(require_roles("staff", "admin")),
     db: Session = Depends(get_db),
 ):
-    """Aggregates ONLY verified/paid demand across individual orders and bulk allocations."""
+    """Aggregates ONLY verified/paid demand across active or recent individual and bulk orders."""
+    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=lookback_days)
     products = db.scalars(select(Product).order_by(Product.name.asc())).all()
     by_prod: dict[int, dict[str, Any]] = {
         p.id: {
@@ -2061,13 +2063,17 @@ def get_kitchen_batch_dashboard_v1(
         for p in products
     }
 
-    # 1. Confirmed/paid individual orders
+    # 1. Confirmed/paid individual orders (all active orders + recent completed within lookback window)
     indiv_rows = db.execute(
         select(OrderItem, Order)
         .join(Order, Order.id == OrderItem.order_id)
         .where(
             Order.payment_status == PaymentStatus.PAID,
             Order.status.not_in([OrderStatus.CANCELLED]),
+            or_(
+                Order.status.not_in([OrderStatus.COMPLETED, OrderStatus.COLLECTED]),
+                Order.created_at >= cutoff_dt,
+            ),
         )
     ).all()
     for oi, ord_row in indiv_rows:
@@ -2083,7 +2089,7 @@ def get_kitchen_batch_dashboard_v1(
             entry["packedQty"] += int(oi.quantity)
             entry["collectedQty"] += int(oi.quantity)
 
-    # 2. Paid/confirmed bulk allocations ONLY (never unpaid draft allocations)
+    # 2. Paid/confirmed bulk allocations ONLY (never unpaid draft allocations; active or recent window)
     bulk_alloc_rows = db.execute(
         select(BulkOrderAllocation, BulkOrderRecipient, BulkOrder)
         .join(BulkOrderRecipient, BulkOrderRecipient.id == BulkOrderAllocation.recipient_id)
@@ -2091,6 +2097,10 @@ def get_kitchen_batch_dashboard_v1(
         .where(
             BulkOrderRecipient.payment_status == "paid",
             BulkOrder.status.not_in(["cancelled"]),
+            or_(
+                BulkOrder.status != "collected",
+                BulkOrder.created_at >= cutoff_dt,
+            ),
         )
     ).all()
     for al, rec, bo in bulk_alloc_rows:

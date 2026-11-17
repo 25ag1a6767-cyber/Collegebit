@@ -98,16 +98,20 @@ export interface ActiveDiscount {
   minOrderPaise: number;
 }
 
+export type FulfillmentMode = "READY_TO_EAT" | "PARCEL";
+
 export interface CartLineInput {
   menuItemId: number;
   name: string;
   unitPricePaise: number;
   quantity: number;
   customizations: Record<string, unknown>;
+  fulfillmentType?: FulfillmentMode;
 }
 
 export interface OrderQuote {
   subtotalPaise: number;
+  packagingChargePaise?: number;
   discountPaise: number;
   couponDiscountPaise?: number;
   loyaltyDiscountPaise?: number;
@@ -122,6 +126,7 @@ export interface OrderQuote {
     quantity: number;
     unitPricePaise: number;
     lineTotalPaise: number;
+    fulfillmentType?: FulfillmentMode;
   }>;
 }
 

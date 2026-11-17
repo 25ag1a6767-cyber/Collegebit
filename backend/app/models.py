@@ -1838,6 +1838,264 @@ class EquipmentMaintenanceTicket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+# ==============================================================================
+# PHASE 89 — ENTERPRISE INTELLIGENCE & RELIABILITY 3.0 MODELS
+# ==============================================================================
+class DecisionIntelligenceRecord(Base):
+    """Evaluates before/after operational impact of real canteen actions (Phase 89 Module 1 & 4)."""
+    __tablename__ = "decision_intelligence_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    action_category: Mapped[str] = mapped_column(String(60), nullable=False)  # pricing | staffing | capacity | inventory | prep
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    metric_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    baseline_value: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    observed_value: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
+    delta_pct: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    confidence_band: Mapped[str] = mapped_column(String(30), default="empirical", nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    evaluated_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class OperationalMemoryEntry(Base):
+    """Searchable operational memory & incident knowledge base with expiry controls (Phase 89 Module 2)."""
+    __tablename__ = "operational_memory_entries"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    category: Mapped[str] = mapped_column(String(60), nullable=False)  # rush_playbook | supplier_note | equipment | safety | festival
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    tags_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MultiAgentProposal(Base):
+    """Non-autonomous multi-agent optimization proposals requiring explicit human approval (Phase 89 Module 3)."""
+    __tablename__ = "multi_agent_proposals"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    proposing_agent: Mapped[str] = mapped_column(String(50), nullable=False)  # demand_agent | procurement_agent | kitchen_agent | finance_agent
+    proposal_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    estimated_impact_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending_approval", nullable=False)  # pending_approval | approved | rejected
+    approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decision_notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class UtilityMeterReading(Base):
+    """Electricity, water, solar & LPG utility meter readings (Phase 89 Module 7)."""
+    __tablename__ = "utility_meter_readings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    counter_id: Mapped[int | None] = mapped_column(ForeignKey("canteen_counters.id", ondelete="SET NULL"), nullable=True)
+    utility_type: Mapped[str] = mapped_column(String(40), nullable=False)  # electricity_kwh | water_liters | lpg_kg | solar_kwh
+    reading_value: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    cost_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), default=0, nullable=False)
+    source_mode: Mapped[str] = mapped_column(String(30), default="manual_entry", nullable=False)  # manual_entry | metered_sensor
+    notes: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    recorded_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WaterQualityTest(Base):
+    """Potable kitchen water TDS/pH/chlorine safety inspection ledger (Phase 89 Module 8)."""
+    __tablename__ = "water_quality_tests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    counter_id: Mapped[int | None] = mapped_column(ForeignKey("canteen_counters.id", ondelete="SET NULL"), nullable=True)
+    source_point: Mapped[str] = mapped_column(String(120), nullable=False)
+    tds_ppm: Mapped[int] = mapped_column(Integer, nullable=False)
+    ph_level: Mapped[Decimal] = mapped_column(Numeric(4, 2), nullable=False)
+    free_chlorine_ppm: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.30"), nullable=False)
+    temperature_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    is_compliant: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    tested_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    tested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class FireEmergencyEvent(Base):
+    """Fire, LPG shutoff & emergency drill / incident response checklist log (Phase 89 Module 9)."""
+    __tablename__ = "fire_emergency_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    zone: Mapped[str] = mapped_column(String(100), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)  # smoke_drill | lpg_shutoff_drill | thermal_alarm | evacuation_test
+    severity: Mapped[str] = mapped_column(String(20), default="drill", nullable=False)  # drill | warning | critical
+    is_drill: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="active", nullable=False)  # active | acknowledged | resolved
+    evacuation_checklist_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reported_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class EnvironmentalSensorReading(Base):
+    """Cold-storage, humidity & kitchen sensor telemetry with explicit staleness tracking (Phase 89 Module 11-12)."""
+    __tablename__ = "environmental_sensor_readings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    station_id: Mapped[int | None] = mapped_column(ForeignKey("kitchen_stations.id", ondelete="SET NULL"), nullable=True)
+    sensor_code: Mapped[str] = mapped_column(String(60), index=True, nullable=False)
+    sensor_type: Mapped[str] = mapped_column(String(50), nullable=False)  # cold_storage_temp | kitchen_humidity | exhaust_airflow | lpg_ppm
+    reading_value: Mapped[Decimal] = mapped_column(Numeric(10, 3), nullable=False)
+    unit: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_mode: Mapped[str] = mapped_column(String(30), default="manual", nullable=False)  # manual | hardware_iot
+    threshold_min: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    threshold_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    recorded_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ProcurementRfq(Base):
+    """Digital Request for Quotation (RFQ) for competitive supplier bidding (Phase 89 Module 14)."""
+    __tablename__ = "procurement_rfqs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    required_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    unit: Mapped[str] = mapped_column(String(24), default="kg", nullable=False)
+    target_max_unit_paise: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="open", nullable=False)  # open | awarded | closed
+    awarded_bid_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    closes_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ProcurementBid(Base):
+    """Supplier bid submitted against an open RFQ (Phase 89 Module 14)."""
+    __tablename__ = "procurement_bids"
+    __table_args__ = (
+        UniqueConstraint("rfq_id", "supplier_id", name="uq_rfq_supplier_bid"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rfq_id: Mapped[int] = mapped_column(ForeignKey("procurement_rfqs.id", ondelete="CASCADE"), nullable=False, index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="CASCADE"), nullable=False)
+    unit_price_paise: Mapped[int] = mapped_column(Integer, nullable=False)
+    lead_time_days: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="submitted", nullable=False)  # submitted | awarded | rejected
+    submitted_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class GoodsReceivingInspection(Base):
+    """Automated intake quality & expiry inspection blocking expired stock (Phase 89 Module 16-17)."""
+    __tablename__ = "goods_receiving_inspections"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    purchase_order_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_orders.id", ondelete="SET NULL"), nullable=True)
+    ingredient_id: Mapped[int] = mapped_column(ForeignKey("ingredients.id", ondelete="RESTRICT"), nullable=False)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id", ondelete="RESTRICT"), nullable=False)
+    batch_code: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    received_quantity: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    expiry_date: Mapped[date] = mapped_column(Date, nullable=False)
+    package_temp_c: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
+    packaging_intact: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    inspection_status: Mapped[str] = mapped_column(String(30), nullable=False)  # accepted | rejected_expired | rejected_damaged
+    rejection_reason: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    inspected_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    inspected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MealCreditAllocation(Base):
+    """Institutional / department / scholarship meal credit allowance strictly separate from cash wallet (Phase 89 Module 19)."""
+    __tablename__ = "meal_credit_allocations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    department_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    program_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    allocated_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    remaining_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    expires_on: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)  # active | exhausted | expired | revoked
+    issued_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class MealCreditRedemption(Base):
+    """Idempotent ledger of institutional meal-credit redemptions (Phase 89 Module 19)."""
+    __tablename__ = "meal_credit_redemptions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    allocation_id: Mapped[int] = mapped_column(ForeignKey("meal_credit_allocations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    amount_paise: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True, index=True, nullable=False)
+    redeemed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class DatabaseRecoveryDrill(Base):
+    """Auditable database backup restoration & row-count verification ledger (Phase 89 Module 27)."""
+    __tablename__ = "database_recovery_drills"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True)
+    backup_run_id: Mapped[int | None] = mapped_column(ForeignKey("backup_runs.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)  # passed | failed
+    verified_table_counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    restore_duration_ms: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    executed_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class WebhookSubscription(Base):
+    """Tenant-scoped SSRF-validated webhook subscription for developer portal (Phase 89 Module 29)."""
+    __tablename__ = "webhook_subscriptions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int | None] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    event_types_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=expression.true(), nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TenantConfigBlueprint(Base):
+    """Versioned SaaS tenant configuration template for zero-downtime rollout & rollback (Phase 89 Module 30)."""
+    __tablename__ = "tenant_config_blueprints"
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_blueprint_name_version"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    version: Mapped[str] = mapped_column(String(30), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    config_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TenantBlueprintDeployment(Base):
+    """Records applied/rolled-back configuration blueprint snapshots per college tenant."""
+    __tablename__ = "tenant_blueprint_deployments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("saas_tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    blueprint_id: Mapped[int] = mapped_column(ForeignKey("tenant_config_blueprints.id", ondelete="CASCADE"), nullable=False)
+    previous_config_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    status: Mapped[str] = mapped_column(String(24), default="applied", nullable=False)  # applied | rolled_back
+    applied_by_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 # --- Automatic Decimal <-> integer paise synchronization ---
 @event.listens_for(Product, "before_insert")
 @event.listens_for(Product, "before_update")

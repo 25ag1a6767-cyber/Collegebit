@@ -24,6 +24,7 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
     setDiscountCode,
     quote,
     updateQuantity,
+    setFulfillmentType,
     clearCart,
     refreshQuote
   } = useCart();
@@ -78,7 +79,8 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
           items: lines.map(l => ({
             menuItemId: l.menuItemId,
             quantity: l.quantity,
-            customizations: l.customizations
+            customizations: l.customizations,
+            fulfillmentType: l.fulfillmentType || "READY_TO_EAT"
           })),
           counterId: selectedCounterId,
           pickupSlot: pickupSlot || null,
@@ -140,8 +142,22 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
               <View style={styles.lineInfo}>
                 <Text style={styles.lineName}>{line.name}</Text>
                 <Text style={styles.lineMeta}>
-                  {formatRupeesFromPaise(line.unitPricePaise)} × {line.quantity}
+                  {formatRupeesFromPaise(line.unitPricePaise)} × {line.quantity} ·{" "}
+                  {(line.fulfillmentType || "READY_TO_EAT") === "PARCEL" ? "Parcel (+Pack)" : "Eat Now"}
                 </Text>
+                <TouchableOpacity
+                  style={styles.modeChip}
+                  onPress={() =>
+                    setFulfillmentType(
+                      line.menuItemId,
+                      (line.fulfillmentType || "READY_TO_EAT") === "PARCEL" ? "READY_TO_EAT" : "PARCEL"
+                    )
+                  }
+                >
+                  <Text style={styles.modeChipText}>
+                    Switch to {(line.fulfillmentType || "READY_TO_EAT") === "PARCEL" ? "Eat Now" : "Parcel"}
+                  </Text>
+                </TouchableOpacity>
               </View>
               <View style={styles.stepper}>
                 <TouchableOpacity
@@ -241,6 +257,12 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
                 <Text style={styles.quoteLabel}>Subtotal</Text>
                 <Text style={styles.quoteVal}>{formatRupeesFromPaise(quote.subtotalPaise)}</Text>
               </View>
+              {(quote.packagingChargePaise || 0) > 0 && (
+                <View style={styles.quoteRow}>
+                  <Text style={styles.quoteLabel}>Parcel Packaging</Text>
+                  <Text style={styles.quoteVal}>{formatRupeesFromPaise(quote.packagingChargePaise || 0)}</Text>
+                </View>
+              )}
               <View style={styles.quoteRow}>
                 <Text style={styles.quoteLabel}>Approved Discount</Text>
                 <Text style={styles.quoteVal}>−{formatRupeesFromPaise(quote.couponDiscountPaise ?? quote.discountPaise)}</Text>
@@ -296,6 +318,17 @@ const styles = StyleSheet.create({
   lineInfo: { flex: 1, marginRight: 10 },
   lineName: { fontWeight: "800", fontSize: 15, color: "#17251d" },
   lineMeta: { fontSize: 12, color: "#5e6e64", marginTop: 3 },
+  modeChip: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "#c6d4c8",
+    backgroundColor: "#f3f8f4"
+  },
+  modeChipText: { fontSize: 11, fontWeight: "700", color: "#234638" },
   stepper: { flexDirection: "row", alignItems: "center", gap: 10 },
   stepBtn: {
     width: 32,

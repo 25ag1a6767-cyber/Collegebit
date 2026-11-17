@@ -1266,6 +1266,23 @@
     });
     $("security-tbody").replaceChildren(secFrag);
 
+    // Phase 89 Enterprise Intelligence & Infrastructure Summary
+    Promise.all([
+      apiFetch("/api/v1/enterprise/finance/multi-outlet-consolidation").catch(() => null),
+      apiFetch("/api/v1/enterprise/ai/learning/drift").catch(() => null),
+      apiFetch("/api/v1/enterprise/infrastructure/overview").catch(() => null),
+      apiFetch("/api/v1/enterprise/analytics/customer-journey").catch(() => null)
+    ]).then(([consol, drift, infra, journey]) => {
+      if (!$("p89-summary-text")) return;
+      const rev = consol ? formatINRFromPaise(consol.totalConsolidatedRevenuePaise || 0) : "—";
+      const driftTxt = drift ? (drift.status + " (samples=" + (drift.evaluatedSamples || 0) + ")") : "—";
+      const infraTxt = infra ? ("Stale sensors=" + (infra.staleSensorCount || 0) + ", Water alerts=" + (infra.waterComplianceAlerts || 0)) : "—";
+      const convTxt = journey ? (String(journey.paymentConversionPct || 0) + "% paid") : "—";
+      $("p89-summary-text").textContent =
+        "Consolidated Revenue: " + rev + " (Refunds: ₹0.00 Strict No-Refund Policy) · AI Drift: " + driftTxt +
+        " · Campus Infra: " + infraTxt + " · Journey Conversion: " + convTxt;
+    });
+
     // Audit Logs
     const audFrag = document.createDocumentFragment();
     (aud.items || []).forEach((a) => {
@@ -1756,6 +1773,44 @@
         showAlert(err.message, "error");
       }
     });
+
+    if ($("btn-p89-resilience")) {
+      $("btn-p89-resilience").addEventListener("click", async () => {
+        try {
+          const r = await apiFetch("/api/v1/enterprise/platform/resilience-check", { method: "POST", body: {} });
+          showAlert("Isolated resilience check: " + r.status + " (DB " + r.databasePingMs + " ms)", "success");
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("btn-p89-drill")) {
+      $("btn-p89-drill").addEventListener("click", async () => {
+        try {
+          const r = await apiFetch("/api/v1/enterprise/platform/recovery-drill", { method: "POST", body: { notes: "Admin portal verification" } });
+          showAlert("Verified DB Recovery Drill #" + r.drillId + " " + r.status.toUpperCase() + " (" + r.restoreDurationMs + " ms)", "success");
+          await loadGovernanceModule();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-compliance-form")) {
+      $("p89-compliance-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const q = $("p89-compliance-q").value.trim();
+          if (!q) return;
+          const r = await apiFetch("/api/v1/enterprise/ai/compliance/query", { method: "POST", body: { question: q } });
+          const summary = (r.citations || []).map((c) => "[" + c.policy + "] " + c.detail).join(" | ");
+          $("p89-compliance-answer").textContent = summary || "No policy match found.";
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
   }
 
   document.addEventListener("DOMContentLoaded", () => {

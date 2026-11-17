@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useState } from "react";
 import { apiRequest } from "../api/client";
-import { CartLineInput, CustomizationOption, MenuItemSummary, OrderQuote } from "../types/api";
+import { CartLineInput, CustomizationOption, FulfillmentMode, MenuItemSummary, OrderQuote } from "../types/api";
 import { useAuth } from "./AuthContext";
 
 interface CartContextValue {
@@ -10,8 +10,9 @@ interface CartContextValue {
   discountCode: string;
   setDiscountCode: (code: string) => void;
   quote: OrderQuote | null;
-  addItem: (item: MenuItemSummary, quantity?: number, customizations?: CustomizationOption[]) => Promise<void>;
+  addItem: (item: MenuItemSummary, quantity?: number, customizations?: CustomizationOption[], fulfillmentType?: FulfillmentMode) => Promise<void>;
   updateQuantity: (menuItemId: number, quantity: number) => Promise<void>;
+  setFulfillmentType: (menuItemId: number, fulfillmentType: FulfillmentMode) => Promise<void>;
   clearCart: () => Promise<void>;
   refreshQuote: (pickupSlot?: string | null, loyaltyPointsRedeemed?: number) => Promise<OrderQuote | null>;
 }
@@ -26,16 +27,23 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [quote, setQuote] = useState<OrderQuote | null>(null);
 
   const addItem = useCallback(
-    async (item: MenuItemSummary, quantity = 1, customizations: CustomizationOption[] = []) => {
+    async (
+      item: MenuItemSummary,
+      quantity = 1,
+      customizations: CustomizationOption[] = [],
+      fulfillmentType: FulfillmentMode = "READY_TO_EAT"
+    ) => {
       const custMap: Record<string, unknown> = {};
       for (const c of customizations) custMap[c.name] = true;
       let nextQty = quantity;
+      let nextMode = fulfillmentType;
       setLines(prev => {
         const existing = prev.find(l => l.menuItemId === item.id);
         if (existing) {
           nextQty = Math.min(50, existing.quantity + quantity);
+          nextMode = existing.fulfillmentType || fulfillmentType;
           return prev.map(l =>
-            l.menuItemId === item.id ? { ...l, quantity: nextQty, customizations: custMap } : l
+            l.menuItemId === item.id ? { ...l, quantity: nextQty, customizations: custMap, fulfillmentType: nextMode } : l
           );
         }
         return [
@@ -45,7 +53,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
             name: item.name,
             unitPricePaise: item.pricePaise,
             quantity,
-            customizations: custMap
+            customizations: custMap,
+            fulfillmentType
           }
         ];
       });
@@ -56,7 +65,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           await apiRequest(`/api/v1/cart/items/${item.id}`, {
             method: "PUT",
-            body: JSON.stringify({ quantity: nextQty, customizations: custMap })
+            body: JSON.stringify({ quantity: nextQty, customizations: custMap, fulfillmentType: nextMode })
           });
         } catch {
           // Local state stays responsive; authoritative check runs at quote/checkout
@@ -76,11 +85,45 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         return;
       }
-      setLines(prev => prev.map(l => (l.menuItemId === menuItemId ? { ...l, quantity } : l)));
+      let mode: FulfillmentMode = "READY_TO_EAT";
+      setLines(prev =>
+        prev.map(l => {
+          if (l.menuItemId === menuItemId) {
+            mode = l.fulfillmentType || "READY_TO_EAT";
+            return { ...l, quantity };
+          }
+          return l;
+        })
+      );
       if (user?.role === "student") {
         await apiRequest(`/api/v1/cart/items/${menuItemId}`, {
           method: "PUT",
-          body: JSON.stringify({ quantity, customizations: {} })
+          body: JSON.stringify({ quantity, customizations: {}, fulfillmentType: mode })
+        }).catch(() => null);
+      }
+    },
+    [user?.role]
+  );
+
+  const setFulfillmentType = useCallback(
+    async (menuItemId: number, fulfillmentType: FulfillmentMode) => {
+      setQuote(null);
+      let currentQty = 1;
+      let currentCust: Record<string, unknown> = {};
+      setLines(prev =>
+        prev.map(l => {
+          if (l.menuItemId === menuItemId) {
+            currentQty = l.quantity;
+            currentCust = l.customizations;
+            return { ...l, fulfillmentType };
+          }
+          return l;
+        })
+      );
+      if (user?.role === "student") {
+        await apiRequest(`/api/v1/cart/items/${menuItemId}`, {
+          method: "PUT",
+          body: JSON.stringify({ quantity: currentQty, customizations: currentCust, fulfillmentType })
         }).catch(() => null);
       }
     },
@@ -107,7 +150,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           items: lines.map(l => ({
             menuItemId: l.menuItemId,
             quantity: l.quantity,
-            customizations: l.customizations
+            customizations: l.customizations,
+            fulfillmentType: l.fulfillmentType || "READY_TO_EAT"
           })),
           counterId: selectedCounterId,
           couponCode: discountCode.trim() || null,
@@ -132,6 +176,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         quote,
         addItem,
         updateQuantity,
+        setFulfillmentType,
         clearCart,
         refreshQuote
       }}

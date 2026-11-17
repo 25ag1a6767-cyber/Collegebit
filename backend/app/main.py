@@ -209,14 +209,21 @@ async def lifespan(_: FastAPI):
                     conn.execute(text("CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"))
                     res = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
                     if not res:
-                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0024_phase60_to_85_enterprise')"))
+                        conn.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0025_phase89_enterprise_intelligence')"))
             except Exception as ale_err:
                 logger.warning("Could not stamp alembic_version: %s", ale_err)
             with SessionLocal() as db:
                 seed_demo_data(db)
             logger.info("Database schema and bootstrap accounts created successfully.")
         else:
-            if "bulk_orders" not in existing_tables or "payment_incidents" not in existing_tables or "saas_tenants" not in existing_tables or "support_tickets" not in existing_tables or "admin_invitations" not in existing_tables:
+            if (
+                "bulk_orders" not in existing_tables
+                or "payment_incidents" not in existing_tables
+                or "saas_tenants" not in existing_tables
+                or "support_tickets" not in existing_tables
+                or "admin_invitations" not in existing_tables
+                or "meal_credit_allocations" not in existing_tables
+            ):
                 Base.metadata.create_all(bind=engine)
             try:
                 with engine.begin() as conn:
@@ -2295,6 +2302,7 @@ from app.modules import (
     analytics_bi,
     auth_profile,
     bulk_orders_v3,
+    enterprise_v3_phase89,
     menu_cart,
     operations_intelligence_v3,
     orders_payments,
@@ -2312,6 +2320,7 @@ v1_router.include_router(menu_cart.router)
 v1_router.include_router(saas_crowd_pos_v3.router)
 v1_router.include_router(saas_admin_governance_v3.router)
 v1_router.include_router(operations_intelligence_v3.router)
+v1_router.include_router(enterprise_v3_phase89.router)
 v1_router.include_router(bulk_orders_v3.router)
 v1_router.include_router(orders_payments.router)
 v1_router.include_router(rewards_wallet.router)
