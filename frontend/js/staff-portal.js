@@ -1149,6 +1149,17 @@
                 await loadStationsAndShifts();
               });
               row.appendChild(btn);
+            } else if (sh.status === "active") {
+              const btnOut = document.createElement("button");
+              btnOut.type = "button";
+              btnOut.className = "btn btn-outline";
+              btnOut.textContent = "Check Out";
+              btnOut.addEventListener("click", async () => {
+                await api(`/workforce/shifts/${sh.id}/check-out`, { method: "POST", body: {} });
+                showBanner(`Checked out from shift #${sh.id}.`, "success");
+                await loadStationsAndShifts();
+              });
+              row.appendChild(btnOut);
             }
             shBox.appendChild(row);
           });
@@ -1168,10 +1179,58 @@
       }
     });
 
+    async function loadPickupProgress() {
+      const box = $("staff-pickup-progress-box");
+      if (!box || !state.accessToken) return;
+      try {
+        const res = await api("/pickup/progress");
+        const pcs = res.physicalCounters || [];
+        const c1 = pcs[0] || {};
+        const c2 = pcs[1] || {};
+        box.textContent = `Counter 1 (Express): ${c1.individualOrdersCollected || 0} individual + ${c1.bulkMealsCollected || 0} bulk collected | Counter 2 (Bulk Dispatch): ${c2.bulkMealsCollected || 0} bulk meals collected`;
+      } catch { /* non-blocking */ }
+    }
+
+    $("btn-pickup-progress-refresh")?.addEventListener("click", loadPickupProgress);
+
+    $("staff-checklist-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        await api("/food-safety/checklists", {
+          method: "POST",
+          body: {
+            checklistType: $("fs-chk-type").value,
+            stationName: $("fs-chk-station").value.trim(),
+            itemsChecked: [{ item: "Sanitization & Temperature Verified", ok: true }],
+            passed: true
+          }
+        });
+        showBanner("Food safety hygiene checklist submitted.", "success");
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
+    $("staff-breakdown-form")?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const eid = Number($("eq-asset-id").value || 1);
+        await api(`/equipment/${eid}/report-breakdown`, {
+          method: "POST",
+          body: { priority: "high", issueSummary: $("eq-issue-summary").value.trim() }
+        });
+        showBanner(`Equipment #${eid} breakdown ticket opened.`, "success");
+        e.target.reset();
+      } catch (err) {
+        showBanner(err.message, "error");
+      }
+    });
+
     if (state.accessToken) {
       bootstrapAuthenticated();
       loadKitchenBatches();
       loadStationsAndShifts();
+      loadPickupProgress();
     }
   });
 })();

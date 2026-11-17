@@ -179,7 +179,9 @@
         <div class="panel-card">
           <div class="panel-head">
             <h2>3. Two-Counter Bulk &amp; Representative Group QR Collection</h2>
+            <button type="button" class="btn btn-outline" id="btn-pickup-progress-refresh">Live Two-Counter Progress</button>
           </div>
+          <p id="staff-pickup-progress-box" class="muted">Checking Counter 1 &amp; Counter 2 collection progress…</p>
           <form id="staff-group-pickup-form" class="staff-form-group">
             <label>Physical Counter
               <select id="group-pickup-counter">
@@ -218,7 +220,7 @@
           </div>
 
           <div class="panel-card">
-            <div class="panel-head"><h3>5. Food Safety &amp; Temperature Log</h3></div>
+            <div class="panel-head"><h3>5. Food Safety, Hygiene Checklist &amp; Equipment Breakdown</h3></div>
             <form id="staff-food-safety-form" class="staff-form-group">
               <label>Equipment / Chiller<input id="fs-equipment" type="text" required placeholder="e.g. Chiller #1"></label>
               <label>Storage Zone
@@ -230,6 +232,24 @@
               </label>
               <label>Temperature (°C)<input id="fs-temp" type="number" step="0.1" required value="3.5"></label>
               <button type="submit" class="btn btn-outline">Record Temperature Log</button>
+            </form>
+            <hr class="staff-divider">
+            <form id="staff-checklist-form" class="staff-form-group">
+              <label>Checklist Type
+                <select id="fs-chk-type">
+                  <option value="daily_cleaning">Daily Sanitization &amp; Cleaning</option>
+                  <option value="staff_hygiene">Staff Hygiene &amp; Gloves</option>
+                  <option value="equipment_maintenance">Kitchen Equipment Safety</option>
+                </select>
+              </label>
+              <label>Station Name<input id="fs-chk-station" type="text" required value="Main Kitchen"></label>
+              <button type="submit" class="btn btn-outline">Submit Passed Safety Checklist</button>
+            </form>
+            <hr class="staff-divider">
+            <form id="staff-breakdown-form" class="staff-form-group">
+              <label>Equipment Asset ID<input id="eq-asset-id" type="number" min="1" value="1" required></label>
+              <label>Breakdown Summary<input id="eq-issue-summary" type="text" required placeholder="e.g. Chiller compressor trip"></label>
+              <button type="submit" class="btn btn-danger">Report Equipment Breakdown</button>
             </form>
           </div>
         </div>

@@ -2005,17 +2005,79 @@
         }
       });
     }
+
+    if ($("p89-fire-form")) {
+      $("p89-fire-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          await apiFetch("/api/v1/enterprise/infrastructure/fire-events", {
+            method: "POST",
+            body: { zone: $("p89-fire-zone").value.trim(), eventType: $("p89-fire-type").value, isDrill: true }
+          });
+          showAlert("Emergency / Fire drill triggered with evacuation checklist.", "success");
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-sim-form")) {
+      $("p89-sim-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/enterprise/supply-chain/disruption-simulation", {
+            method: "POST",
+            body: { ingredientId: Number($("p89-sim-ing-id").value || 1), outageDays: Number($("p89-sim-days").value || 5) }
+          });
+          $("p89-sim-out").textContent =
+            `${r.ingredient?.name || "Ingredient"}: ${r.estimatedDaysOfCover} days cover | Projected shortfall: ${r.projectedShortfallDays} days (What-If Simulation Only)`;
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
+
+    if ($("p89-gst-form")) {
+      $("p89-gst-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        try {
+          const r = await apiFetch("/api/v1/enterprise/finance/tax/validate-invoice", {
+            method: "POST",
+            body: {
+              supplierId: Number($("p89-gst-sup-id").value || 1),
+              gstin: $("p89-gst-gstin").value.trim().toUpperCase(),
+              invoiceNumber: $("p89-gst-inv").value.trim(),
+              subtotalPaise: Math.round(Number($("p89-gst-sub").value || 0) * 100),
+              taxPaise: Math.round(Number($("p89-gst-tax").value || 0) * 100),
+              totalPaise: Math.round(Number($("p89-gst-tot").value || 0) * 100)
+            }
+          });
+          $("p89-gst-out").textContent =
+            (r.valid ? "✓ Valid GSTIN & Totals" : "⚠ Validation Failed: " + (r.findings || []).join("; "));
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
+      });
+    }
   }
 
   async function loadSaasEnterpriseTab() {
-    const [tenants, closings, proposals, rfqs, water, credits] = await Promise.all([
+    const [tenants, closings, proposals, rfqs, water, credits, fires, scen] = await Promise.all([
       apiFetch("/api/v1/saas/tenants").catch(() => ({ items: [] })),
       apiFetch("/api/v1/admin/closings").catch(() => ({ items: [] })),
       apiFetch("/api/v1/enterprise/ai/agents/proposals").catch(() => ({ proposals: [] })),
       apiFetch("/api/v1/enterprise/supply-chain/rfqs").catch(() => ({ items: [] })),
       apiFetch("/api/v1/enterprise/infrastructure/water-quality").catch(() => ({ items: [] })),
-      apiFetch("/api/v1/enterprise/finance/meal-credits").catch(() => ({ items: [] }))
+      apiFetch("/api/v1/enterprise/finance/meal-credits").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/enterprise/infrastructure/fire-events").catch(() => ({ items: [] })),
+      apiFetch("/api/v1/enterprise/finance/scenario-forecast?horizonDays=30").catch(() => null)
     ]);
+    if ($("p89-forecast-box") && scen && scen.scenarios) {
+      const s = scen.scenarios;
+      $("p89-forecast-box").textContent =
+        `30d Projection (Statistical Only) — Conservative: ${formatINRFromPaise(s.conservative?.projectedRevenuePaise)} | Expected: ${formatINRFromPaise(s.expected?.projectedRevenuePaise)} | Optimistic: ${formatINRFromPaise(s.optimistic?.projectedRevenuePaise)}`;
+    }
 
     const tFrag = document.createDocumentFragment();
     (tenants.items || []).forEach((t) => {
@@ -2134,6 +2196,29 @@
       crFrag.appendChild(tr);
     });
     if ($("p89-credits-tbody")) $("p89-credits-tbody").replaceChildren(crFrag);
+
+    const fFrag = document.createDocumentFragment();
+    (fires.items || []).forEach((ev) => {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", ev.zone));
+      tr.appendChild(el("td", "mono", ev.eventType));
+      tr.appendChild(el("td", "", ev.status));
+      const tdAct = el("td");
+      if (ev.status !== "resolved") {
+        const b = el("button", "btn btn-outline", "Resolve Drill");
+        b.type = "button";
+        b.addEventListener("click", async () => {
+          await apiFetch("/api/v1/enterprise/infrastructure/fire-events/" + ev.id + "/resolve", { method: "POST", body: {} });
+          await loadSaasEnterpriseTab();
+        });
+        tdAct.appendChild(b);
+      } else {
+        tdAct.textContent = "Resolved";
+      }
+      tr.appendChild(tdAct);
+      fFrag.appendChild(tr);
+    });
+    if ($("p89-fire-tbody")) $("p89-fire-tbody").replaceChildren(fFrag);
   }
 
   document.addEventListener("DOMContentLoaded", () => {

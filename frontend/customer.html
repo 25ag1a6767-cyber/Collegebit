@@ -132,6 +132,7 @@
 
     <!-- S01: Live Counters, Active Offers & Personalized AI Recommendations -->
     <section class="v1-discovery-section" id="v1-student-discovery" aria-label="Live counters and recommendations">
+      <p id="v1-live-queue-eta" class="muted">Checking live kitchen queue ETA…</p>
       <div class="v1-counters-grid" id="v1-counters-grid"></div>
       <div class="v1-offers-strip" id="v1-offers-strip" hidden></div>
       <div class="v1-reco-panel" id="v1-reco-panel">
@@ -318,6 +319,7 @@
             </label>
             <div class="inline-toolbar-row">
               <button type="submit" class="primary-button">Import CSV Batch</button>
+              <button type="button" class="secondary-button" id="v1-bulk-pay-btn">Create Payment Intent</button>
               <button type="button" class="secondary-button" id="v1-bulk-gen-tokens-btn">Generate QR Tokens</button>
               <button type="button" class="secondary-button" id="v1-bulk-export-csv-btn">Export CSV</button>
               <button type="button" class="secondary-button" id="v1-bulk-export-pdf-btn">Export PDF</button>

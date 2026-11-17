@@ -900,6 +900,50 @@
             </div>
           </div>
         </div>
+
+        <div class="split-2">
+          <div class="section-card">
+            <div class="card-head"><h2>Fire / Emergency Drills &amp; Supplier Risk / Disruption</h2></div>
+            <form id="p89-fire-form" class="split-2">
+              <label>Campus Zone<input id="p89-fire-zone" type="text" required value="Main LPG Gas Bank" /></label>
+              <label>Drill / Event Type
+                <select id="p89-fire-type">
+                  <option value="lpg_shutoff_drill">LPG Shutoff Drill</option>
+                  <option value="smoke_drill">Smoke Detector Drill</option>
+                  <option value="evacuation_test">Counter Evacuation Test</option>
+                </select>
+              </label>
+              <div><button type="submit" class="btn btn-outline">Trigger Evacuation / Fire Drill</button></div>
+            </form>
+            <form id="p89-sim-form" class="split-2">
+              <label>Ingredient ID<input id="p89-sim-ing-id" type="number" min="1" value="1" required /></label>
+              <label>Outage Days<input id="p89-sim-days" type="number" min="1" max="30" value="5" required /></label>
+              <div><button type="submit" class="btn btn-outline">Run Disruption Simulation</button></div>
+            </form>
+            <div id="p89-sim-out" class="muted"></div>
+            <div class="table-scroll">
+              <table class="admin-table">
+                <thead><tr><th>Zone</th><th>Type</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody id="p89-fire-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="card-head"><h2>Financial Scenario Forecast &amp; GST Invoice Check</h2></div>
+            <p id="p89-forecast-box" class="muted">Loading 30-day revenue scenario projections…</p>
+            <form id="p89-gst-form" class="split-2">
+              <label>Supplier ID<input id="p89-gst-sup-id" type="number" min="1" value="1" required /></label>
+              <label>Supplier GSTIN<input id="p89-gst-gstin" type="text" maxlength="15" required placeholder="36AABCU9603R1ZM" /></label>
+              <label>Invoice #<input id="p89-gst-inv" type="text" required placeholder="INV-2026-001" /></label>
+              <label>Subtotal (₹)<input id="p89-gst-sub" type="number" min="0" value="1000" required /></label>
+              <label>Tax (₹)<input id="p89-gst-tax" type="number" min="0" value="50" required /></label>
+              <label>Total (₹)<input id="p89-gst-tot" type="number" min="0" value="1050" required /></label>
+              <div><button type="submit" class="btn btn-primary">Validate GST &amp; Duplicate</button></div>
+            </form>
+            <div id="p89-gst-out" class="muted"></div>
+          </div>
+        </div>
       </section>
     </div>
   </main>

@@ -1601,6 +1601,20 @@
     }
   });
 
+  $("#v1-bulk-pay-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-bulk-csv-msg");
+    const bid = Number($("#v1-bulk-target-id")?.value);
+    if (!bid) return;
+    try {
+      const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/payment-intent`, { method: "POST" });
+      msg.textContent = `Payment Intent Ready (${res.gatewayOrderId}) · Amount: ${formatPaise(res.amountPaise)} (${res.status}). Complete checkout via Razorpay.`;
+      msg.className = "management-message success";
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = "management-message error";
+    }
+  });
+
   $("#v1-bulk-export-csv-btn")?.addEventListener("click", () => {
     const bid = Number($("#v1-bulk-target-id")?.value);
     if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=csv`, "_blank");
@@ -1769,6 +1783,12 @@
   loadCounters();
   loadActiveOffers();
   loadRecommendations();
+  v1Fetch("/api/v1/ai/queue-eta").then(eta => {
+    const elEta = $("#v1-live-queue-eta");
+    if (elEta && eta) {
+      elEta.textContent = `Live Kitchen Wait ETA: ~${eta.estimatedMinutes ?? 5} mins (${eta.queuedOrders ?? 0} active orders in queue)`;
+    }
+  }).catch(() => {});
   connectRealtimeWs();
   if (window.aceCanteenUser) syncV1ForAuth(window.aceCanteenUser);
 })();
