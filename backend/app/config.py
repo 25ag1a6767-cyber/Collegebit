@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     cors_origins: str = ""
     # Public base URL used in emailed links (no trailing slash), e.g. https://canteen.example.edu
     public_base_url: str = "https://www.collegebits.com"
+    # Optional separate API base URL for split-origin static PWA hosting (empty = same-origin)
+    api_base_url: str = ""
     password_reset_minutes: int = 30
     email_verification_required: bool = False
     email_receipts_enabled: bool = True

@@ -430,7 +430,12 @@ def _apply_security_headers(response: JSONResponse, request: Request):
     response.headers.setdefault("Permissions-Policy", perm_policy)
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     ws_schemes = "wss:" if IS_PRODUCTION else "ws: wss:"
-    response.headers.setdefault("Content-Security-Policy", f"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://api.razorpay.com; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https:; connect-src 'self' {ws_schemes} https://api.razorpay.com https://checkout.razorpay.com; frame-src https://checkout.razorpay.com")
+    extra_connect = ""
+    cfg_api = get_settings().api_base_url.strip().rstrip("/")
+    if cfg_api.startswith(("https://", "http://")):
+        cfg_ws = cfg_api.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+        extra_connect = f" {cfg_api} {cfg_ws}"
+    response.headers.setdefault("Content-Security-Policy", f"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://api.razorpay.com; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https:; connect-src 'self' {ws_schemes}{extra_connect} https://api.razorpay.com https://checkout.razorpay.com; frame-src https://checkout.razorpay.com https://api.razorpay.com")
     if IS_PRODUCTION and request.url.scheme == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -490,6 +495,14 @@ async def public_token_display_board_page() -> FileResponse:
     """Public real-time TV token display board for cafeteria monitors (CampusBite AI v2.0)."""
     return FileResponse(FRONTEND_DIR / "display.html")
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> FileResponse:
+    return FileResponse(
+        FRONTEND_DIR / "assets" / "icon-192.png",
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
 @app.get("/offline.html", include_in_schema=False)
 async def offline_fallback_page() -> FileResponse:
     return FileResponse(
@@ -497,6 +510,13 @@ async def offline_fallback_page() -> FileResponse:
         media_type="text/html",
         headers={"Cache-Control": "no-cache"},
     )
+
+@app.get("/config.js", include_in_schema=False)
+async def frontend_runtime_config() -> Response:
+    api_base = get_settings().api_base_url.strip().rstrip("/")
+    helper_js = (FRONTEND_DIR / "config.js").read_text(encoding="utf-8")
+    body = f"window.__COLLEGEBITS_CONFIG__ = {{ apiBaseUrl: {json.dumps(api_base)} }};\n{helper_js}"
+    return Response(content=body, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
 @app.get("/manifest.webmanifest", include_in_schema=False)
 async def web_app_manifest() -> FileResponse:
@@ -514,7 +534,10 @@ async def service_worker() -> FileResponse:
         headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Service-Worker-Allowed": "/customer/"},
     )
 
-APK_RELEASE_URL = "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk"
+APK_RELEASE_URL = os.getenv(
+    "APK_RELEASE_URL",
+    "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-Customer.apk",
+)
 IOS_IPA_RELEASE_URL = os.getenv(
     "IOS_IPA_RELEASE_URL",
     "https://github.com/25ag1a6767-cyber/Collegebit/releases/download/customer-app-latest/CollegeBits-iOS-Bundle.zip",

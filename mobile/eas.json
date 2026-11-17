@@ -16,9 +16,6 @@
     },
     "preview": {
       "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://app-sai-e3e1.vercel.app"
-      },
       "android": {
         "buildType": "apk"
       },
@@ -27,9 +24,6 @@
       }
     },
     "production": {
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://app-sai-e3e1.vercel.app"
-      },
       "android": {
         "buildType": "app-bundle"
       },

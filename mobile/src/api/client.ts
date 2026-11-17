@@ -1,14 +1,28 @@
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import { ApiEnvelope, AuthTokenResponse } from "../types/api";
 
 declare const process: { env: Record<string, string | undefined> };
+declare const __DEV__: boolean;
 
 const ACCESS_TOKEN_KEY = "ace_canteen_access_token_v1";
 const REFRESH_TOKEN_KEY = "ace_canteen_refresh_token_v1";
 
-export const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_URL || "https://www.collegebits.com"
-).replace(/\/+$/, "");
+function resolveApiBaseUrl(): string {
+  const fromEnv = (process.env.EXPO_PUBLIC_API_URL || "").trim();
+  const extra = Constants.expoConfig?.extra as { apiBaseUrl?: string } | undefined;
+  const fromExtra = (extra?.apiBaseUrl || "").trim();
+  const devDefault =
+    typeof __DEV__ !== "undefined" && __DEV__
+      ? Platform.OS === "android"
+        ? "http://10.0.2.2:8000"
+        : "http://127.0.0.1:8000"
+      : "";
+  return (fromEnv || fromExtra || devDefault).replace(/\/+$/, "");
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 let memoryAccessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
@@ -54,6 +68,7 @@ export async function getRefreshToken(): Promise<string | null> {
 }
 
 async function rotateAccessToken(): Promise<string | null> {
+  if (!API_BASE_URL) return null;
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const rt = await getRefreshToken();
@@ -95,6 +110,13 @@ export async function apiRequest<T>(
   options: RequestInit = {},
   allowRefresh = true
 ): Promise<T> {
+  if (!API_BASE_URL) {
+    throw new ApiClientError(
+      "API_URL_NOT_CONFIGURED",
+      "API base URL is not configured. Rebuild with EXPO_PUBLIC_API_URL set to your canteen server URL.",
+      0
+    );
+  }
   const token = await getAccessToken();
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -134,16 +156,38 @@ export function createRealtimeSocket(
   let closed = false;
   let ws: WebSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let pingTimer: ReturnType<typeof setInterval> | null = null;
   let backoffMs = 1500;
+
+  if (!API_BASE_URL) {
+    onStateChange?.(false);
+    return () => undefined;
+  }
 
   const wsBase = API_BASE_URL.replace(/^http/, "ws");
   const connect = () => {
     if (closed) return;
-    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-    ws = new WebSocket(`${wsBase}/api/v1/ws${qs}`);
+    ws = new WebSocket(`${wsBase}/api/v1/ws`);
     ws.onopen = () => {
       backoffMs = 1500;
+      if (token) {
+        try {
+          ws?.send(JSON.stringify({ type: "auth", token }));
+        } catch {
+          // Ignore send failure
+        }
+      }
       onStateChange?.(true);
+      if (pingTimer) clearInterval(pingTimer);
+      pingTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          try {
+            ws.send(JSON.stringify({ type: "ping" }));
+          } catch {
+            // Ignore heartbeat error
+          }
+        }
+      }, 25000);
     };
     ws.onmessage = msg => {
       try {
@@ -154,6 +198,7 @@ export function createRealtimeSocket(
       }
     };
     ws.onclose = () => {
+      if (pingTimer) clearInterval(pingTimer);
       onStateChange?.(false);
       if (!closed) {
         retryTimer = setTimeout(connect, backoffMs);
@@ -167,6 +212,7 @@ export function createRealtimeSocket(
   return () => {
     closed = true;
     if (retryTimer) clearTimeout(retryTimer);
+    if (pingTimer) clearInterval(pingTimer);
     if (ws) {
       ws.onclose = null;
       ws.close();

@@ -228,8 +228,9 @@
       ...(options.headers || {})
     };
     let res;
+    const reqUrl = window.collegebitsApiUrl ? window.collegebitsApiUrl(path) : path;
     try {
-      res = await fetch(path, { ...options, headers, cache: "no-store" });
+      res = await fetch(reqUrl, { ...options, headers, cache: "no-store" });
     } catch {
       const netErr = new Error("Network connection lost. Please retry once back online.");
       netErr.code = "NETWORK_ERROR";
@@ -275,7 +276,9 @@
       return;
     }
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${location.host}/api/v1/ws`;
+    const url = window.collegebitsWsUrl
+      ? window.collegebitsWsUrl("/api/v1/ws")
+      : `${proto}//${location.host}/api/v1/ws`;
     try {
       const ws = new WebSocket(url);
       state.ws = ws;
