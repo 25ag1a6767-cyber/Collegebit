@@ -52,8 +52,6 @@
     </div>
     <div class="pwa-banner-buttons">
       <button type="button" class="pwa-banner-btn" id="pwa-banner-install-btn">📲 Install app</button>
-      <a class="pwa-banner-apk-btn" id="pwa-banner-ios-btn" href="/download/ios.mobileconfig" hidden>🍎 iPhone Profile</a>
-      <a class="pwa-banner-apk-btn" id="pwa-banner-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk" hidden>🤖 Android APK</a>
       <button type="button" class="pwa-banner-close" id="pwa-banner-dismiss-btn" aria-label="Dismiss install prompt">✕</button>
     </div>
   </section>
@@ -93,19 +91,7 @@
               <button type="button" class="link-button" id="auth-forgot">Forgot your password?</button>
               <p class="legal-inline-note">By ordering, you agree to the <a href="/legal#privacy">Privacy Policy</a> &amp; <a href="/legal#terms">Terms (No-Refund Policy)</a>.</p>
             </form>
-            <div class="v1-mini-card" id="v1-guest-otp-box">
-              <h2 class="mini-card-heading">Visitor / Faculty Quick OTP Sign-In</h2>
-              <div class="form-pair">
-                <input id="v1-otp-contact" type="text" placeholder="Email or Phone for OTP">
-                <input id="v1-otp-code" type="text" placeholder="OTP Code">
-              </div>
-              <div class="v1-inline-actions">
-                <button type="button" class="secondary-button" id="v1-otp-req-btn">Request Guest OTP</button>
-                <button type="button" class="secondary-button" id="v1-otp-ver-btn">Verify OTP</button>
-              </div>
-              <p id="v1-otp-msg" class="muted"></p>
-              <p id="v1-payment-methods-hint" class="muted"></p>
-            </div>
+            <p id="v1-payment-methods-hint" class="muted"></p>
             <p id="auth-message" class="auth-message" role="status" aria-live="polite">You are not signed in.</p>
             <div id="account-panel" class="account-panel" hidden>
               <strong id="account-name"></strong>
@@ -143,11 +129,6 @@
                 <p id="v1-free-channels-msg" class="management-message" role="status"></p>
                 <p id="v1-profile-msg" class="management-message" role="status"></p>
               </div>
-              <section class="notification-center" id="rewards-wallet-panel" aria-labelledby="rewards-wallet-heading">
-                <h3 id="rewards-wallet-heading">Rewards &amp; prepaid balance</h3>
-                <p id="rewards-wallet-summary" class="management-message" role="status" aria-live="polite">Sign in to view your balance.</p>
-                <p class="management-message">Earn 1 point per ₹10 after collecting a paid order. 1 point saves ₹0.10. Prepaid wallet credits are added by canteen administration after payment is verified.</p>
-              </section>
               <section class="notification-center" id="notification-center" aria-labelledby="notification-heading">
                 <div class="management-list-head">
                   <h3 id="notification-heading">Notifications <span class="notification-count" id="notification-unread-count">0 unread</span></h3>
@@ -905,30 +886,6 @@
           <button type="button" class="pwa-platform-tab" id="pwa-tab-android" data-platform="android" role="tab">🤖 Android</button>
         </div>
 
-        <!-- Direct iPhone / iOS Installer Profile Button -->
-        <div class="pwa-apk-cta pwa-ios-cta" id="pwa-ios-section">
-          <a class="pwa-apk-btn" href="/download/ios.mobileconfig">
-            <span class="pwa-apk-icon">🍎</span>
-            <div class="pwa-apk-info">
-              <strong>Download iPhone &amp; iPad App (iOS)</strong>
-              <small>Direct iOS App Installer (Tap Allow &rarr; Settings &rarr; Profile Downloaded &rarr; Install)</small>
-            </div>
-          </a>
-        </div>
-
-        <!-- Direct Android APK Download Button (Works on ANY Android phone) -->
-        <div class="pwa-apk-cta" id="pwa-apk-section">
-          <a class="pwa-apk-btn" href="/download/app.apk" download="CollegeBits-Customer.apk">
-            <span class="pwa-apk-icon">🤖</span>
-            <div class="pwa-apk-info">
-              <strong>Download Android App (.APK)</strong>
-              <small>Direct install for Samsung, OnePlus, Vivo, Oppo, Realme, Xiaomi, etc.</small>
-            </div>
-          </a>
-        </div>
-
-        <div class="pwa-divider" id="pwa-divider"><span>OR ADD DIRECTLY FROM BROWSER</span></div>
-
         <!-- iOS Instructions -->
         <div id="pwa-guide-ios" class="pwa-guide-steps" hidden>
           <div id="pwa-ios-inapp-alert" class="pwa-inapp-alert" hidden>
@@ -938,15 +895,15 @@
           <div class="pwa-step">
             <span class="pwa-step-num">1</span>
             <div class="pwa-step-desc">
-              <strong>Option A — Tap "Download iPhone App" above</strong>
-              <p>Tap the <strong>🍎 Download iPhone &amp; iPad App</strong> button above, tap <strong>Allow</strong>, then open iPhone <strong>Settings &rarr; Profile Downloaded &rarr; Install</strong>.</p>
+              <strong>Open in Safari &amp; tap Share</strong>
+              <p>Tap the <strong>Share</strong> icon <span class="pwa-ios-step-icon">⎋</span> in Safari's toolbar at the bottom or top of the screen.</p>
             </div>
           </div>
           <div class="pwa-step">
             <span class="pwa-step-num">2</span>
             <div class="pwa-step-desc">
-              <strong>Option B — Safari "Add to Home Screen"</strong>
-              <p>Or tap the <strong>Share</strong> icon <span class="pwa-ios-step-icon">⎋</span> in Safari's toolbar and select <strong>"Add to Home Screen"</strong> <span class="pwa-ios-step-icon">➕</span>.</p>
+              <strong>Select &ldquo;Add to Home Screen&rdquo;</strong>
+              <p>Scroll down and tap <strong>&ldquo;Add to Home Screen&rdquo;</strong> <span class="pwa-ios-step-icon">➕</span>, then tap <strong>Add</strong>.</p>
             </div>
           </div>
           <div class="pwa-step">

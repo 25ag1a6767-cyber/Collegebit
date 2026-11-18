@@ -154,8 +154,10 @@ def test_three_portals_and_strict_csp_compliance():
         assert "ACE Canteen" in r_cust.text
         assert "/staff" not in r_cust.text
         assert "/admin" not in r_cust.text
-        assert "/download/ios.mobileconfig" in r_cust.text
-        assert "/download/app.apk" in r_cust.text
+        assert "/download/ios.mobileconfig" not in r_cust.text
+        assert "/download/app.apk" not in r_cust.text
+        assert "v1-guest-otp-box" not in r_cust.text
+        assert "rewards-wallet-panel" not in r_cust.text
         assert not re.search(r'\sstyle\s*=', r_cust.text, re.IGNORECASE)
 
         r_ios_cfg = client.get("/download/ios.mobileconfig")

@@ -1109,18 +1109,10 @@
         mfaBtn.hidden = !["admin", "staff"].includes(me.role);
         mfaBtn.textContent = me.mfaEnabled ? "2FA Enabled (Manage)" : "Setup 2FA / MFA";
       }
-      const benefits = $("#rewards-wallet-summary");
-      const rewardsPanel = $("#rewards-wallet-panel");
-      if (benefits && rewardsPanel) {
-        rewardsPanel.hidden = me.role !== "student";
-        if (me.role === "student") {
-          const account = await v1Fetch("/api/v1/rewards/me");
-          benefits.textContent =
-            `${account.pointsBalance} points · Wallet ${paise(account.walletBalancePaise)}. ` +
-            "Wallet top-ups are issued by the canteen after verified payment.";
-          const rewardInput = $("#checkout-reward-points");
-          if (rewardInput) rewardInput.max = String(account.pointsBalance);
-        }
+      const rewardInput = $("#checkout-reward-points");
+      if (me.role === "student" && rewardInput) {
+        const account = await v1Fetch("/api/v1/rewards/me").catch(() => null);
+        if (account) rewardInput.max = String(account.pointsBalance || 0);
       }
       await loadFreeNotificationChannels();
     } catch { /* ignore */ }
@@ -2113,41 +2105,6 @@
     }
   }).catch(() => {});
 
-  $("#v1-otp-req-btn")?.addEventListener("click", async () => {
-    const msg = $("#v1-otp-msg");
-    const contact = $("#v1-otp-contact")?.value.trim();
-    if (!contact) return;
-    try {
-      const r = await v1Fetch("/api/v1/auth/guest-otp/request", {
-        method: "POST",
-        body: JSON.stringify({ phoneOrEmail: contact, roleCategory: "guest", fullName: "Campus Visitor" })
-      });
-      if (msg) msg.textContent = `OTP issued (${r.expiresInSeconds || 300}s valid). Check dev console or inbox.`;
-    } catch (err) {
-      if (msg) msg.textContent = err.message;
-    }
-  });
-
-  $("#v1-otp-ver-btn")?.addEventListener("click", async () => {
-    const msg = $("#v1-otp-msg");
-    const contact = $("#v1-otp-contact")?.value.trim();
-    const otpCode = $("#v1-otp-code")?.value.trim();
-    if (!contact || !otpCode) return;
-    try {
-      const res = await v1Fetch("/api/v1/auth/guest-otp/verify", {
-        method: "POST",
-        body: JSON.stringify({ phoneOrEmail: contact, otpCode, fullName: "Campus Visitor" })
-      });
-      if (res?.accessToken) {
-        localStorage.setItem("ace_v1_access_token", res.accessToken);
-        window.aceCanteenToken = res.accessToken;
-        if (msg) msg.textContent = "Guest verified! Reloading session…";
-        window.location.reload();
-      }
-    } catch (err) {
-      if (msg) msg.textContent = err.message;
-    }
-  });
   connectRealtimeWs();
   if (window.aceCanteenUser) syncV1ForAuth(window.aceCanteenUser);
 })();

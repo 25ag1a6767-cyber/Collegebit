@@ -105,11 +105,8 @@
     const showIos = platform === "ios";
     const tabIos = document.querySelector("#pwa-tab-ios");
     const tabAndroid = document.querySelector("#pwa-tab-android");
-    const iosSection = document.querySelector("#pwa-ios-section");
-    const apkSection = document.querySelector("#pwa-apk-section");
     const guideIos = document.querySelector("#pwa-guide-ios");
     const guideAndroid = document.querySelector("#pwa-guide-android");
-    const pwaDivider = document.querySelector("#pwa-divider");
     const inAppAlert = document.querySelector("#pwa-ios-inapp-alert");
 
     if (tabIos) {
@@ -120,11 +117,8 @@
       tabAndroid.classList.toggle("active", !showIos);
       tabAndroid.setAttribute("aria-selected", !showIos ? "true" : "false");
     }
-    if (iosSection) iosSection.hidden = !showIos;
-    if (apkSection) apkSection.hidden = showIos;
     if (guideIos) guideIos.hidden = !showIos;
     if (guideAndroid) guideAndroid.hidden = showIos;
-    if (pwaDivider) pwaDivider.hidden = false;
     if (inAppAlert) inAppAlert.hidden = !(showIos && isInApp);
   }
 
@@ -191,8 +185,6 @@
     const bannerSub = document.querySelector("#pwa-banner-subtitle");
     const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
     const bannerDismissBtn = document.querySelector("#pwa-banner-dismiss-btn");
-    const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
-    const bannerIosBtn = document.querySelector("#pwa-banner-ios-btn");
 
     if (installButton) {
       installButton.onclick = () => triggerInstallFlow();
@@ -207,8 +199,6 @@
           : "To install: tap the Share button ⎋, then 'Add to Home Screen'";
       }
       if (bannerInstallBtn) bannerInstallBtn.textContent = "⎋ How to install";
-      if (bannerApkBtn) bannerApkBtn.hidden = true;
-      if (bannerIosBtn) bannerIosBtn.hidden = true;
       installBanner.hidden = false;
     } else if (installBanner && !installPrompt) {
       // Wait for Chrome/Android beforeinstallprompt before displaying install banner.
@@ -253,12 +243,10 @@
     const bannerTitle = document.querySelector("#pwa-banner-title");
     const bannerSub = document.querySelector("#pwa-banner-subtitle");
     const bannerInstallBtn = document.querySelector("#pwa-banner-install-btn");
-    const bannerApkBtn = document.querySelector("#pwa-banner-apk-btn");
     if (installButton) installButton.hidden = false;
     if (bannerTitle) bannerTitle.textContent = "Install CollegeBits App";
     if (bannerSub) bannerSub.textContent = "1-tap canteen ordering & live token alerts";
     if (bannerInstallBtn) bannerInstallBtn.textContent = "📲 Install app";
-    if (bannerApkBtn && isAndroid) bannerApkBtn.hidden = false;
     if (installBanner && !wasBannerDismissed()) installBanner.hidden = false;
   });
 
@@ -443,10 +431,8 @@ async function placeCartOrder() {
     document.querySelector('#my-orders-section').hidden = false;
     await loadMyOrders(); await loadCatalogue();
     customerV1Request('/api/v1/rewards/me', undefined, 'GET').then(account => {
-      const summary = document.querySelector('#rewards-wallet-summary');
-      if (summary) summary.textContent = `${account.pointsBalance} points · Wallet ${money(Number(account.walletBalancePaise) / 100)}. Wallet top-ups are issued by the canteen after verified payment.`;
       const pointsInput = document.querySelector('#checkout-reward-points');
-      if (pointsInput) pointsInput.max = String(account.pointsBalance);
+      if (pointsInput && account) pointsInput.max = String(account.pointsBalance || 0);
     }).catch(() => {});
     document.querySelector('#my-orders-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) { renderCart(`Checkout: ${error.message}`); }
@@ -623,7 +609,21 @@ if (productSearch && productType) {
     }
   }
   async function readJson(response) { try { return await response.json(); } catch { return {}; } }
-  const postJson = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+  function formatAuthError(data, fallback) {
+    if (!data) return fallback;
+    if (typeof data.detail === 'string' && data.detail.trim()) return data.detail;
+    if (Array.isArray(data.detail) && data.detail.length) {
+      return data.detail.map(e => e?.msg).filter(Boolean).join('; ') || fallback;
+    }
+    const errDetails = data.error?.details;
+    if (Array.isArray(errDetails) && errDetails.length) {
+      const firstMsg = errDetails.map(e => e?.msg || e?.message).filter(Boolean).join('; ');
+      if (firstMsg) return firstMsg;
+    }
+    return data.error?.message || fallback;
+  }
+  const apiUrl = path => (window.collegebitsApiUrl ? window.collegebitsApiUrl(path) : path);
+  const postJson = (url, body) => fetch(apiUrl(url), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -633,14 +633,14 @@ if (productSearch && productType) {
       if (mode === 'forgot') {
         const response = await postJson('/api/auth/forgot-password', { email: emailInput.value.trim() });
         const data = await readJson(response);
-        if (!response.ok) throw new Error(data.detail || data.error?.message || 'Could not send the reset email. Try again shortly.');
+        if (!response.ok) throw new Error(formatAuthError(data, 'Could not send the reset email. Try again shortly.'));
         setMessage(data.message, 'success');
         return;
       }
       if (mode === 'reset') {
         const response = await postJson('/api/auth/reset-password', { token: resetToken, new_password: passwordInput.value });
         const data = await readJson(response);
-        if (!response.ok) throw new Error(data.detail || data.error?.message?.replace('The request contains invalid data.', 'Password must be at least 12 characters.') || 'Could not reset the password.');
+        if (!response.ok) throw new Error(formatAuthError(data, 'Could not reset the password.'));
         resetToken = ''; passwordInput.value = '';
         setMode('login', 'Password updated. Sign in with your new password.');
         message.className = 'auth-message success';
@@ -650,8 +650,15 @@ if (productSearch && productType) {
       if (mode === 'register') payload.full_name = nameInput.value.trim();
       const response = await postJson(`/api/auth/${mode === 'register' ? 'register' : 'login'}`, payload);
       const data = await readJson(response);
-      if (!response.ok) throw new Error(data.detail || data.error?.message || 'Request failed.');
+      if (!response.ok) throw new Error(formatAuthError(data, 'Request failed.'));
       if (mode === 'register') {
+        const loginRes = await postJson('/api/auth/login', { email: payload.email, password: payload.password });
+        const loginData = await readJson(loginRes);
+        if (loginRes.ok && loginData.access_token) {
+          store.save(loginData.access_token);
+          applySession(loginData.access_token, loginData.user);
+          return;
+        }
         setMode('login', 'Account created. Sign in with your new credentials.');
         message.className = 'auth-message success';
         emailInput.value = payload.email;
@@ -699,7 +706,7 @@ if (productSearch && productType) {
   } else {
     const saved = store.load();
     if (saved) {
-      fetch('/api/auth/me', { headers: { Authorization: `Bearer ${saved}` } })
+      fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${saved}` } })
         .then(async response => {
           if (response.ok) applySession(saved, await response.json());
           else if (response.status === 401) store.clear(); // expired or invalidated session

@@ -8,10 +8,34 @@ import app.main as main
 def test_production_rate_limiter_fails_closed_without_redis(monkeypatch):
     monkeypatch.setattr(main, "IS_PRODUCTION", True)
     monkeypatch.setattr(main.settings, "redis_url", "")
+    monkeypatch.setattr(main.settings, "require_shared_rate_limiter", True)
     monkeypatch.setattr(main, "_redis", None)
     with pytest.raises(HTTPException) as error:
         main._check_login_rate("phase58-test-no-redis")
     assert error.value.status_code == 503
+
+
+def test_production_single_worker_without_redis_falls_back_to_memory(monkeypatch):
+    import uuid
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(main, "IS_PRODUCTION", True)
+    monkeypatch.setattr(main.settings, "redis_url", "")
+    monkeypatch.setattr(main.settings, "require_shared_rate_limiter", False)
+    monkeypatch.setenv("WEB_CONCURRENCY", "1")
+    monkeypatch.setattr(main, "_redis", None)
+    assert main._check_login_rate("phase58-test-single-worker") == 0
+
+    email = f"prod-single-{uuid.uuid4().hex[:8]}@college.edu"
+    with TestClient(main.app) as client:
+        reg = client.post(
+            "/api/auth/register",
+            json={"full_name": "Prod Single Student", "email": email, "password": "ProdPassword!2026"},
+        )
+        assert reg.status_code == 201, reg.text
+        login = client.post("/api/auth/login", json={"email": email, "password": "ProdPassword!2026"})
+        assert login.status_code == 200, login.text
+        assert login.json()["access_token"]
 
 
 def test_production_info_endpoint_does_not_disclose_framework_or_database(monkeypatch):

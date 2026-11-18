@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     overdue_preparation_minutes: int = 20
     # Optional shared store for login/reset throttling and response caching so several app workers share state.
     redis_url: str = ""
+    require_shared_rate_limiter: bool = False
     api_rate_limit_per_minute: int = 300
     # Four-day hybrid data retention & encrypted GFS backup / disaster recovery policy
     temp_retention_days: int = 4
@@ -158,11 +159,15 @@ class Settings(BaseSettings):
         if len(self.secret_key) < 32:
             raise ValueError("SECRET_KEY must be at least 32 characters long")
         if self.environment.lower() in {"production", "prod"}:
+            serverless_sqlite = bool(
+                (os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+                and self.database_url.startswith("sqlite")
+            )
             if self.secret_key == "change-this-development-secret-before-deployment":
                 raise ValueError("Set a unique SECRET_KEY before running in production")
-            if self.auto_create_tables:
+            if self.auto_create_tables and not serverless_sqlite:
                 raise ValueError("AUTO_CREATE_TABLES must be false in production; run Alembic migrations explicitly")
-            if self.seed_demo_data:
+            if self.seed_demo_data and not serverless_sqlite:
                 raise ValueError("SEED_DEMO_DATA must be false in production")
             if self.expose_api_docs is True:
                 raise ValueError("EXPOSE_API_DOCS must be false in production")

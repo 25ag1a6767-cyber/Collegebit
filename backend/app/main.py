@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import select, text, func, or_, cast, String
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
@@ -112,21 +112,25 @@ def _prune_login_attempts(now: float) -> None:
     for key in expired:
         _login_attempts.pop(key, None)
 
+def _require_shared_rate_limiter() -> bool:
+    """Fail closed only in multi-worker production or when explicitly enforced via REQUIRE_SHARED_RATE_LIMITER."""
+    if not IS_PRODUCTION:
+        return False
+    if getattr(settings, "require_shared_rate_limiter", False):
+        return True
+    try:
+        return int(os.environ.get("WEB_CONCURRENCY", "1") or "1") > 1
+    except ValueError:
+        return False
+
+
 def _check_login_rate(key: str) -> int:
-    if IS_PRODUCTION:
-        shared = _get_redis()
-        if shared is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shared rate limiter required in production")
-        try:
-            count = shared.get("rl:" + key)
-            if count is not None and int(count) >= _LOGIN_LIMIT:
-                ttl = shared.ttl("rl:" + key)
-                return max(1, ttl if ttl and ttl > 0 else _LOGIN_WINDOW_SECONDS)
-            return 0
-        except Exception:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rate limiter unavailable")
+    strict_shared = _require_shared_rate_limiter()
     shared = _get_redis()
-    if shared is not None:
+    if shared is None:
+        if strict_shared:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shared rate limiter required in production")
+    else:
         try:
             count = shared.get("rl:" + key)
             if count is not None and int(count) >= _LOGIN_LIMIT:
@@ -134,6 +138,8 @@ def _check_login_rate(key: str) -> int:
                 return max(1, ttl if ttl and ttl > 0 else _LOGIN_WINDOW_SECONDS)
             return 0
         except Exception:
+            if strict_shared:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rate limiter unavailable")
             logger.warning("Redis unavailable for rate limiting; using per-process memory", exc_info=True)
     now = time.monotonic()
     with _login_attempts_lock:
@@ -153,23 +159,19 @@ def _check_login_rate(key: str) -> int:
     return 0
 
 def _record_failed_login(key: str) -> None:
-    if IS_PRODUCTION:
-        shared = _get_redis()
-        if shared is None:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shared rate limiter required in production")
-        try:
-            if shared.incr("rl:" + key) == 1:
-                shared.expire("rl:" + key, _LOGIN_WINDOW_SECONDS)
-            return
-        except Exception:
-            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rate limiter unavailable")
+    strict_shared = _require_shared_rate_limiter()
     shared = _get_redis()
-    if shared is not None:
+    if shared is None:
+        if strict_shared:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Shared rate limiter required in production")
+    else:
         try:
             if shared.incr("rl:" + key) == 1:
                 shared.expire("rl:" + key, _LOGIN_WINDOW_SECONDS)
             return
         except Exception:
+            if strict_shared:
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rate limiter unavailable")
             logger.warning("Redis unavailable for rate limiting; using per-process memory", exc_info=True)
     now = time.monotonic()
     with _login_attempts_lock:
@@ -742,7 +744,7 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     full_name = payload.full_name.strip()
     if len(full_name) < 2:
         raise HTTPException(status_code=422, detail="Full name must contain at least two non-space characters")
-    existing = db.scalar(select(User).where(User.email == email))
+    existing = db.scalar(select(User).where(func.lower(User.email) == email))
     if existing:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
     user = User(full_name=full_name, email=email, password_hash=hash_password(payload.password), role=UserRole.STUDENT, is_active=True)
@@ -750,9 +752,13 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     try:
         db.commit()
         db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Could not create account; check whether the email is already registered")
+        logger.exception("Database error while registering student account")
+        raise HTTPException(status_code=503, detail="Account registration is temporarily unavailable due to a database error.")
     return user
 
 @app.post("/api/auth/login", response_model=TokenOut, tags=["authentication"])

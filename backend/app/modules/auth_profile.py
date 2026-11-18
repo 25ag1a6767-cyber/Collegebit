@@ -10,7 +10,7 @@ from urllib.parse import quote, urlparse
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
@@ -209,9 +209,12 @@ def register_v1(
         record_audit(db, "user.registered", "user", user.id, user.id, {"role": "student"})
         db.commit()
         db.refresh(user)
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "REGISTRATION_CONFLICT", "Account could not be created; email or phone is already registered.")
     except SQLAlchemyError:
         db.rollback()
-        raise ApiError(409, "REGISTRATION_CONFLICT", "Account could not be created; check email or phone uniqueness.")
+        raise ApiError(503, "DATABASE_UNAVAILABLE", "Account registration is temporarily unavailable due to a database error.")
 
     cfg = get_settings()
     verify_token = create_email_verification_token(user)
