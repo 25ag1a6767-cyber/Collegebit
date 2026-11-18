@@ -226,7 +226,7 @@ def register_v1(
 
     cfg = get_settings()
     verify_token = create_email_verification_token(user)
-    verify_url = f"{cfg.public_base_url.rstrip('/')}/#verify-email={verify_token}"
+    verify_url = f"{cfg.public_base_url.rstrip('/')}/customer/#verify-email={verify_token}"
     background.add_task(
         send_email,
         user.email,
@@ -473,7 +473,7 @@ def send_verification_v1(
         return ok(request, {"alreadyVerified": True})
     cfg = get_settings()
     token = create_email_verification_token(user)
-    verify_url = f"{cfg.public_base_url.rstrip('/')}/#verify-email={token}"
+    verify_url = f"{cfg.public_base_url.rstrip('/')}/customer/#verify-email={token}"
     background.add_task(
         send_email,
         user.email,

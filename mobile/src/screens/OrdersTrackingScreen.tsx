@@ -136,6 +136,7 @@ export const OrdersTrackingScreen: React.FC = () => {
         const matrix = tok ? buildQrMatrix(tok.pickupToken) : null;
         const statusLower = order.status.toLowerCase().replace("pending_payment", "pending");
         const payLower = order.paymentStatus.toLowerCase();
+        const isPaid = payLower === "paid" || payLower === "success";
 
         return (
           <View key={order.id} style={styles.card}>
@@ -167,7 +168,7 @@ export const OrdersTrackingScreen: React.FC = () => {
               ))}
             </View>
 
-            {payLower === "paid" && statusLower !== "completed" && statusLower !== "collected" && statusLower !== "cancelled" && (
+            {isPaid && statusLower !== "completed" && statusLower !== "collected" && statusLower !== "cancelled" && (
               <TouchableOpacity
                 style={styles.qrBtn}
                 onPress={() => mintPickupToken(order.id)}
@@ -178,7 +179,7 @@ export const OrdersTrackingScreen: React.FC = () => {
               </TouchableOpacity>
             )}
 
-            {payLower === "paid" && (
+            {isPaid && (
               <TouchableOpacity
                 style={styles.receiptBtn}
                 onPress={() => openDigitalReceipt(order.id)}
@@ -209,7 +210,7 @@ export const OrdersTrackingScreen: React.FC = () => {
               </View>
             )}
 
-            {(order.canCancel ?? (statusLower === "pending" && payLower !== "paid")) && (
+            {(order.canCancel ?? (statusLower === "pending" && !isPaid)) && (
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={() => cancelOrder(order.id)}

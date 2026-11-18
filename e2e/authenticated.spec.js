@@ -232,3 +232,83 @@ test('customer V1 filtered add/coupon/budget, staff startup panels, and admin BI
   await expect.poll(() => page.locator('#bi-kpi-cards > *').count()).toBeGreaterThanOrEqual(10);
   await expect.poll(() => page.locator('#tab-bi svg').count()).toBeGreaterThanOrEqual(16);
 });
+
+test('all-buttons regressions: paid order QR & no cancel, bulk pay/tokens/export, MFA visibility & legacy PO list', async ({ page, request }) => {
+  const pageErrors = [];
+  page.on('pageerror', err => pageErrors.push(err.message));
+  page.on('dialog', d => d.accept());
+
+  // Login via API as admin & student to seed wallet balance and create 1 paid wallet order
+  const admLogin = await request.post('/api/v1/auth/login', {
+    data: { identifier: accounts.admin.email, password: accounts.admin.password },
+  });
+  expect(admLogin.status()).toBe(200);
+  const admTok = (await admLogin.json()).data.accessToken;
+
+  const stuLogin = await request.post('/api/v1/auth/login', {
+    data: { identifier: accounts.student.email, password: accounts.student.password },
+  });
+  expect(stuLogin.status()).toBe(200);
+  const stuJson = (await stuLogin.json()).data;
+
+  await request.post('/api/v1/admin/wallet/credit', {
+    headers: { Authorization: `Bearer ${admTok}` },
+    data: { userId: stuJson.user.id, amountPaise: 50000, reason: 'E2E regression credit', referenceKey: `e2e-reg-${Date.now()}` },
+  });
+  const menuRes = await request.get('/api/v1/menu/items?limit=5');
+  const firstItem = (await menuRes.json()).data.items[0];
+  await request.post('/api/v1/orders', {
+    headers: { Authorization: `Bearer ${stuJson.accessToken}` },
+    data: {
+      items: [{ menuItemId: firstItem.id, quantity: 1, fulfillmentType: 'READY_TO_EAT', customizations: {} }],
+      fulfillmentType: 'READY_TO_EAT',
+      counterId: 1,
+      payWithWallet: true,
+      idempotencyKey: `e2e-paid-${Date.now()}`,
+    },
+  });
+
+  // 1. Student portal buttons: paid order renders SUCCESS + QR + Receipt and NEVER Cancel order; Bulk hub uses paise() and authenticated CSV/PDF export
+  await page.goto('/customer/');
+  await page.locator('#auth-email').fill(accounts.student.email);
+  await page.locator('#auth-password').fill(accounts.student.password);
+  await page.locator('#auth-submit').click();
+  await expect(page.locator('#account-panel')).toBeVisible();
+
+  const activePanel = page.locator('#v1-active-orders-panel');
+  await expect(activePanel.locator('.v1-order-card').first()).toContainText('Payment: SUCCESS');
+  await expect(activePanel.getByRole('button', { name: 'Show Short-Lived Pickup QR' }).first()).toBeVisible();
+  await expect(activePanel.locator('.v1-order-card:has-text("Payment: SUCCESS") button:has-text("Cancel order")')).toHaveCount(0);
+
+  await activePanel.getByRole('button', { name: 'Show Short-Lived Pickup QR' }).first().click();
+  await expect(activePanel.getByRole('button', { name: 'Show large bright QR' }).first()).toBeVisible();
+
+  await page.locator('#v1-bulk-dept').fill('E2E Department');
+  await page.locator('#v1-bulk-create-form button[type="submit"]').click();
+  await expect(page.locator('#v1-bulk-target-id')).not.toHaveValue('');
+  await page.locator('#v1-bulk-csv-text').fill('recipient_identifier,full_name,email,department\nE2E01,One User,one@college.edu,CSE');
+  await page.locator('#v1-bulk-csv-form button[type="submit"]').click();
+  await page.locator('#v1-bulk-pay-btn').click();
+  await expect(page.locator('#v1-bulk-csv-msg')).toContainText('₹');
+  await page.locator('#v1-bulk-gen-tokens-btn').click();
+  await expect(page.locator('#v1-bulk-csv-msg')).toContainText('token', { ignoreCase: true });
+
+  const [csvDl] = await Promise.all([page.waitForEvent('download'), page.locator('#v1-bulk-export-csv-btn').click()]);
+  expect(csvDl.suggestedFilename()).toContain('.csv');
+  const [pdfDl] = await Promise.all([page.waitForEvent('download'), page.locator('#v1-bulk-export-pdf-btn').click()]);
+  expect(pdfDl.suggestedFilename()).toContain('.pdf');
+
+  await page.locator('#auth-logout').click();
+
+  // 2. Admin on /customer/: MFA setup button unhides and legacy GET /api/admin/purchase-orders returns 200
+  await page.locator('#auth-email').fill(accounts.admin.email);
+  await page.locator('#auth-password').fill(accounts.admin.password);
+  const [poListRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/admin/purchase-orders') && res.request().method() === 'GET'),
+    page.locator('#auth-submit').click(),
+  ]);
+  expect(poListRes.status()).toBe(200);
+  await expect(page.locator('#v1-mfa-setup-btn')).toBeVisible();
+
+  expect(pageErrors).toEqual([]);
+});

@@ -829,7 +829,7 @@ def forgot_password(payload: ForgotPasswordIn, request: Request, background: Bac
     user = db.scalar(select(User).where(func.lower(User.email) == email))
     if user is None or not user.is_active:
         return generic  # identical response: do not reveal which emails are registered
-    link = f"{settings.public_base_url.rstrip('/')}/#reset={create_password_reset_token(user)}"
+    link = f"{settings.public_base_url.rstrip('/')}/customer/#reset={create_password_reset_token(user)}"
     body = (f"Hello {user.full_name},\n\nUse this link to set a new ACE Canteen password:\n{link}\n\n"
             f"The link works once and expires in {settings.password_reset_minutes} minutes. "
             "If you did not request this, you can ignore this email; your password will not change.\n")
@@ -2142,6 +2142,25 @@ class PurchaseOrderCreateIn(BaseModel):
     supplier_id: int = Field(gt=0)
     lines: list[PurchaseOrderLineIn] = Field(min_length=1, max_length=100)
     notes: str | None = Field(default=None, max_length=500)
+
+@app.get("/api/admin/purchase-orders", tags=["procurement"])
+def list_purchase_orders(_: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+    from app.models import PurchaseOrder
+    rows = db.scalars(select(PurchaseOrder).order_by(PurchaseOrder.created_at.desc()).limit(200)).all()
+    return [
+        {
+            "id": x.id,
+            "supplier_id": x.supplier_id,
+            "status": x.status,
+            "lines_json": x.lines_json,
+            "notes": x.notes,
+            "created_at": x.created_at,
+            "ordered_at": x.ordered_at,
+            "received_at": x.received_at,
+        }
+        for x in rows
+    ]
+
 
 @app.post("/api/admin/purchase-orders", status_code=201, tags=["procurement"])
 def create_purchase_order(payload: PurchaseOrderCreateIn, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):

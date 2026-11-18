@@ -322,3 +322,110 @@ def test_notification_preferences_and_free_channels_and_mobile_contracts(monkeyp
         assert counters_res.status_code == 200
         c0 = counters_res.json()["data"]["items"][0]
         assert "approximateWaitMinutes" in c0 and "activeQueueOrders" in c0
+
+
+def test_admin_legacy_purchase_orders_get_and_hash_links_and_station_flags(monkeypatch):
+    """Regressions: GET /api/admin/purchase-orders, /customer/#verify-email link, SUCCESS canCancel, station autoPaused."""
+    from app.models import KitchenStation, Supplier
+
+    _, stu_email, stu_tok = _make_user(UserRole.STUDENT, "reg-stu")
+    _, _, stf_tok = _make_user(UserRole.STAFF, "reg-stf")
+    _, _, adm_tok = _make_user(UserRole.ADMIN, "reg-adm")
+    stu_h = {"Authorization": f"Bearer {stu_tok}"}
+    stf_h = {"Authorization": f"Bearer {stf_tok}"}
+    adm_h = {"Authorization": f"Bearer {adm_tok}"}
+
+    suffix = uuid.uuid4().hex[:6]
+    with SessionLocal() as db:
+        stu = db.query(User).filter(User.email == stu_email).first()
+        cat = Category(name=f"Reg Cat {suffix}", slug=f"reg-cat-{suffix}")
+        db.add(cat)
+        db.flush()
+        prod = Product(
+            category_id=cat.id,
+            name=f"Reg Idli {suffix}",
+            price=20,
+            price_paise=2000,
+            stock_quantity=25,
+            low_stock_threshold=3,
+            is_available=True,
+        )
+        sup = Supplier(name=f"Reg Supplier {suffix}")
+        ks = KitchenStation(
+            name=f"Reg Station {suffix}",
+            counter_id=1,
+            max_concurrent_orders=12,
+            active_order_count=0,
+            is_active=True,
+            auto_paused=True,
+        )
+        db.add_all([prod, sup, ks])
+        db.flush()
+
+        paid_ord = Order(
+            user_id=stu.id,
+            counter_id=1,
+            order_number=f"REG-PAID-{suffix}",
+            status=OrderStatus.CONFIRMED,
+            payment_status=PaymentStatus.PAID,
+            subtotal=20,
+            final_total=20,
+            subtotal_paise=2000,
+            total_paise=2000,
+        )
+        unpaid_ord = Order(
+            user_id=stu.id,
+            counter_id=1,
+            order_number=f"REG-UNP-{suffix}",
+            status=OrderStatus.PENDING,
+            payment_status=PaymentStatus.PENDING,
+            subtotal=20,
+            final_total=20,
+            subtotal_paise=2000,
+            total_paise=2000,
+        )
+        db.add_all([paid_ord, unpaid_ord])
+        db.commit()
+        prod_id, sup_id, ks_id, paid_id, unpaid_id = prod.id, sup.id, ks.id, paid_ord.id, unpaid_ord.id
+
+    sent_emails: list[tuple[str, str, str]] = []
+    monkeypatch.setattr("app.main.send_email", lambda to, subj, body: sent_emails.append((to, subj, body)))
+    monkeypatch.setattr("app.modules.auth_profile.send_email", lambda to, subj, body: sent_emails.append((to, subj, body)))
+
+    with TestClient(app) as client:
+        # 1. Legacy GET /api/admin/purchase-orders no longer returns 405
+        po_create = client.post(
+            "/api/admin/purchase-orders",
+            headers=adm_h,
+            json={"supplier_id": sup_id, "lines": [{"product_id": prod_id, "quantity": 5, "unit_cost": "10.00"}]},
+        )
+        assert po_create.status_code == 201, po_create.text
+        po_list = client.get("/api/admin/purchase-orders", headers=adm_h)
+        assert po_list.status_code == 200, po_list.text
+        assert any(row["id"] == po_create.json()["id"] for row in po_list.json())
+
+        # 2. Password reset and email verification URLs target /customer/#...
+        assert client.post("/api/auth/forgot-password", json={"email": stu_email}).status_code == 200
+        assert client.post("/api/v1/auth/send-verification", headers=stu_h).status_code == 200
+        bodies = "\n".join(b for _, _, b in sent_emails)
+        assert "/customer/#reset=" in bodies
+        assert "/customer/#verify-email=" in bodies
+
+        # 3. Paid order serializes as SUCCESS + canCancel=False; unpaid pending has canCancel=True
+        mine = client.get("/api/v1/users/me/orders?limit=20", headers=stu_h)
+        assert mine.status_code == 200
+        by_id = {o["id"]: o for o in mine.json()["data"]["items"]}
+        assert by_id[paid_id]["paymentStatus"] == "SUCCESS"
+        assert by_id[paid_id]["canCancel"] is False
+        assert by_id[unpaid_id]["canCancel"] is True
+
+        # 4. Kitchen stations report autoPaused & activeOrderCount and reopen clears autoPaused
+        st_list = client.get("/api/v1/kitchen/stations", headers=stf_h)
+        assert st_list.status_code == 200
+        found_ks = next(s for s in st_list.json()["data"]["items"] if s["id"] == ks_id)
+        assert found_ks["autoPaused"] is True
+        assert "activeOrderCount" in found_ks
+        reopen = client.post(f"/api/v1/kitchen/stations/{ks_id}/reopen", headers=stf_h)
+        assert reopen.status_code == 200
+        assert reopen.json()["data"]["autoPaused"] is False
+

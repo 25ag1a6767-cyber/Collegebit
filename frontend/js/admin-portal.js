@@ -766,6 +766,10 @@
       const actTd = el("td");
       const toggleBtn = el("button", "btn btn-outline", u.isActive ? "Suspend" : "Activate");
       toggleBtn.type = "button";
+      if (state.user && u.id === state.user.id) {
+        toggleBtn.disabled = true;
+        toggleBtn.title = "Cannot suspend your own administrator account";
+      }
       toggleBtn.addEventListener("click", async () => {
         try {
           await apiFetch("/api/v1/admin/users/" + u.id + "/status", {
@@ -2262,9 +2266,13 @@
       const btn = el("button", "btn btn-outline", t.status === "suspended" ? "Reactivate" : "Suspend");
       btn.type = "button";
       btn.addEventListener("click", async () => {
-        const ep = t.status === "suspended" ? "reactivate" : "suspend";
-        await apiFetch("/api/v1/saas/tenants/" + t.id + "/" + ep, { method: "POST", body: {} });
-        await loadSaasEnterpriseTab();
+        try {
+          const ep = t.status === "suspended" ? "reactivate" : "suspend";
+          await apiFetch("/api/v1/saas/tenants/" + t.id + "/" + ep, { method: "POST", body: {} });
+          await loadSaasEnterpriseTab();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
       });
       tdAct.appendChild(btn);
       tr.appendChild(tdAct);
@@ -2379,8 +2387,13 @@
         const b = el("button", "btn btn-outline", "Resolve Drill");
         b.type = "button";
         b.addEventListener("click", async () => {
-          await apiFetch("/api/v1/enterprise/infrastructure/fire-events/" + ev.id + "/resolve", { method: "POST", body: {} });
-          await loadSaasEnterpriseTab();
+          try {
+            await apiFetch("/api/v1/enterprise/infrastructure/fire-events/" + ev.id + "/resolve", { method: "POST", body: {} });
+            showAlert("Drill / emergency event #" + ev.id + " marked resolved.", "success");
+            await loadSaasEnterpriseTab();
+          } catch (err) {
+            showAlert(err.message, "error");
+          }
         });
         tdAct.appendChild(b);
       } else {

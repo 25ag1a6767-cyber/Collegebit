@@ -648,7 +648,7 @@
       const ingTitle = document.createElement("h4");
       ingTitle.textContent = "Verified Ingredients & Allergen Information";
       const ingText = document.createElement("small");
-      const recipeNames = (item.recipeIngredients || []).map(r => r.name).join(", ");
+      const recipeNames = (item.verifiedIngredients || item.recipeIngredients || []).map(r => r.name).join(", ");
       ingText.textContent = `Ingredients: ${recipeNames || item.ingredientsSummary || "Not specified"} | Dietary: ${(item.dietaryTags || []).join(", ") || "None"} | Allergens: ${(item.allergenTags || []).join(", ") || "Unverified — ask counter staff if severely allergic"}`;
       ingBox.append(ingTitle, ingText);
 
@@ -787,6 +787,7 @@
       const active = orders.filter(o => !["completed", "collected", "cancelled"].includes(String(o.status).toLowerCase()));
       for (const o of active) {
         const payLower = String(o.paymentStatus || "").toLowerCase();
+        const isPaidOrder = ["paid", "success"].includes(payLower);
         const statusNorm = String(o.rawStatus || o.status || "").toLowerCase().replace("pending_payment", "pending");
         const card = document.createElement("div");
         card.className = "v1-order-card";
@@ -795,7 +796,7 @@
         const title = document.createElement("strong");
         title.textContent = `Order #${o.id} · ${o.tokenDisplay || ("Token #" + (o.tokenNumber ?? "—"))} · ${paise(o.totalPaise ?? o.subtotalPaise)}`;
         const payBadge = document.createElement("span");
-        payBadge.className = `badge-tag ${payLower === "paid" ? "badge-green" : "badge-amber"}`;
+        payBadge.className = `badge-tag ${isPaidOrder ? "badge-green" : "badge-amber"}`;
         payBadge.textContent = `Payment: ${String(o.paymentStatus).toUpperCase()}`;
         head.append(title, payBadge);
 
@@ -814,7 +815,7 @@
         actions.className = "v1-inline-actions";
         const qrContainer = document.createElement("div");
 
-        if (payLower === "paid") {
+        if (isPaidOrder) {
           const qrBtn = document.createElement("button");
           qrBtn.type = "button";
           qrBtn.className = "primary-button";
@@ -846,7 +847,8 @@
           });
           actions.append(walPayBtn);
         }
-        if (["pending", "confirmed"].includes(statusNorm)) {
+        const canCancelOrder = o.canCancel !== undefined ? Boolean(o.canCancel) : (statusNorm === "pending" && !isPaidOrder);
+        if (canCancelOrder) {
           const cancelBtn = document.createElement("button");
           cancelBtn.type = "button";
           cancelBtn.className = "cancel-order-button";
@@ -875,7 +877,7 @@
 
       const completedPaid = orders.filter(o =>
         ["completed", "collected"].includes(String(o.status).toLowerCase()) &&
-        String(o.paymentStatus || "").toLowerCase() === "paid"
+        ["paid", "success"].includes(String(o.paymentStatus || "").toLowerCase())
       );
       for (const o of completedPaid.slice(0, 4)) {
         const recCard = document.createElement("div");
@@ -1110,12 +1112,13 @@
       if ($("#v1-profile-diet")) $("#v1-profile-diet").value = me.dietaryPreference || "";
       if ($("#v1-profile-allergens")) $("#v1-profile-allergens").value = (me.allergenPreferences || []).join(", ");
       const mfaBtn = $("#v1-mfa-setup-btn");
+      const roleLower = String(me.role || "").toLowerCase();
       if (mfaBtn) {
-        mfaBtn.hidden = !["admin", "staff"].includes(me.role);
+        mfaBtn.hidden = !["admin", "staff"].includes(roleLower);
         mfaBtn.textContent = me.mfaEnabled ? "2FA Enabled (Manage)" : "Setup 2FA / MFA";
       }
       const rewardInput = $("#checkout-reward-points");
-      if (me.role === "student" && rewardInput) {
+      if (roleLower === "student" && rewardInput) {
         const account = await v1Fetch("/api/v1/rewards/me").catch(() => null);
         if (account) rewardInput.max = String(account.pointsBalance || 0);
       }
@@ -1627,8 +1630,37 @@
     }
   });
 
+  if (location.hash.startsWith("#verify-email=")) {
+    const verifyTok = decodeURIComponent(location.hash.slice("#verify-email=".length));
+    history.replaceState(null, "", location.pathname + location.search);
+    (async () => {
+      const targetMsg = $("#auth-message") || $("#v1-profile-msg");
+      if (targetMsg) {
+        targetMsg.textContent = "Verifying email address…";
+        targetMsg.className = "management-message";
+      }
+      try {
+        await v1Fetch("/api/v1/auth/verify-email", {
+          method: "POST",
+          body: JSON.stringify({ token: verifyTok })
+        });
+        if (targetMsg) {
+          targetMsg.textContent = "Email address verified successfully.";
+          targetMsg.className = "management-message success";
+        }
+        loadUserProfileV1();
+      } catch (err) {
+        if (targetMsg) {
+          targetMsg.textContent = err?.message || "Email verification link is invalid or expired.";
+          targetMsg.className = "management-message error";
+        }
+      }
+    })();
+  }
+
   $("#v1-refresh-kds")?.addEventListener("click", loadStaffKds);
   $("#v1-staff-counter-select")?.addEventListener("change", loadStaffKds);
+  $("#refresh-my-orders")?.addEventListener("click", loadStudentActiveOrders);
 
   $("#v1-pickup-verify-form")?.addEventListener("submit", async e => {
     e.preventDefault();
@@ -1828,7 +1860,8 @@
         const title = document.createElement("strong");
         title.textContent = `Bulk #${bo.id} (${bo.bulkOrderNumber}) · ${bo.departmentName} · ${bo.eventTitle}`;
         const badge = document.createElement("span");
-        badge.className = `badge-tag ${bo.paymentStatus === "paid" ? "badge-green" : "badge-amber"}`;
+        const bulkPaid = ["paid", "success"].includes(String(bo.paymentStatus || "").toLowerCase());
+        badge.className = `badge-tag ${bulkPaid ? "badge-green" : "badge-amber"}`;
         badge.textContent = `${bo.paymentMode.toUpperCase()} · ${bo.paymentStatus.toUpperCase()} · ${bo.status.toUpperCase()}`;
         head.append(title, badge);
 
@@ -1897,10 +1930,47 @@
     }
   });
 
+  async function downloadV1Blob(url, fallbackFilename, msgEl) {
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        headers: window.aceCanteenToken ? { Authorization: `Bearer ${window.aceCanteenToken}` } : {}
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error?.message || errJson?.detail || `Download failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const disp = res.headers.get("Content-Disposition") || "";
+      const match = /filename="?([^";]+)"?/i.exec(disp);
+      const filename = (match && match[1]) || fallbackFilename;
+      const objUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 1500);
+      if (msgEl) {
+        msgEl.textContent = `Downloaded ${filename}.`;
+        msgEl.className = "management-message success";
+      }
+    } catch (err) {
+      if (msgEl) {
+        msgEl.textContent = err?.message || "Could not export file.";
+        msgEl.className = "management-message error";
+      }
+    }
+  }
+
   $("#v1-bulk-gen-tokens-btn")?.addEventListener("click", async () => {
     const msg = $("#v1-bulk-csv-msg");
     const bid = Number($("#v1-bulk-target-id")?.value);
-    if (!bid) return;
+    if (!bid) {
+      if (msg) msg.textContent = "Enter or select a Bulk Order ID first.";
+      return;
+    }
     try {
       const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/tokens/generate`, {
         method: "POST",
@@ -1918,10 +1988,13 @@
   $("#v1-bulk-pay-btn")?.addEventListener("click", async () => {
     const msg = $("#v1-bulk-csv-msg");
     const bid = Number($("#v1-bulk-target-id")?.value);
-    if (!bid) return;
+    if (!bid) {
+      if (msg) msg.textContent = "Enter or select a Bulk Order ID first.";
+      return;
+    }
     try {
       const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/payment-intent`, { method: "POST" });
-      msg.textContent = `Payment Intent Ready (${res.gatewayOrderId}) · Amount: ${formatPaise(res.amountPaise)} (${res.status}). Complete checkout via Razorpay.`;
+      msg.textContent = `Payment Intent Ready (${res.gatewayOrderId}) · Amount: ${paise(res.amountPaise)} (${res.status}). Complete checkout via Razorpay.`;
       msg.className = "management-message success";
     } catch (err) {
       msg.textContent = err.message;
@@ -1929,14 +2002,24 @@
     }
   });
 
-  $("#v1-bulk-export-csv-btn")?.addEventListener("click", () => {
+  $("#v1-bulk-export-csv-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-bulk-csv-msg");
     const bid = Number($("#v1-bulk-target-id")?.value);
-    if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=csv`, "_blank");
+    if (!bid) {
+      if (msg) msg.textContent = "Enter or select a Bulk Order ID first.";
+      return;
+    }
+    await downloadV1Blob(`/api/v1/bulk-orders/${bid}/tokens/export?format=csv`, `bulk-order-${bid}-tokens.csv`, msg);
   });
 
-  $("#v1-bulk-export-pdf-btn")?.addEventListener("click", () => {
+  $("#v1-bulk-export-pdf-btn")?.addEventListener("click", async () => {
+    const msg = $("#v1-bulk-csv-msg");
     const bid = Number($("#v1-bulk-target-id")?.value);
-    if (bid) window.open(`/api/v1/bulk-orders/${bid}/tokens/export?format=pdf`, "_blank");
+    if (!bid) {
+      if (msg) msg.textContent = "Enter or select a Bulk Order ID first.";
+      return;
+    }
+    await downloadV1Blob(`/api/v1/bulk-orders/${bid}/tokens/export?format=pdf`, `bulk-order-${bid}-tokens.pdf`, msg);
   });
 
   async function loadSupportTicketsHub() {
@@ -2035,7 +2118,7 @@
           const row = document.createElement("div");
           row.className = "inline-toolbar-row";
           const lbl = document.createElement("span");
-          lbl.textContent = `${pl.name} · ${pl.totalMeals} meals · ${formatPaise(pl.pricePaise)}`;
+          lbl.textContent = `${pl.name} · ${pl.totalMeals} meals · ${paise(pl.pricePaise)}`;
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "secondary-button";
@@ -2066,7 +2149,7 @@
         rows.forEach(c => {
           const card = document.createElement("div");
           card.className = "v1-order-card";
-          card.textContent = `${c.departmentName} (${c.programName}): ${formatPaise(c.remainingPaise)} remaining of ${formatPaise(c.allocatedPaise)} · ${c.status}`;
+          card.textContent = `${c.departmentName} (${c.programName}): ${paise(c.remainingPaise)} remaining of ${paise(c.allocatedPaise)} · ${c.status}`;
           credEl.appendChild(card);
         });
       } catch { /* non-blocking */ }

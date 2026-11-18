@@ -361,9 +361,13 @@
         const btnUncoll = el("button", "btn btn-outline", "Mark Uncollected");
         btnUncoll.type = "button";
         btnUncoll.addEventListener("click", async () => {
-          await api(`/staff/orders/${o.id}/mark-uncollected`, { method: "POST", body: {} });
-          showBanner(`Order #${o.id} marked overdue uncollected (financial record retained).`, "success");
-          await loadQueue();
+          try {
+            await api(`/staff/orders/${o.id}/mark-uncollected`, { method: "POST", body: {} });
+            showBanner(`Order #${o.id} marked overdue uncollected (financial record retained).`, "success");
+            await loadQueue();
+          } catch (err) {
+            showBanner(err.message, "error");
+          }
         });
         actions.appendChild(btnUncoll);
       }
@@ -1222,20 +1226,26 @@
           stBox.replaceChildren();
           if (!items.length) stBox.textContent = "No kitchen stations configured yet.";
           items.forEach((st) => {
+            const isPaused = Boolean(st.autoPaused ?? st.isPaused);
+            const activeCount = st.activeOrderCount ?? st.activeLoad ?? 0;
             const row = document.createElement("div");
             row.className = "inline-row";
             const txt = document.createElement("span");
-            txt.textContent = `${st.name} (${st.activeLoad}/${st.maxConcurrentOrders}) · ${st.isPaused ? "PAUSED" : "OPEN"}`;
+            txt.textContent = `${st.name} (${activeCount}/${st.maxConcurrentOrders}) · ${isPaused ? "PAUSED" : "OPEN"}`;
             row.appendChild(txt);
-            if (st.isPaused) {
+            if (isPaused) {
               const btn = document.createElement("button");
               btn.type = "button";
               btn.className = "btn btn-outline";
               btn.textContent = "Reopen Station";
               btn.addEventListener("click", async () => {
-                await api(`/kitchen/stations/${st.id}/reopen`, { method: "POST", body: {} });
-                showBanner(`Kitchen station ${st.name} reopened.`, "success");
-                await loadStationsAndShifts();
+                try {
+                  await api(`/kitchen/stations/${st.id}/reopen`, { method: "POST", body: {} });
+                  showBanner(`Kitchen station ${st.name} reopened.`, "success");
+                  await loadStationsAndShifts();
+                } catch (err) {
+                  showBanner(err.message, "error");
+                }
               });
               row.appendChild(btn);
             }
@@ -1259,9 +1269,13 @@
               btn.className = "btn btn-primary";
               btn.textContent = "Check In";
               btn.addEventListener("click", async () => {
-                await api(`/workforce/shifts/${sh.id}/check-in`, { method: "POST", body: {} });
-                showBanner(`Checked in for shift #${sh.id}.`, "success");
-                await loadStationsAndShifts();
+                try {
+                  await api(`/workforce/shifts/${sh.id}/check-in`, { method: "POST", body: {} });
+                  showBanner(`Checked in for shift #${sh.id}.`, "success");
+                  await loadStationsAndShifts();
+                } catch (err) {
+                  showBanner(err.message, "error");
+                }
               });
               row.appendChild(btn);
             } else if (sh.status === "active") {
@@ -1270,9 +1284,13 @@
               btnOut.className = "btn btn-outline";
               btnOut.textContent = "Check Out";
               btnOut.addEventListener("click", async () => {
-                await api(`/workforce/shifts/${sh.id}/check-out`, { method: "POST", body: {} });
-                showBanner(`Checked out from shift #${sh.id}.`, "success");
-                await loadStationsAndShifts();
+                try {
+                  await api(`/workforce/shifts/${sh.id}/check-out`, { method: "POST", body: {} });
+                  showBanner(`Checked out from shift #${sh.id}.`, "success");
+                  await loadStationsAndShifts();
+                } catch (err) {
+                  showBanner(err.message, "error");
+                }
               });
               row.appendChild(btnOut);
             }
