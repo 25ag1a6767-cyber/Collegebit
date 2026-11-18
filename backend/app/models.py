@@ -10,13 +10,13 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
-    Enum,
     ForeignKey,
     Index,
     Integer,
     Numeric,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
     event,
 )
@@ -28,6 +28,39 @@ from app.database import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class CaseInsensitiveEnum(TypeDecorator):
+    """Store uppercase enum member names and decode legacy mixed/lowercase values safely."""
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, enum_cls: type[enum.Enum], length: int = 30, **kwargs):
+        self.enum_cls = enum_cls
+        super().__init__(length=length, **kwargs)
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, self.enum_cls):
+            return value.name
+        text_val = str(value).strip()
+        try:
+            return self.enum_cls[text_val.upper()].name
+        except KeyError:
+            return self.enum_cls(text_val.lower()).name
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, self.enum_cls):
+            return value
+        text_val = str(value).strip()
+        try:
+            return self.enum_cls[text_val.upper()]
+        except KeyError:
+            return self.enum_cls(text_val.lower())
 
 
 def rupees_to_paise(value: Decimal | int | float | str | None) -> int:
@@ -80,7 +113,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), unique=True, index=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="!not-set!")
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole, native_enum=False, length=20), default=UserRole.STUDENT, nullable=False)
+    role: Mapped[UserRole] = mapped_column(CaseInsensitiveEnum(UserRole, length=20), default=UserRole.STUDENT, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
@@ -276,8 +309,8 @@ class Order(Base):
     counter_id: Mapped[int | None] = mapped_column(ForeignKey("canteen_counters.id", ondelete="SET NULL"), nullable=True)
     token_number: Mapped[int | None] = mapped_column(Integer)
     token_date: Mapped[str | None] = mapped_column(String(10))
-    status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, native_enum=False, length=30), default=OrderStatus.PENDING, nullable=False)
-    payment_status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, native_enum=False, length=30), default=PaymentStatus.PENDING, nullable=False)
+    status: Mapped[OrderStatus] = mapped_column(CaseInsensitiveEnum(OrderStatus, length=30), default=OrderStatus.PENDING, nullable=False)
+    payment_status: Mapped[PaymentStatus] = mapped_column(CaseInsensitiveEnum(PaymentStatus, length=30), default=PaymentStatus.PENDING, nullable=False)
     subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), nullable=False)
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), server_default="0.00", nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0.00"), server_default="0.00", nullable=False)
@@ -486,7 +519,7 @@ class InventoryMovement(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
-    movement_type: Mapped[InventoryMovementType] = mapped_column(Enum(InventoryMovementType, native_enum=False, length=20), nullable=False)
+    movement_type: Mapped[InventoryMovementType] = mapped_column(CaseInsensitiveEnum(InventoryMovementType, length=20), nullable=False)
     quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_before: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_after: Mapped[int] = mapped_column(Integer, nullable=False)

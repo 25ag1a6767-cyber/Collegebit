@@ -27,13 +27,13 @@ def upgrade() -> None:
     if "orders" in tables:
         bind.execute(
             text(
-                "UPDATE orders SET status = 'cancelled' "
+                "UPDATE orders SET status = 'CANCELLED' "
                 "WHERE LOWER(status) = 'refund_pending'"
             )
         )
         bind.execute(
             text(
-                "UPDATE orders SET payment_status = 'paid' "
+                "UPDATE orders SET payment_status = 'PAID' "
                 "WHERE LOWER(payment_status) IN ('refund_pending', 'partially_refunded', 'refunded')"
             )
         )
