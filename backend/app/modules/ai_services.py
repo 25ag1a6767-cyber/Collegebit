@@ -128,7 +128,9 @@ def get_ai_recommendations_v1(
     candidates = [p for p in db.scalars(stmt).all() if is_item_available_in_window(db, p)[0]]
 
     eff_diet = (dietaryPreference or (user.dietary_preference if user else None) or "").strip().lower()
-    excl_allergens = {a.strip().lower() for a in (excludeAllergens or "").split(",") if a.strip()}
+    saved_allergens = parse_json_safe(user.allergen_preferences_json, []) if user else []
+    saved_set = {str(a).strip().lower() for a in saved_allergens if str(a).strip()} if isinstance(saved_allergens, list) else set()
+    excl_allergens = {a.strip().lower() for a in (excludeAllergens or "").split(",") if a.strip()} | saved_set
 
     filtered: list[Product] = []
     for p in candidates:

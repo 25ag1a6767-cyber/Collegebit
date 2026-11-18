@@ -75,7 +75,7 @@ def get_admin_runtime_diagnostics_v1(
     db: Session = Depends(get_db),
 ):
     cfg = get_settings()
-    head_revision = "0028_normalize_order_enums"
+    head_revision = "0029_user_allergen_preferences"
     database: dict[str, Any] = {
         "available": False,
         "schemaReady": False,

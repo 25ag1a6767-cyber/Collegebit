@@ -38,6 +38,7 @@ from app.models import (
     StockMovement,
     User,
     UserCounterAssignment,
+    UserNotificationPreference,
     UserRole,
     WalletTransaction,
     paise_to_rupees,
@@ -709,8 +710,28 @@ def assert_staff_permission(user: User, perm_key: str) -> None:
         raise ApiError(403, "PERMISSION_DENIED", f"Your staff account is not granted '{perm_key}' permission.")
 
 
+def get_or_create_notification_pref(db: Session, user_id: int) -> UserNotificationPreference:
+    """Safely fetch or initialize per-user notification preferences under concurrent requests."""
+    pref = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id))
+    if pref is not None:
+        return pref
+    pref = UserNotificationPreference(user_id=user_id)
+    try:
+        with db.begin_nested():
+            db.add(pref)
+            db.flush()
+        return pref
+    except IntegrityError:
+        existing = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id))
+        if existing is not None:
+            return existing
+        raise
+
+
 def serialize_user_v1(db: Session, user: User) -> dict[str, Any]:
     counter_ids = db.scalars(select(UserCounterAssignment.counter_id).where(UserCounterAssignment.user_id == user.id)).all()
+    raw_allergens = parse_json_safe(user.allergen_preferences_json, [])
+    allergens = [str(a).strip().lower() for a in raw_allergens if str(a).strip()] if isinstance(raw_allergens, list) else []
     return {
         "id": user.id,
         "publicUuid": user.public_uuid,
@@ -724,6 +745,7 @@ def serialize_user_v1(db: Session, user: User) -> dict[str, Any]:
         "mfaEnabled": bool(user.mfa_enabled),
         "mustChangePassword": bool(user.must_change_password),
         "dietaryPreference": user.dietary_preference,
+        "allergenPreferences": allergens,
         "assignedCounterIds": [int(c) for c in counter_ids],
         "staffPermissions": get_effective_staff_permissions(user),
         "createdAt": as_utc(user.created_at),

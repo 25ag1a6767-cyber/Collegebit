@@ -142,7 +142,7 @@ def test_alembic_0028_normalizes_lowercase_enum_rows(tmp_path, monkeypatch):
         command.upgrade(cfg, "head")
 
         with sqlite3.connect(db_file) as conn:
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0028_normalize_order_enums"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0029_user_allergen_preferences"
             role = conn.execute("SELECT role FROM users WHERE id = ?", (uid,)).fetchone()[0]
             status, pstatus = conn.execute("SELECT status, payment_status FROM orders WHERE user_id = ?", (uid,)).fetchone()
             assert role == "STUDENT"
@@ -152,7 +152,7 @@ def test_alembic_0028_normalizes_lowercase_enum_rows(tmp_path, monkeypatch):
         command.downgrade(cfg, "0026_expo_mobile_push")
         command.upgrade(cfg, "head")
         with sqlite3.connect(db_file) as conn:
-            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0028_normalize_order_enums"
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0029_user_allergen_preferences"
     finally:
         get_settings.cache_clear()
 
@@ -205,3 +205,120 @@ def test_ai_recommendations_max_budget_paise_and_cart_customizations_dict():
             headers=stu_h,
         )
         assert cart_res.status_code == 200, cart_res.text
+
+
+def test_allergen_preferences_persist_and_filter_menu_and_recommendations():
+    """Verify PATCH /users/me saves allergenPreferences, GET /users/me returns them, and menu/AI filter them."""
+    _, _, stu_tok = _make_user(UserRole.STUDENT, "allergen-stu")
+    suffix = uuid.uuid4().hex[:6]
+    with SessionLocal() as db:
+        cat = Category(name=f"Allergen Cat {suffix}", slug=f"allergen-cat-{suffix}")
+        db.add(cat)
+        db.flush()
+        peanut_item = Product(
+            category_id=cat.id,
+            name=f"Peanut Barfi {suffix}",
+            price=30,
+            price_paise=3000,
+            stock_quantity=10,
+            low_stock_threshold=2,
+            is_available=True,
+            allergen_tags="peanuts",
+        )
+        safe_item = Product(
+            category_id=cat.id,
+            name=f"Plain Idli {suffix}",
+            price=30,
+            price_paise=3000,
+            stock_quantity=10,
+            low_stock_threshold=2,
+            is_available=True,
+        )
+        db.add_all([peanut_item, safe_item])
+        db.commit()
+        peanut_id = peanut_item.id
+        safe_id = safe_item.id
+
+    stu_h = {"Authorization": f"Bearer {stu_tok}"}
+    with TestClient(app) as client:
+        patch_res = client.patch(
+            "/api/v1/users/me",
+            json={"dietaryPreference": "vegetarian", "allergenPreferences": ["Peanuts", "Dairy"]},
+            headers=stu_h,
+        )
+        assert patch_res.status_code == 200, patch_res.text
+        assert patch_res.json()["data"]["allergenPreferences"] == ["peanuts", "dairy"]
+
+        me_res = client.get("/api/v1/users/me", headers=stu_h)
+        assert me_res.status_code == 200
+        assert me_res.json()["data"]["allergenPreferences"] == ["peanuts", "dairy"]
+
+        # Both singular excludeAllergen and plural excludeAllergens filter out matching allergens
+        for qparam in ("excludeAllergen=peanuts", "excludeAllergens=peanuts"):
+            menu_res = client.get(f"/api/v1/menu/items?{qparam}", headers=stu_h)
+            assert menu_res.status_code == 200
+            menu_ids = [it["id"] for it in menu_res.json()["data"]["items"]]
+            assert peanut_id not in menu_ids
+            assert safe_id in menu_ids
+
+        # AI recommendations automatically respect saved user allergenPreferences
+        ai_res = client.get("/api/v1/ai/recommendations?limit=20", headers=stu_h)
+        assert ai_res.status_code == 200
+        rec_items = ai_res.json()["data"].get("recommendations") or ai_res.json()["data"].get("items") or []
+        rec_ids = [entry["item"]["id"] if "item" in entry else entry["id"] for entry in rec_items]
+        assert peanut_id not in rec_ids
+
+
+def test_notification_preferences_and_free_channels_and_mobile_contracts(monkeypatch):
+    """Verify idempotent notification pref lookup, rate-limit flag, pickup slots, and mobile endpoint payloads."""
+    from starlette.requests import Request as StarletteRequest
+    from app.main import _check_general_api_rate_limit, _api_rate_buckets
+    from app.modules.common import get_or_create_notification_pref
+
+    stu_id, _, stu_tok = _make_user(UserRole.STUDENT, "mob-stu")
+    stu_h = {"Authorization": f"Bearer {stu_tok}"}
+
+    # Helper recovers cleanly from existing row or concurrent calls
+    with SessionLocal() as db:
+        p1 = get_or_create_notification_pref(db, stu_id)
+        db.commit()
+        p2 = get_or_create_notification_pref(db, stu_id)
+        db.commit()
+        assert p1.id == p2.id
+
+    # Rate limit middleware respects rate_limit_enabled=False
+    cfg = get_settings()
+    monkeypatch.setattr(cfg, "rate_limit_enabled", False)
+    _api_rate_buckets["198.51.100.77"].extend([1e9] * 500)
+    fake_req = StarletteRequest(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/menu/items",
+            "headers": [],
+            "client": ("198.51.100.77", 12345),
+        }
+    )
+    assert _check_general_api_rate_limit(fake_req) == 0
+    _api_rate_buckets.pop("198.51.100.77", None)
+
+    monkeypatch.setattr(cfg, "canteen_open_time", "00:00")
+    monkeypatch.setattr(cfg, "canteen_close_time", "23:59")
+    monkeypatch.setattr(cfg, "canteen_open_days", "0,1,2,3,4,5,6")
+
+    with TestClient(app) as client:
+        _, _, brand_new_tok = _make_user(UserRole.STUDENT, "brandnew-pref")
+        bn_h = {"Authorization": f"Bearer {brand_new_tok}"}
+        assert client.get("/api/v1/users/me/notification-preferences", headers=bn_h).status_code == 200
+        assert client.get("/api/v1/push/free-channels", headers=bn_h).status_code == 200
+
+        slots_res = client.get("/api/v1/pickup-slots", headers=stu_h)
+        assert slots_res.status_code == 200, slots_res.text
+        slots = slots_res.json()["data"]["slots"]
+        assert len(slots) > 0
+        assert "slot" in slots[0] and "startUtc" in slots[0] and "remaining" in slots[0]
+
+        counters_res = client.get("/api/v1/counters", headers=stu_h)
+        assert counters_res.status_code == 200
+        c0 = counters_res.json()["data"]["items"][0]
+        assert "approximateWaitMinutes" in c0 and "activeQueueOrders" in c0

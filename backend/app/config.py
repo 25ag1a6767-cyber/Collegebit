@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     overdue_preparation_minutes: int = 20
     # Optional shared store for login/reset throttling and response caching so several app workers share state.
     redis_url: str = ""
+    rate_limit_enabled: bool = True
     require_shared_rate_limiter: bool = False
     api_rate_limit_per_minute: int = 300
     # Four-day hybrid data retention & encrypted GFS backup / disaster recovery policy

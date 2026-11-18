@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import re
 import secrets
 import time
@@ -27,7 +28,13 @@ from app.models import (
     UserNotificationPreference,
     UserRole,
 )
-from app.modules.common import commit_and_flush_outbox, record_audit, serialize_order_v1, serialize_user_v1
+from app.modules.common import (
+    commit_and_flush_outbox,
+    get_or_create_notification_pref,
+    record_audit,
+    serialize_order_v1,
+    serialize_user_v1,
+)
 from app.realtime import dispatch_external_alerts, normalize_e164_phone, stage_outbox_event
 from app.security import (
     consume_recovery_code,
@@ -164,6 +171,7 @@ class ProfilePatchIn(BaseModel):
     fullName: str | None = Field(default=None, min_length=2, max_length=120)
     phone: str | None = Field(default=None, max_length=30)
     dietaryPreference: str | None = Field(default=None, max_length=50)
+    allergenPreferences: list[str] | None = None
 
 
 class PushSubscribeIn(BaseModel):
@@ -514,6 +522,10 @@ def update_me_v1(
     if "dietaryPreference" in updates:
         pref = (updates["dietaryPreference"] or "").strip()[:50] or None
         user.dietary_preference = pref
+    if "allergenPreferences" in updates:
+        raw_list = updates["allergenPreferences"] or []
+        cleaned = list(dict.fromkeys(str(item).strip().lower()[:40] for item in raw_list if str(item).strip()))[:20]
+        user.allergen_preferences_json = json.dumps(cleaned, separators=(",", ":")) if cleaned else None
     record_audit(db, "user.profile_updated", "user", user.id, user.id, {"fields": sorted(updates.keys())})
     db.commit()
     db.refresh(user)
@@ -743,12 +755,7 @@ _TEST_ALERT_LAST: dict[int, float] = {}
 
 
 def _get_or_create_pref(db: Session, user_id: int) -> UserNotificationPreference:
-    pref = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user_id))
-    if pref is None:
-        pref = UserNotificationPreference(user_id=user_id)
-        db.add(pref)
-        db.flush()
-    return pref
+    return get_or_create_notification_pref(db, user_id)
 
 
 def _ntfy_urls(ntfy_base_url: str, topic: str | None) -> tuple[str | None, str | None]:

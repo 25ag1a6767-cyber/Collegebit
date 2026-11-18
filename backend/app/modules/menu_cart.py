@@ -171,6 +171,7 @@ def compute_counter_pickup_slots(db: Session, counter_id: int | None = None) -> 
         end_local = s + step
         rem = max(0, capacity - used.get(s_utc, 0))
         slot_list.append({
+            "slot": s_utc.isoformat(),
             "start": s.isoformat(),
             "end": end_local.isoformat(),
             "startUtc": s_utc.isoformat(),
@@ -241,7 +242,8 @@ def list_menu_items_v1(
     itemType: str | None = Query(default=None, pattern="^(food|stationery)$"),
     maxPricePaise: int | None = Query(default=None, gt=0),
     dietaryTag: str | None = Query(default=None, max_length=40),
-    excludeAllergen: str | None = Query(default=None, max_length=40),
+    excludeAllergen: str | None = Query(default=None, max_length=160),
+    excludeAllergens: str | None = Query(default=None, max_length=160),
     availableOnly: bool = True,
     sortBy: str = Query(default="popularity", pattern="^(popularity|price_asc|price_desc|prep_time|rating|name)$"),
     limit: int = Query(default=50, ge=1, le=100),
@@ -286,8 +288,9 @@ def list_menu_items_v1(
             d_tags = {t.lower() for t in parse_tags(p.dietary_tags, p.dietary_info)}
             if dietaryTag.strip().lower() not in d_tags:
                 continue
-        if excludeAllergen:
-            excl = {a.strip().lower() for a in excludeAllergen.split(",") if a.strip()}
+        combined_excl = ",".join(x for x in (excludeAllergen, excludeAllergens) if x)
+        if combined_excl:
+            excl = {a.strip().lower() for a in combined_excl.split(",") if a.strip()}
             a_tags = {t.lower() for t in parse_tags(p.allergen_tags, p.allergens)}
             if excl & a_tags:
                 continue

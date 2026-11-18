@@ -272,6 +272,8 @@ _api_rate_lock = Lock()
 def _check_general_api_rate_limit(request: Request) -> int:
     if not request.url.path.startswith("/api/"):
         return 0
+    if not settings.rate_limit_enabled and request.headers.get("x-enforce-rate-limit") != "1":
+        return 0
     client_ip = request.client.host if request.client else "unknown"
     if client_ip == "testclient" and request.headers.get("x-enforce-rate-limit") != "1":
         return 0

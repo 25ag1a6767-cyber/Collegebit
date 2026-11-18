@@ -118,6 +118,7 @@ class User(Base):
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)
     dietary_preference: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    allergen_preferences_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     staff_permissions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=expression.false(), nullable=False)

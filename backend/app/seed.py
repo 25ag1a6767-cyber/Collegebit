@@ -1,10 +1,10 @@
 """Idempotent sample data for local development."""
 from decimal import Decimal
 import os
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 from app.config import get_settings
-from app.models import Category, Product, InventoryMovement, InventoryMovementType, CanteenCounter, User, UserRole, UserCounterAssignment
+from app.models import Category, Product, InventoryMovement, InventoryMovementType, CanteenCounter, EquipmentAsset, User, UserRole, UserCounterAssignment
 from app.security import hash_password
 
 DEMO = [
@@ -112,4 +112,15 @@ def seed_demo_data(db: Session) -> None:
                     db.add(InventoryMovement(product_id=product.id, movement_type=InventoryMovementType.INITIAL, quantity_delta=stock, quantity_before=0, quantity_after=stock, reason="Initial demo stock balance"))
             elif existing.counter_id is None:
                 existing.counter_id = target_counter
+
+    # Ensure at least one operational kitchen equipment asset exists for staff breakdown logging
+    if inspect(db.get_bind()).has_table("equipment_assets") and db.scalar(select(EquipmentAsset.id)) is None:
+        db.add(
+            EquipmentAsset(
+                name="Main Kitchen Chiller #1",
+                category="chiller",
+                asset_code="CHILLER-01",
+                operational_status="operational",
+            )
+        )
     db.commit()

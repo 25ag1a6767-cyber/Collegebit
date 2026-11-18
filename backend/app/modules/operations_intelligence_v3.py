@@ -57,6 +57,7 @@ from app.models import (
 )
 from app.modules.common import (
     as_utc,
+    get_or_create_notification_pref,
     notify_user,
     record_audit,
     record_order_status_change,
@@ -724,12 +725,9 @@ def get_my_notification_preferences_v1(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    pref = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user.id))
-    if not pref:
-        pref = UserNotificationPreference(user_id=user.id)
-        db.add(pref)
-        db.commit()
-        db.refresh(pref)
+    pref = get_or_create_notification_pref(db, user.id)
+    db.commit()
+    db.refresh(pref)
     return ok(request, _serialize_notif_pref(pref))
 
 
@@ -740,10 +738,7 @@ def update_my_notification_preferences_v1(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    pref = db.scalar(select(UserNotificationPreference).where(UserNotificationPreference.user_id == user.id))
-    if not pref:
-        pref = UserNotificationPreference(user_id=user.id)
-        db.add(pref)
+    pref = get_or_create_notification_pref(db, user.id)
     if payload.inAppEnabled is not None:
         pref.in_app_enabled = payload.inAppEnabled
     if payload.emailEnabled is not None:
