@@ -29,7 +29,7 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
     refreshQuote
   } = useCart();
 
-  const [slots, setSlots] = useState<Array<{ slot: string; label: string; remaining: number }>>([]);
+  const [slots, setSlots] = useState<Array<{ slot?: string; startUtc?: string; start?: string; label: string; remaining: number }>>([]);
   const [pickupSlot, setPickupSlot] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [rewardPoints, setRewardPoints] = useState<string>("0");
@@ -56,7 +56,7 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
     (async () => {
       try {
         const qs = selectedCounterId ? `?counterId=${selectedCounterId}` : "";
-        const data = await apiRequest<{ slots?: Array<{ slot: string; label: string; remaining: number }> }>(
+        const data = await apiRequest<{ slots?: Array<{ slot?: string; startUtc?: string; start?: string; label: string; remaining: number }> }>(
           `/api/v1/pickup-slots${qs}`
         );
         setSlots(data.slots || []);
@@ -187,18 +187,21 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
                 >
                   <Text style={[styles.slotText, !pickupSlot && styles.slotTextActive]}>ASAP</Text>
                 </TouchableOpacity>
-                {slots.map(s => (
-                  <TouchableOpacity
-                    key={s.slot}
-                    disabled={s.remaining <= 0}
-                    style={[styles.slotChip, pickupSlot === s.slot && styles.slotChipActive]}
-                    onPress={() => setPickupSlot(s.slot)}
-                  >
-                    <Text style={[styles.slotText, pickupSlot === s.slot && styles.slotTextActive]}>
-                      {s.label} ({s.remaining})
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {slots.map((s, idx) => {
+                  const slotValue = s.slot || s.startUtc || s.start || s.label;
+                  return (
+                    <TouchableOpacity
+                      key={slotValue || idx}
+                      disabled={s.remaining <= 0}
+                      style={[styles.slotChip, pickupSlot === slotValue && styles.slotChipActive]}
+                      onPress={() => setPickupSlot(slotValue)}
+                    >
+                      <Text style={[styles.slotText, pickupSlot === slotValue && styles.slotTextActive]}>
+                        {s.label} ({s.remaining})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </>
           )}

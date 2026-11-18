@@ -119,8 +119,8 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
               </Text>
             </View>
             <Text style={styles.metaText}>
-              Approx wait ~{counter.estimatedWaitMinutes ?? 5} min · Active orders:{" "}
-              {counter.activeOrders ?? 0}
+              Approx wait ~{counter.approximateWaitMinutes ?? counter.estimatedWaitMinutes ?? 5} min · Active orders:{" "}
+              {counter.activeQueueOrders ?? counter.activeOrders ?? 0}
             </Text>
           </TouchableOpacity>
         );

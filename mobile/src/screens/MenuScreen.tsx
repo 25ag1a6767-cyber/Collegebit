@@ -23,6 +23,7 @@ export const MenuScreen: React.FC = () => {
   const [detail, setDetail] = useState<MenuItemDetail | null>(null);
   const [selectedCustomizations, setSelectedCustomizations] = useState<CustomizationOption[]>([]);
   const [qty, setQty] = useState(1);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -65,8 +66,8 @@ export const MenuScreen: React.FC = () => {
         await apiRequest(`/api/v1/favorites/${itemId}`, { method: "POST" });
         setFavoriteIds(prev => [...prev, itemId]);
       }
-    } catch {
-      // Ignore transient error
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : "Could not update favorite item.");
     }
   };
 
@@ -134,6 +135,7 @@ export const MenuScreen: React.FC = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
+        {feedback && <Text style={styles.feedback}>{feedback}</Text>}
         {visibleItems.map(item => {
           const isFav = favoriteIds.includes(item.id);
           return (
@@ -161,7 +163,10 @@ export const MenuScreen: React.FC = () => {
               <View style={styles.actionRow}>
                 <TouchableOpacity
                   style={styles.primaryBtn}
-                  onPress={() => addItem(item, 1, [])}
+                  onPress={async () => {
+                    await addItem(item, 1, []);
+                    setFeedback(`Added ${item.name} to basket.`);
+                  }}
                 >
                   <Text style={styles.primaryBtnText}>Quick Add</Text>
                 </TouchableOpacity>
@@ -187,7 +192,8 @@ export const MenuScreen: React.FC = () => {
                 <Text style={styles.desc}>{detail.description}</Text>
                 <Text style={styles.tags}>
                   Verified Ingredients:{" "}
-                  {detail.recipeIngredients?.map(r => r.name).join(", ") ||
+                  {detail.verifiedIngredients?.map(r => `${r.name} (${r.quantityPerServing} ${r.unit})`).join(", ") ||
+                    detail.recipeIngredients?.map(r => r.name).join(", ") ||
                     detail.ingredientsSummary ||
                     "Ask counter staff"}
                 </Text>
@@ -241,6 +247,7 @@ export const MenuScreen: React.FC = () => {
                     style={styles.primaryBtn}
                     onPress={async () => {
                       await addItem(detail, qty, selectedCustomizations);
+                      setFeedback(`Added ${qty} × ${detail.name} to basket.`);
                       setDetail(null);
                     }}
                   >
@@ -288,6 +295,14 @@ const styles = StyleSheet.create({
     fontSize: 12
   },
   list: { padding: 14, paddingBottom: 32 },
+  feedback: {
+    backgroundColor: "#e6f5ec",
+    color: "#114b2d",
+    padding: 10,
+    borderRadius: 10,
+    fontWeight: "700",
+    marginBottom: 10
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,

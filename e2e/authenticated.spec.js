@@ -73,7 +73,7 @@ test('admin, wallet, payment error, no-refund enforcement, and staff QR pickup j
   expect(diagnosticsResponse.status()).toBe(200);
   const diagnostics = (await diagnosticsResponse.json()).data;
   expect(diagnostics.database.schemaReady).toBe(true);
-  expect(diagnostics.database.revision).toBe('0028_normalize_order_enums');
+  expect(diagnostics.database.revision).toBe('0029_user_allergen_preferences');
   expect(diagnostics.secretsDisplayed).toBe(false);
 
   const creditResponse = await request.post('/api/v1/admin/wallet/credit', {

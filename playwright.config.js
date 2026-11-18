@@ -18,8 +18,8 @@ module.exports = defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: process.env.BASE_URL ? undefined : {
     command: process.platform === 'win32'
-      ? 'py -3 -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000'
-      : 'python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000',
+      ? 'py -3 -c "import subprocess,sys; subprocess.check_call([sys.executable,\'-m\',\'alembic\',\'-c\',\'backend/alembic.ini\',\'upgrade\',\'head\']); subprocess.check_call([sys.executable,\'-m\',\'uvicorn\',\'app.main:app\',\'--app-dir\',\'backend\',\'--host\',\'127.0.0.1\',\'--port\',\'8000\'])"'
+      : 'python -c "import subprocess,sys; subprocess.check_call([sys.executable,\'-m\',\'alembic\',\'-c\',\'backend/alembic.ini\',\'upgrade\',\'head\']); subprocess.check_call([sys.executable,\'-m\',\'uvicorn\',\'app.main:app\',\'--app-dir\',\'backend\',\'--host\',\'127.0.0.1\',\'--port\',\'8000\'])"',
     url: 'http://127.0.0.1:8000/api/ready',
     reuseExistingServer: false,
     timeout: 60_000,

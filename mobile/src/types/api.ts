@@ -40,12 +40,14 @@ export interface AuthTokenResponse {
 export interface CounterSummary {
   id: number;
   name: string;
-  code: string;
+  code?: string;
   description?: string | null;
   isActive: boolean;
   isOpen?: boolean;
   activeOrders?: number;
+  activeQueueOrders?: number;
   estimatedWaitMinutes?: number;
+  approximateWaitMinutes?: number;
   prepSlaMinutes?: number;
 }
 
@@ -74,6 +76,11 @@ export interface MenuItemSummary {
 
 export interface MenuItemDetail extends MenuItemSummary {
   ingredientsSummary?: string | null;
+  verifiedIngredients?: Array<{
+    name: string;
+    quantityPerServing: number | string;
+    unit: string;
+  }>;
   recipeIngredients?: Array<{
     ingredientId: number;
     name: string;
@@ -142,6 +149,7 @@ export interface OrderRecord {
   totalPaise: number;
   pickupSlot: string | null;
   notes: string | null;
+  canCancel?: boolean;
   createdAt: string;
   estimatedReadyAt?: string | null;
   items: Array<{

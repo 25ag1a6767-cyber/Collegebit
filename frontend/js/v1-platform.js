@@ -556,7 +556,7 @@
     const budget = Number($("#v1-filter-budget")?.value || 0);
     if (budget > 0) qs.set("maxPricePaise", String(Math.round(budget * 100)));
     const excluded = $$(".v1-exclude-allergen:checked").map(el => el.value);
-    if (excluded.length) qs.set("excludeAllergens", excluded.join(","));
+    if (excluded.length) qs.set("excludeAllergen", excluded.join(","));
 
     msg.textContent = "Filtering verified menu…";
     try {

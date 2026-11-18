@@ -209,7 +209,7 @@ export const OrdersTrackingScreen: React.FC = () => {
               </View>
             )}
 
-            {(statusLower === "pending" || statusLower === "confirmed") && (
+            {(order.canCancel ?? (statusLower === "pending" && payLower !== "paid")) && (
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={() => cancelOrder(order.id)}

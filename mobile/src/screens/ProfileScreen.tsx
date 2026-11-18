@@ -75,6 +75,15 @@ export const ProfileScreen: React.FC = () => {
   };
 
   useEffect(() => {
+    if (user) {
+      setFullName(user.fullName || "");
+      setPhone(user.phone || "");
+      setDiet(user.dietaryPreference || "");
+      setAllergens((user.allergenPreferences || []).join(", "));
+    }
+  }, [user]);
+
+  useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
 
@@ -176,8 +185,13 @@ export const ProfileScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Push & Order Notifications</Text>
           <TouchableOpacity
             onPress={async () => {
-              await apiRequest("/api/v1/users/me/notifications/read-all", { method: "POST" });
-              loadNotifications();
+              try {
+                await apiRequest("/api/v1/users/me/notifications/read-all", { method: "POST" });
+                setStatusMsg("All notifications marked as read.");
+                await loadNotifications();
+              } catch (err) {
+                setStatusMsg(err instanceof Error ? err.message : "Could not mark notifications read");
+              }
             }}
           >
             <Text style={styles.link}>Mark all read</Text>
