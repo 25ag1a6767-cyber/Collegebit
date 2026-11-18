@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "ace-canteen-shell-v12";
+const CACHE_NAME = "ace-canteen-shell-v13";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   "/customer/",

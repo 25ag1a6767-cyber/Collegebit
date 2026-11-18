@@ -61,6 +61,7 @@ export const ProfileScreen: React.FC = () => {
   }, []);
 
   const togglePref = async (key: "inAppEnabled" | "webPushEnabled" | "emailEnabled" | "smsEnabled" | "whatsappEnabled") => {
+    const previous = prefs;
     const next = { ...prefs, [key]: !prefs[key] };
     setPrefs(next);
     try {
@@ -69,8 +70,9 @@ export const ProfileScreen: React.FC = () => {
         body: JSON.stringify({ [key]: next[key] })
       });
       setStatusMsg("Notification delivery preference saved.");
-    } catch {
-      setPrefs(prefs);
+    } catch (err) {
+      setPrefs(previous);
+      setStatusMsg(err instanceof Error ? err.message : "Could not save notification preference.");
     }
   };
 
@@ -111,6 +113,14 @@ export const ProfileScreen: React.FC = () => {
 
   const changeAccountPassword = async () => {
     setStatusMsg(null);
+    if (!currentPassword) {
+      setStatusMsg("Enter your current password first.");
+      return;
+    }
+    if (newPassword.length < 12) {
+      setStatusMsg("New password must be at least 12 characters.");
+      return;
+    }
     try {
       const res = await apiRequest<{ accessToken: string; refreshToken: string }>(
         "/api/v1/users/me/change-password",
@@ -128,6 +138,26 @@ export const ProfileScreen: React.FC = () => {
     } catch (err) {
       setStatusMsg(err instanceof Error ? err.message : "Password update failed");
     }
+  };
+
+  const sendVerificationEmail = async () => {
+    setStatusMsg(null);
+    try {
+      const res = await apiRequest<{ message?: string }>("/api/v1/auth/send-verification", { method: "POST" });
+      setStatusMsg(res?.message || "Verification link sent to your email address.");
+    } catch (err) {
+      setStatusMsg(err instanceof Error ? err.message : "Could not send verification email.");
+    }
+  };
+
+  const openLegalUrl = (path: "/legal#privacy" | "/legal#terms") => {
+    if (!API_BASE_URL) {
+      setStatusMsg("Configure EXPO_PUBLIC_API_URL to open legal pages.");
+      return;
+    }
+    Linking.openURL(`${API_BASE_URL}${path}`).catch(() => {
+      setStatusMsg("Could not open browser for legal document.");
+    });
   };
 
   return (
@@ -153,6 +183,11 @@ export const ProfileScreen: React.FC = () => {
         <TouchableOpacity style={styles.primaryBtn} onPress={saveProfile}>
           <Text style={styles.primaryBtnText}>Save Profile & Preferences</Text>
         </TouchableOpacity>
+        {user && !user.emailVerified && (
+          <TouchableOpacity style={styles.secondaryBtn} onPress={sendVerificationEmail}>
+            <Text style={styles.secondaryBtnText}>Verify Email Address</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -225,7 +260,11 @@ export const ProfileScreen: React.FC = () => {
         {freeChannels?.whatsapp?.canteenChatUrl && (
           <TouchableOpacity
             style={styles.secondaryBtn}
-            onPress={() => Linking.openURL(freeChannels.whatsapp.canteenChatUrl!)}
+            onPress={() =>
+              Linking.openURL(freeChannels.whatsapp.canteenChatUrl!).catch(() =>
+                setStatusMsg("Could not open WhatsApp on this device.")
+              )
+            }
           >
             <Text style={styles.secondaryBtnText}>Open Canteen WhatsApp Chat ($0)</Text>
           </TouchableOpacity>
@@ -326,19 +365,15 @@ export const ProfileScreen: React.FC = () => {
         <Text style={styles.notifBody}>
           All completed digital payments and prepaid wallet checkouts are final (non-refundable). Unfulfilled paid orders are logged for counter administration resolution.
         </Text>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => API_BASE_URL && Linking.openURL(`${API_BASE_URL}/legal#privacy`)}
-        >
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => openLegalUrl("/legal#privacy")}>
           <Text style={styles.primaryBtnText}>Privacy Policy</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => API_BASE_URL && Linking.openURL(`${API_BASE_URL}/legal#terms`)}
-        >
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => openLegalUrl("/legal#terms")}>
           <Text style={styles.primaryBtnText}>Terms &amp; No-Refund Policy</Text>
         </TouchableOpacity>
       </View>
+
+      {statusMsg && <Text style={styles.status}>{statusMsg}</Text>}
 
       <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
         <Text style={styles.logoutText}>Sign Out</Text>

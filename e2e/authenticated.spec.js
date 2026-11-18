@@ -310,5 +310,32 @@ test('all-buttons regressions: paid order QR & no cancel, bulk pay/tokens/export
   expect(poListRes.status()).toBe(200);
   await expect(page.locator('#v1-mfa-setup-btn')).toBeVisible();
 
+  // Verify embedded V1 KDS renders paid ticket (without customizations.map crash) and Accept -> Start -> Ready transitions work
+  const kdsGrid = page.locator('#v1-kds-grid');
+  await expect(kdsGrid.locator('.v1-kds-ticket').first()).toBeVisible();
+  const acceptTicketBtn = kdsGrid.getByRole('button', { name: 'Accept Ticket' }).first();
+  if (await acceptTicketBtn.count()) {
+    await acceptTicketBtn.click();
+    await expect(kdsGrid.getByRole('button', { name: 'Start Prep' }).first()).toBeVisible();
+  }
+
+  // Verify embedded Procurement: Direct Batch Receipt -> Reconciliation -> Demand without NaN/undefined/422
+  await page.locator('#batch-product').selectOption({ index: 1 });
+  await page.locator('#batch-code').fill(`E2E-B-${Date.now()}`);
+  await page.locator('#batch-quantity').fill('4');
+  await page.locator('#batch-expiry-date').fill('2027-06-30');
+  const [batchRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/admin/inventory/batches') && res.request().method() === 'POST'),
+    page.locator('#batch-receipt-form button[type="submit"]').click(),
+  ]);
+  expect(batchRes.status()).toBe(201);
+  await page.locator('#refresh-reconciliation').click();
+  await expect(page.locator('#reconciliation-message')).toContainText('products audited');
+  await expect(page.locator('#reconciliation-message')).not.toContainText('undefined');
+
+  // Verify root portal hash link redirect (/#reset= -> /customer/#reset=)
+  await page.goto('/#reset=sampletoken');
+  await expect(page).toHaveURL(/\/customer\//);
+
   expect(pageErrors).toEqual([]);
 });

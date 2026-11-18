@@ -95,11 +95,13 @@ export interface MenuItemDetail extends MenuItemSummary {
 }
 
 export interface ActiveDiscount {
-  id: number;
+  id?: number;
   code: string;
-  title: string;
+  title?: string;
   description?: string | null;
-  discountType: "percentage" | "fixed";
+  discountType?: "percentage" | "fixed";
+  discountPercent?: string;
+  discountPaise?: number;
   valueBps?: number | null;
   valuePaise?: number | null;
   minOrderPaise: number;
@@ -158,7 +160,7 @@ export interface OrderRecord {
     quantity: number;
     unitPricePaise: number;
     lineTotalPaise: number;
-    customizations?: CustomizationOption[];
+    customizations?: CustomizationOption[] | Record<string, unknown>;
   }>;
 }
 

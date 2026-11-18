@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { CartLineInput, CustomizationOption, FulfillmentMode, MenuItemSummary, OrderQuote } from "../types/api";
 import { useAuth } from "./AuthContext";
@@ -23,9 +23,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth();
   const [lines, setLines] = useState<CartLineInput[]>([]);
   const linesRef = useRef<CartLineInput[]>([]);
+  const prevUserIdRef = useRef<number | null>(user?.id ?? null);
   const [selectedCounterId, setSelectedCounterId] = useState<number | null>(null);
   const [discountCode, setDiscountCode] = useState<string>("");
   const [quote, setQuote] = useState<OrderQuote | null>(null);
+
+  useEffect(() => {
+    const nextUserId = user?.id ?? null;
+    if (prevUserIdRef.current !== nextUserId) {
+      prevUserIdRef.current = nextUserId;
+      linesRef.current = [];
+      setLines([]);
+      setSelectedCounterId(null);
+      setDiscountCode("");
+      setQuote(null);
+    }
+  }, [user?.id]);
 
   const commitLines = useCallback((nextLines: CartLineInput[]) => {
     linesRef.current = nextLines;

@@ -618,7 +618,9 @@ def list_active_discounts_v1(request: Request, db: Session = Depends(get_db)):
         if d.usage_limit is not None and d.usage_count >= d.usage_limit:
             continue
         active.append({
+            "id": d.id,
             "code": d.code,
+            "title": d.description or d.code,
             "description": d.description,
             "discountPercent": str(d.discount_percent),
             "discountPaise": rupees_to_paise(d.discount_amount),

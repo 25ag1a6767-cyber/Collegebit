@@ -970,8 +970,13 @@
       const b = el("button", "btn btn-outline", s.isActive ? "Deactivate" : "Activate");
       b.type = "button";
       b.addEventListener("click", async () => {
-        await apiFetch("/api/v1/admin/suppliers/" + s.id, { method: "PATCH", body: { isActive: !s.isActive } });
-        await loadProcurementModule();
+        try {
+          await apiFetch("/api/v1/admin/suppliers/" + s.id, { method: "PATCH", body: { isActive: !s.isActive } });
+          showAlert("Supplier status updated.", "success");
+          await loadProcurementModule();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
       });
       actTd.appendChild(b);
       tr.appendChild(actTd);
@@ -1038,8 +1043,13 @@
       const delBtn = el("button", "btn btn-outline", "Delete");
       delBtn.type = "button";
       delBtn.addEventListener("click", async () => {
-        await apiFetch("/api/v1/admin/expenses/" + ex.id, { method: "DELETE" });
-        await loadProcurementModule();
+        try {
+          await apiFetch("/api/v1/admin/expenses/" + ex.id, { method: "DELETE" });
+          showAlert("Expense removed.", "success");
+          await loadProcurementModule();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
       });
       actTd.appendChild(delBtn);
       tr.appendChild(actTd);
@@ -1094,12 +1104,16 @@
           const btn = el("button", "btn btn-primary", "Resolve Incident");
           btn.type = "button";
           btn.addEventListener("click", async () => {
-            await apiFetch("/api/v1/admin/payment-incidents/" + inc.id + "/resolve", {
-              method: "POST",
-              body: { status: "resolved", resolutionNotes: "Resolved administratively under strict no-refund policy" }
-            });
-            showAlert("Payment incident #" + inc.id + " resolved.", "success");
-            await loadOperationsModule();
+            try {
+              await apiFetch("/api/v1/admin/payment-incidents/" + inc.id + "/resolve", {
+                method: "POST",
+                body: { status: "resolved", resolutionNotes: "Resolved administratively under strict no-refund policy" }
+              });
+              showAlert("Payment incident #" + inc.id + " resolved.", "success");
+              await loadOperationsModule();
+            } catch (err) {
+              showAlert(err.message, "error");
+            }
           });
           actTd.appendChild(btn);
         } else {
@@ -1121,12 +1135,16 @@
           const btn = el("button", "btn btn-outline", "Resolve Ticket");
           btn.type = "button";
           btn.addEventListener("click", async () => {
-            await apiFetch("/api/v1/support/tickets/" + t.id, {
-              method: "PATCH",
-              body: { status: "RESOLVED", resolutionSummary: "Addressed and closed by canteen administration." }
-            });
-            showAlert("Support ticket " + t.ticketNumber + " resolved.", "success");
-            await loadOperationsModule();
+            try {
+              await apiFetch("/api/v1/support/tickets/" + t.id, {
+                method: "PATCH",
+                body: { status: "RESOLVED", resolutionSummary: "Addressed and closed by canteen administration." }
+              });
+              showAlert("Support ticket " + t.ticketNumber + " resolved.", "success");
+              await loadOperationsModule();
+            } catch (err) {
+              showAlert(err.message, "error");
+            }
           });
           actTd.appendChild(btn);
         } else {
@@ -1240,8 +1258,13 @@
       const b = el("button", "btn btn-outline", c.isActive ? "Close Counter" : "Open Counter");
       b.type = "button";
       b.addEventListener("click", async () => {
-        await apiFetch("/api/v1/admin/counters/" + c.id, { method: "PATCH", body: { isActive: !c.isActive } });
-        await loadSettingsModule();
+        try {
+          await apiFetch("/api/v1/admin/counters/" + c.id, { method: "PATCH", body: { isActive: !c.isActive } });
+          showAlert("Counter " + c.name + " status updated.", "success");
+          await loadSettingsModule();
+        } catch (err) {
+          showAlert(err.message, "error");
+        }
       });
       actTd.appendChild(b);
       tr.appendChild(actTd);
@@ -2293,8 +2316,13 @@
         const btn = el("button", "btn btn-primary", "Approve & Lock");
         btn.type = "button";
         btn.addEventListener("click", async () => {
-          await apiFetch("/api/v1/admin/closings/" + c.id + "/approve", { method: "POST", body: {} });
-          await loadSaasEnterpriseTab();
+          try {
+            await apiFetch("/api/v1/admin/closings/" + c.id + "/approve", { method: "POST", body: {} });
+            showAlert("Daily closing locked.", "success");
+            await loadSaasEnterpriseTab();
+          } catch (err) {
+            showAlert(err.message, "error");
+          }
         });
         tdAct.appendChild(btn);
       } else {
@@ -2317,8 +2345,13 @@
         const bOk = el("button", "btn btn-primary", "Approve");
         bOk.type = "button";
         bOk.addEventListener("click", async () => {
-          await apiFetch("/api/v1/enterprise/ai/agents/proposals/" + p.id + "/decide", { method: "POST", body: { decision: "approved" } });
-          await loadSaasEnterpriseTab();
+          try {
+            await apiFetch("/api/v1/enterprise/ai/agents/proposals/" + p.id + "/decide", { method: "POST", body: { decision: "approved" } });
+            showAlert("Proposal #" + p.id + " approved.", "success");
+            await loadSaasEnterpriseTab();
+          } catch (err) {
+            showAlert(err.message, "error");
+          }
         });
         tdAct.appendChild(bOk);
       } else {
@@ -2341,8 +2374,13 @@
         const bAw = el("button", "btn btn-outline", "Award #" + best.id);
         bAw.type = "button";
         bAw.addEventListener("click", async () => {
-          await apiFetch("/api/v1/enterprise/supply-chain/rfqs/" + r.id + "/award/" + best.id, { method: "POST", body: {} });
-          await loadSaasEnterpriseTab();
+          try {
+            await apiFetch("/api/v1/enterprise/supply-chain/rfqs/" + r.id + "/award/" + best.id, { method: "POST", body: {} });
+            showAlert("RFQ tender awarded to bid #" + best.id + ".", "success");
+            await loadSaasEnterpriseTab();
+          } catch (err) {
+            showAlert(err.message, "error");
+          }
         });
         tdAct.appendChild(bAw);
       } else {

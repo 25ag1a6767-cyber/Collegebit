@@ -1752,7 +1752,7 @@ window.setInterval(() => {
         product_id: Number($('#batch-product').value),
         supplier_id: supplierId,
         batch_code: $('#batch-code').value.trim(),
-        quantity_received: Number($('#batch-quantity').value),
+        quantity: Number($('#batch-quantity').value),
         unit_cost: $('#batch-unit-cost').value ? Number($('#batch-unit-cost').value) : null,
         expiry_date: $('#batch-expiry-date').value || null
       };
@@ -1774,11 +1774,13 @@ window.setInterval(() => {
     if (msg) msg.textContent = `Loading batches nearing expiry within ${days} days…`;
     try {
       const data = await api(`/api/admin/inventory/expiry?days=${days}`);
-      const items = data.items || [];
+      const items = data.batches || data.items || [];
       if (!items.length) {
         if (msg) msg.textContent = `No batches expiring within ${days} days.`;
         return;
       }
+      const todayMidnight = new Date();
+      todayMidnight.setHours(0, 0, 0, 0);
       for (const item of items) {
         const tr = document.createElement('tr');
         const tdCode = document.createElement('td');
@@ -1795,8 +1797,13 @@ window.setInterval(() => {
         tdExp.textContent = item.expiry_date || 'None';
         const tdBadge = document.createElement('td');
         const badgeSpan = document.createElement('span');
-        const daysLeft = item.days_until_expiry;
-        if (daysLeft < 0) {
+        let daysLeft = item.days_until_expiry;
+        if (daysLeft === undefined || daysLeft === null) {
+          daysLeft = item.expiry_date
+            ? Math.ceil((new Date(item.expiry_date + 'T00:00:00') - todayMidnight) / 86400000)
+            : 0;
+        }
+        if (item.expired || daysLeft < 0) {
           badgeSpan.className = 'batch-badge-expired';
           badgeSpan.textContent = 'EXPIRED';
         } else if (daysLeft <= 7) {
@@ -1837,11 +1844,14 @@ window.setInterval(() => {
         tdName.appendChild(strongName);
         const tdAgg = document.createElement('td');
         tdAgg.textContent = item.aggregate_stock;
+        const batchStock = item.batch_stock !== undefined ? item.batch_stock : item.batch_stock_sum;
         const tdBatch = document.createElement('td');
-        tdBatch.textContent = item.batch_stock_sum;
-        const diff = item.aggregate_stock - item.batch_stock_sum;
+        tdBatch.textContent = batchStock === null || batchStock === undefined ? '—' : batchStock;
+        const diff = item.difference !== undefined && item.difference !== null
+          ? item.difference
+          : (batchStock === null || batchStock === undefined ? null : item.aggregate_stock - batchStock);
         const tdDiff = document.createElement('td');
-        tdDiff.textContent = diff === 0 ? '0' : (diff > 0 ? `+${diff}` : `${diff}`);
+        tdDiff.textContent = diff === null ? '—' : (diff === 0 ? '0' : (diff > 0 ? `+${diff}` : `${diff}`));
         const tdStatus = document.createElement('td');
         const statusSpan = document.createElement('span');
         if (item.status === 'matched') {
@@ -1858,7 +1868,7 @@ window.setInterval(() => {
         tr.append(tdName, tdAgg, tdBatch, tdDiff, tdStatus);
         tbody.append(tr);
       }
-      if (msg) msg.textContent = `Reconciliation complete: ${data.total_products} products audited (${data.mismatches} mismatches, ${data.untracked} legacy).`;
+      if (msg) msg.textContent = `Reconciliation complete: ${data.products_checked ?? data.total_products ?? items.length} products audited (${data.mismatches ?? 0} mismatches, ${data.untracked_legacy_products ?? data.untracked ?? 0} legacy).`;
     } catch (e) {
       if (msg) msg.textContent = 'Failed to load reconciliation: ' + e.message;
     }
@@ -1872,22 +1882,22 @@ window.setInterval(() => {
     if (msg) msg.textContent = `Calculating demand rates for the last ${days} days…`;
     try {
       const data = await api(`/api/admin/analytics/demand?days=${days}&limit=25`);
-      const items = data.items || [];
+      const items = data.products || data.items || [];
       if (!items.length) {
         if (msg) msg.textContent = 'No sales demand data recorded yet.';
         return;
       }
       for (const item of items) {
         const tr = document.createElement('tr');
-        const dailyRate = Number(item.daily_demand_rate || 0);
-        const currentStock = Number(item.current_stock || 0);
+        const dailyRate = Number(item.average_units_per_day ?? item.daily_demand_rate ?? 0);
+        const currentStock = Number(item.current_stock ?? 0);
         let runoutDays = '—';
         const tdName = document.createElement('td');
         const strongName = document.createElement('strong');
         strongName.textContent = item.product_name || '';
         tdName.appendChild(strongName);
         const tdQty = document.createElement('td');
-        tdQty.textContent = item.quantity_ordered;
+        tdQty.textContent = String(item.units_sold ?? item.quantity_ordered ?? 0);
         const tdRate = document.createElement('td');
         tdRate.textContent = `${dailyRate.toFixed(2)} units/day`;
         const tdStock = document.createElement('td');

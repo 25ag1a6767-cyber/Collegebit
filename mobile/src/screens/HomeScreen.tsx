@@ -28,6 +28,7 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
   const [offers, setOffers] = useState<ActiveDiscount[]>([]);
   const [recommendations, setRecommendations] = useState<AIRecommendationEntry[]>([]);
   const [activeOrder, setActiveOrder] = useState<OrderRecord | null>(null);
+  const [addedItemId, setAddedItemId] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDiscovery = useCallback(async () => {
@@ -129,9 +130,9 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
       {offers.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Available Campus Offers</Text>
-          {offers.map(offer => (
+          {offers.map((offer, idx) => (
             <TouchableOpacity
-              key={offer.id}
+              key={`${offer.id ?? offer.code}-${idx}`}
               style={styles.offerCard}
               onPress={() => {
                 setDiscountCode(offer.code);
@@ -140,7 +141,7 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
             >
               <Text style={styles.offerCode}>{offer.code}</Text>
               <Text style={styles.offerDesc}>
-                {offer.title} · Min order {formatRupeesFromPaise(offer.minOrderPaise)}
+                {offer.title || offer.description || "Campus Offer"} · Min order {formatRupeesFromPaise(offer.minOrderPaise)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -162,9 +163,15 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
             </Text>
             <TouchableOpacity
               style={styles.addBtn}
-              onPress={() => addItem(item, 1, [])}
+              onPress={async () => {
+                await addItem(item, 1, []);
+                setAddedItemId(item.id);
+                setTimeout(() => setAddedItemId(cur => (cur === item.id ? null : cur)), 1400);
+              }}
             >
-              <Text style={styles.addBtnText}>Add to Basket</Text>
+              <Text style={styles.addBtnText}>
+                {addedItemId === item.id ? "Added to Basket ✓" : "Add to Basket"}
+              </Text>
             </TouchableOpacity>
           </View>
         );

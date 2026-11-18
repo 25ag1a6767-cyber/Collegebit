@@ -8,11 +8,12 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { apiRequest } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 export const AuthScreen: React.FC = () => {
   const { mfaChallengeToken, signIn, verifyMfaLogin, registerStudent } = useAuth();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [fullName, setFullName] = useState("");
   const [identifier, setIdentifier] = useState("");
   const [phone, setPhone] = useState("");
@@ -20,15 +21,62 @@ export const AuthScreen: React.FC = () => {
   const [mfaCode, setMfaCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setError(null);
-    setBusy(true);
-    try {
-      if (mfaChallengeToken) {
-        await verifyMfaLogin(mfaCode);
+    setInfoMsg(null);
+    if (mfaChallengeToken) {
+      if (!mfaCode.trim()) {
+        setError("Enter your 6-digit authenticator or recovery code.");
         return;
       }
+      setBusy(true);
+      try {
+        await verifyMfaLogin(mfaCode);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "2FA verification failed");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (mode === "forgot") {
+      if (!identifier.trim().includes("@")) {
+        setError("Enter your registered college email address.");
+        return;
+      }
+      setBusy(true);
+      try {
+        await apiRequest("/api/v1/auth/password/forgot", {
+          method: "POST",
+          body: JSON.stringify({ email: identifier.trim() })
+        });
+        setInfoMsg("If an account matches that email, a password reset link has been sent.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not request password reset");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    if (mode === "register" && fullName.trim().length < 2) {
+      setError("Enter your full name (at least 2 characters).");
+      return;
+    }
+    if (!identifier.trim()) {
+      setError(mode === "login" ? "Enter your email address or phone number." : "Enter your college email address.");
+      return;
+    }
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters.");
+      return;
+    }
+
+    setBusy(true);
+    try {
       if (mode === "login") {
         await signIn(identifier, password);
       } else {
@@ -55,13 +103,21 @@ export const AuthScreen: React.FC = () => {
             <View style={styles.tabRow}>
               <TouchableOpacity
                 style={[styles.tabBtn, mode === "login" && styles.tabBtnActive]}
-                onPress={() => setMode("login")}
+                onPress={() => {
+                  setMode("login");
+                  setError(null);
+                  setInfoMsg(null);
+                }}
               >
                 <Text style={[styles.tabText, mode === "login" && styles.tabTextActive]}>Sign in</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.tabBtn, mode === "register" && styles.tabBtnActive]}
-                onPress={() => setMode("register")}
+                onPress={() => {
+                  setMode("register");
+                  setError(null);
+                  setInfoMsg(null);
+                }}
               >
                 <Text style={[styles.tabText, mode === "register" && styles.tabTextActive]}>
                   Create account
@@ -104,14 +160,41 @@ export const AuthScreen: React.FC = () => {
               </>
             )}
 
-            <Text style={styles.label}>Password (12+ characters)</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholder="Enter password"
-            />
+            {mode !== "forgot" && (
+              <>
+                <Text style={styles.label}>Password (12+ characters)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  placeholder="Enter password"
+                />
+              </>
+            )}
+
+            {mode === "login" && (
+              <TouchableOpacity
+                onPress={() => {
+                  setMode("forgot");
+                  setError(null);
+                  setInfoMsg(null);
+                }}
+              >
+                <Text style={styles.forgotLink}>Forgot your password?</Text>
+              </TouchableOpacity>
+            )}
+            {mode === "forgot" && (
+              <TouchableOpacity
+                onPress={() => {
+                  setMode("login");
+                  setError(null);
+                  setInfoMsg(null);
+                }}
+              >
+                <Text style={styles.forgotLink}>← Back to Sign in</Text>
+              </TouchableOpacity>
+            )}
           </>
         ) : (
           <>
@@ -127,6 +210,7 @@ export const AuthScreen: React.FC = () => {
         )}
 
         {error && <Text style={styles.errorText}>{error}</Text>}
+        {infoMsg && <Text style={styles.infoText}>{infoMsg}</Text>}
 
         <TouchableOpacity style={styles.primaryBtn} onPress={handleSubmit} disabled={busy}>
           {busy ? (
@@ -137,6 +221,8 @@ export const AuthScreen: React.FC = () => {
                 ? "Verify 2FA Code"
                 : mode === "login"
                 ? "Sign in"
+                : mode === "forgot"
+                ? "Send Reset Link"
                 : "Create Student Account"}
             </Text>
           )}
@@ -181,6 +267,8 @@ const styles = StyleSheet.create({
     color: "#17251d"
   },
   errorText: { color: "#b42318", marginTop: 12, fontSize: 13, fontWeight: "600" },
+  infoText: { color: "#155d3d", marginTop: 12, fontSize: 13, fontWeight: "600" },
+  forgotLink: { color: "#26734e", fontSize: 13, fontWeight: "700", marginTop: 12 },
   primaryBtn: {
     marginTop: 18,
     backgroundColor: "#12372a",

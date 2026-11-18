@@ -429,3 +429,56 @@ def test_admin_legacy_purchase_orders_get_and_hash_links_and_station_flags(monke
         assert reopen.status_code == 200
         assert reopen.json()["data"]["autoPaused"] is False
 
+        # 5. Embedded Procurement & Demand endpoints match app.js expected keys + Mobile active discounts include id/title
+        from datetime import date, timedelta
+        batch_res = client.post(
+            "/api/admin/inventory/batches",
+            headers=adm_h,
+            json={
+                "product_id": prod_id,
+                "supplier_id": sup_id,
+                "batch_code": f"REG-B-{suffix}",
+                "quantity": 6,
+                "expiry_date": (date.today() + timedelta(days=10)).isoformat(),
+            },
+        )
+        assert batch_res.status_code == 201, batch_res.text
+        exp_res = client.get("/api/admin/inventory/expiry?days=30", headers=adm_h)
+        assert exp_res.status_code == 200
+        assert any(b["batch_code"] == f"REG-B-{suffix}" for b in exp_res.json()["batches"])
+
+        rec_res = client.get("/api/admin/inventory/reconciliation", headers=adm_h)
+        assert rec_res.status_code == 200
+        rec_body = rec_res.json()
+        assert "products_checked" in rec_body and "untracked_legacy_products" in rec_body
+        assert any(row["product_id"] == prod_id and row["batch_stock"] is not None for row in rec_body["items"])
+
+        # Paid order item on prod_id triggers demand analytics row with current_stock
+        with SessionLocal() as db:
+            db.add(
+                OrderItem(
+                    order_id=paid_id,
+                    product_id=prod_id,
+                    product_name=f"Reg Idli {suffix}",
+                    unit_price=20,
+                    quantity=2,
+                    line_total=40,
+                )
+            )
+            db.commit()
+        dem_res = client.get("/api/admin/analytics/demand?days=30", headers=adm_h)
+        assert dem_res.status_code == 200
+        prods = dem_res.json()["products"]
+        assert any(p["product_id"] == prod_id and "current_stock" in p and p["units_sold"] >= 2 for p in prods)
+
+        disc_create = client.post(
+            "/api/v1/admin/discounts",
+            headers=adm_h,
+            json={"code": f"REG_{suffix.upper()}", "description": "Reg Test Offer", "discountPercent": 10, "minOrderPaise": 500, "isActive": True},
+        )
+        assert disc_create.status_code in (200, 201), disc_create.text
+        disc_active = client.get("/api/v1/discounts/active", headers=stu_h)
+        assert disc_active.status_code == 200
+        assert any(d["code"] == f"REG_{suffix.upper()}" and d.get("id") and d.get("title") for d in disc_active.json()["data"]["items"])
+
+

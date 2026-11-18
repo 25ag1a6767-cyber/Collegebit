@@ -46,8 +46,9 @@ export const MenuScreen: React.FC = () => {
         `/api/v1/menu/items?${params.toString()}`
       );
       setItems(Array.isArray(res) ? res : res.items || []);
-    } catch {
+    } catch (err) {
       setItems([]);
+      setFeedback(err instanceof Error ? err.message : "Could not load menu items.");
     }
   }, [dietary, maxBudgetRupees, search, selectedCounterId]);
 
@@ -77,8 +78,8 @@ export const MenuScreen: React.FC = () => {
       setDetail(d);
       setSelectedCustomizations([]);
       setQty(1);
-    } catch {
-      // Ignore transient error
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : "Could not load item details.");
     }
   };
 
@@ -139,11 +140,7 @@ export const MenuScreen: React.FC = () => {
         {visibleItems.map(item => {
           const isFav = favoriteIds.includes(item.id);
           return (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.card}
-              onPress={() => openDetail(item.id)}
-            >
+            <View key={item.id} style={styles.card}>
               <View style={styles.rowBetween}>
                 <Text style={styles.name}>{item.name}</Text>
                 <TouchableOpacity onPress={() => toggleFavorite(item.id)}>
@@ -177,7 +174,7 @@ export const MenuScreen: React.FC = () => {
                   <Text style={styles.secondaryBtnText}>Details & Customize</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            </View>
           );
         })}
       </ScrollView>

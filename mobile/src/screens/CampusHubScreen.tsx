@@ -129,7 +129,10 @@ export const CampusHubScreen: React.FC = () => {
   };
 
   const handleCreateGroupOrder = async () => {
-    if (!groupTitle.trim()) return;
+    if (!groupTitle.trim()) {
+      setStatusMessage("Enter a group order title first.");
+      return;
+    }
     try {
       const res = await apiRequest<{ inviteCode: string }>("/api/v1/group-orders", {
         method: "POST",
@@ -147,7 +150,10 @@ export const CampusHubScreen: React.FC = () => {
   };
 
   const handleInspectGroupCode = async () => {
-    if (!joinCode.trim()) return;
+    if (!joinCode.trim()) {
+      setStatusMessage("Enter an invite code (e.g. GRP-...) to inspect.");
+      return;
+    }
     try {
       const res = await apiRequest<{ inviteCode: string; title: string; totalPaise: number; items?: unknown[] }>(
         `/api/v1/group-orders/${joinCode.trim().toUpperCase()}`
@@ -318,6 +324,8 @@ export const CampusHubScreen: React.FC = () => {
           </View>
         ))}
       </View>
+
+      {statusMessage && <Text style={styles.banner}>{statusMessage}</Text>}
     </ScrollView>
   );
 };

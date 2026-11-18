@@ -2302,7 +2302,9 @@ def demand_analytics(days: int = Query(default=30, ge=7, le=180), limit: int = Q
     """Simple transparent demand estimate from paid orders; not an ML guarantee."""
     since = datetime.now() - timedelta(days=days)
     rows = db.execute(select(OrderItem.product_id, OrderItem.product_name, func.sum(OrderItem.quantity).label("units"), func.count(func.distinct(OrderItem.order_id)).label("orders")).join(Order, Order.id == OrderItem.order_id).where(Order.payment_status == PaymentStatus.PAID, Order.created_at >= since).group_by(OrderItem.product_id, OrderItem.product_name).order_by(func.sum(OrderItem.quantity).desc()).limit(limit)).all()
-    return {"window_days": days, "generated_at": datetime.now().isoformat(), "method": "historical paid-order average; excludes seasonality and stockouts", "products": [{"product_id": int(r.product_id), "product_name": r.product_name, "units_sold": int(r.units or 0), "orders": int(r.orders or 0), "average_units_per_day": round(float(r.units or 0) / days, 2), "suggested_reorder_units": max(0, round(float(r.units or 0) / days * 3))} for r in rows]}
+    pids = [int(r.product_id) for r in rows]
+    stock_map = dict(db.execute(select(Product.id, Product.stock_quantity).where(Product.id.in_(pids))).all()) if pids else {}
+    return {"window_days": days, "generated_at": datetime.now().isoformat(), "method": "historical paid-order average; excludes seasonality and stockouts", "products": [{"product_id": int(r.product_id), "product_name": r.product_name, "units_sold": int(r.units or 0), "orders": int(r.orders or 0), "current_stock": int(stock_map.get(int(r.product_id), 0)), "average_units_per_day": round(float(r.units or 0) / days, 2), "suggested_reorder_units": max(0, round(float(r.units or 0) / days * 3))} for r in rows]}
 
 
 # ==============================================================================

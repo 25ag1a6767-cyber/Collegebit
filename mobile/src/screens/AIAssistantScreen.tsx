@@ -21,6 +21,7 @@ export const AIAssistantScreen: React.FC = () => {
   const { selectedCounterId, addItem } = useCart();
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addedIds, setAddedIds] = useState<Record<number, boolean>>({});
   const [turns, setTurns] = useState<ChatTurn[]>([
     {
       role: "assistant",
@@ -103,8 +104,8 @@ export const AIAssistantScreen: React.FC = () => {
                 )}
                 <TouchableOpacity
                   style={styles.confirmBtn}
-                  onPress={() =>
-                    addItem(
+                  onPress={async () => {
+                    await addItem(
                       {
                         id: sug.id,
                         categoryId: 0,
@@ -120,10 +121,13 @@ export const AIAssistantScreen: React.FC = () => {
                       },
                       1,
                       []
-                    )
-                  }
+                    );
+                    setAddedIds(prev => ({ ...prev, [sug.id]: true }));
+                  }}
                 >
-                  <Text style={styles.confirmText}>Confirm & Add to Basket</Text>
+                  <Text style={styles.confirmText}>
+                    {addedIds[sug.id] ? "Added to Basket ✓" : "Confirm & Add to Basket"}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ))}

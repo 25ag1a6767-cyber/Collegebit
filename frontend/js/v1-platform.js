@@ -1357,7 +1357,12 @@
 
         const itemsList = document.createElement("div");
         itemsList.textContent = (o.items || []).map(i => {
-          const cust = (i.customizations || []).map(c => c.name).join("+");
+          const custArr = Array.isArray(i.customizations)
+            ? i.customizations.map(c => c.name || c)
+            : (i.customizations && typeof i.customizations === "object")
+              ? Object.entries(i.customizations).filter(([, v]) => Boolean(v)).map(([k, v]) => (v === true ? k : `${k}: ${v}`))
+              : [];
+          const cust = custArr.join("+");
           return `${i.name || i.productName} × ${i.quantity}${cust ? ` [${cust}]` : ""}`;
         }).join(" · ");
 
@@ -1385,10 +1390,10 @@
           act.append(b);
         };
 
-        const st = String(o.status).toLowerCase();
+        const st = String(o.rawStatus || o.status || "").toLowerCase();
         if (st === "pending") addAction("Accept Ticket", "accept");
-        if (st === "confirmed") addAction("Start Prep", "start");
-        if (st === "preparing") addAction("Mark Ready", "ready");
+        if (st === "confirmed" || st === "accepted") addAction("Start Prep", "start");
+        if (st === "accepted" || st === "preparing") addAction("Mark Ready", "ready");
         if (["pending", "confirmed", "preparing"].includes(st)) {
           const exBtn = document.createElement("button");
           exBtn.type = "button";

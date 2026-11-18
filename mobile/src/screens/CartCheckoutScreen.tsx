@@ -131,7 +131,17 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.heading}>Your Basket & UPI Checkout</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.heading}>Your Basket &amp; UPI Checkout</Text>
+        {lines.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearBtn}
+            onPress={() => clearCart().then(() => setStatusMessage("Basket cleared."))}
+          >
+            <Text style={styles.clearBtnText}>Clear</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {lines.length === 0 ? (
         <Text style={styles.empty}>Your basket is empty. Add items from the Menu tab.</Text>
@@ -305,7 +315,17 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#faf9f5" },
   content: { padding: 16, paddingBottom: 32 },
-  heading: { fontSize: 20, fontWeight: "800", color: "#12372a", marginBottom: 12 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  heading: { fontSize: 20, fontWeight: "800", color: "#12372a" },
+  clearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fecdca",
+    backgroundColor: "#fff"
+  },
+  clearBtnText: { color: "#b42318", fontWeight: "700", fontSize: 12 },
   empty: { color: "#5e6e64", fontSize: 14, marginTop: 20 },
   lineCard: {
     backgroundColor: "#fff",
