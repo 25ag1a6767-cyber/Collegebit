@@ -318,6 +318,7 @@ function addToCart(product) {
 function checkoutPayload(overrides = {}) {
   const counterValue = document.querySelector('#v1-checkout-counter')?.value || '';
   const fulfillmentType = document.querySelector('#v1-checkout-fulfillment')?.value || 'READY_TO_EAT';
+  const couponCode = document.querySelector('#v1-coupon-code')?.value.trim() || null;
   return {
     items: cartLines().map(line => ({
       menuItemId: line.product_id,
@@ -327,6 +328,7 @@ function checkoutPayload(overrides = {}) {
     })),
     fulfillmentType,
     counterId: counterValue ? Number(counterValue) : null,
+    couponCode,
     pickupSlot: document.querySelector('#pickup-slot')?.value || null,
     notes: document.querySelector('#checkout-notes')?.value.trim() || null,
     loyaltyPointsRedeemed: Number(document.querySelector('#checkout-reward-points')?.value || 0),

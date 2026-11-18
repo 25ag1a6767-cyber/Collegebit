@@ -224,6 +224,7 @@
       await loadCounters();
       await loadQueue();
       startStaffPolling();
+      document.dispatchEvent(new CustomEvent("staff-authenticated"));
       showBanner("", "");
     } catch (err) {
       clearSession();
@@ -1348,11 +1349,14 @@
       }
     });
 
-    if (state.accessToken) {
-      bootstrapAuthenticated();
+    document.addEventListener("staff-authenticated", () => {
       loadKitchenBatches();
       loadStationsAndShifts();
       loadPickupProgress();
+    });
+
+    if (state.accessToken) {
+      bootstrapAuthenticated();
     }
   });
 })();

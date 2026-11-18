@@ -73,7 +73,7 @@ test('admin, wallet, payment error, no-refund enforcement, and staff QR pickup j
   expect(diagnosticsResponse.status()).toBe(200);
   const diagnostics = (await diagnosticsResponse.json()).data;
   expect(diagnostics.database.schemaReady).toBe(true);
-  expect(diagnostics.database.revision).toBe('0027_free_notification_channels');
+  expect(diagnostics.database.revision).toBe('0028_normalize_order_enums');
   expect(diagnostics.secretsDisplayed).toBe(false);
 
   const creditResponse = await request.post('/api/v1/admin/wallet/credit', {
@@ -168,4 +168,67 @@ test('admin, wallet, payment error, no-refund enforcement, and staff QR pickup j
   const rewards = await request.get('/api/v1/rewards/me', { headers: studentHeaders });
   expect(rewards.status()).toBe(200);
   expect((await rewards.json()).data.pointsBalance).toBeGreaterThan(0);
+});
+
+test('customer V1 filtered add/coupon/budget, staff startup panels, and admin BI charts render cleanly', async ({ page }) => {
+  await page.goto('/customer/');
+  await page.locator('#auth-email').fill(accounts.student.email);
+  await page.locator('#auth-password').fill(accounts.student.password);
+  await page.locator('#auth-submit').click();
+  await expect(page.locator('#auth-message')).toContainText('Signed in successfully');
+
+  await page.locator('#v1-filter-budget').fill('80');
+  const [recoRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/v1/ai/recommendations') && res.url().includes('maxBudgetPaise=8000')),
+    page.locator('#v1-refresh-reco').click(),
+  ]);
+  expect(recoRes.status()).toBe(200);
+
+  const [menuFilterRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/v1/menu/items') && res.url().includes('maxPricePaise=8000')),
+    page.locator('#v1-apply-filters').click(),
+  ]);
+  expect(menuFilterRes.status()).toBe(200);
+
+  const filteredAddBtn = page.locator('#catalogue-grid .product-order-button').first();
+  await expect(filteredAddBtn).toBeVisible();
+  const [cartPut] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/v1/cart/items/') && res.request().method() === 'PUT'),
+    filteredAddBtn.click(),
+  ]);
+  expect(cartPut.status()).toBe(200);
+
+  await expect(page.locator('#v1-coupon-code')).toBeVisible();
+  await page.locator('#v1-coupon-code').fill('WELCOME20');
+  const [quoteReq] = await Promise.all([
+    page.waitForRequest(req => req.url().includes('/api/v1/orders/quote') && req.method() === 'POST'),
+    page.locator('#v1-apply-coupon').click(),
+  ]);
+  expect(quoteReq.postDataJSON().couponCode).toBe('WELCOME20');
+
+  await page.goto('/staff');
+  await page.locator('#staff-login-id').fill(accounts.staff.email);
+  await page.locator('#staff-login-pw').fill(accounts.staff.password);
+  const [batchesRes, stationsRes, pickupRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/v1/kitchen/dashboard')),
+    page.waitForResponse(res => res.url().includes('/api/v1/kitchen/stations')),
+    page.waitForResponse(res => res.url().includes('/api/v1/pickup/progress')),
+    page.locator('#staff-login-submit').click(),
+  ]);
+  expect(batchesRes.status()).toBe(200);
+  expect(stationsRes.status()).toBe(200);
+  expect(pickupRes.status()).toBe(200);
+  await expect(page.locator('#staff-stations-list')).not.toHaveText('Loading kitchen stations…');
+  await expect(page.locator('#staff-pickup-progress-box')).not.toHaveText('Checking Counter 1 & Counter 2 collection progress…');
+
+  await page.goto('/admin');
+  await page.locator('#admin-identifier').fill(accounts.admin.email);
+  await page.locator('#admin-password').fill(accounts.admin.password);
+  const [biRes] = await Promise.all([
+    page.waitForResponse(res => res.url().includes('/api/v1/admin/analytics/dashboard')),
+    page.locator('#btn-admin-login').click(),
+  ]);
+  expect(biRes.status()).toBe(200);
+  await expect.poll(() => page.locator('#bi-kpi-cards > *').count()).toBeGreaterThanOrEqual(10);
+  await expect.poll(() => page.locator('#tab-bi svg').count()).toBeGreaterThanOrEqual(16);
 });

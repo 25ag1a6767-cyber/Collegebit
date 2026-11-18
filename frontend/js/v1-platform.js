@@ -482,6 +482,7 @@
           const input = $("#v1-coupon-code");
           if (input) {
             input.value = offer.code;
+            quoteCartV1();
             $("#cart-section")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
           }
         });
@@ -499,7 +500,7 @@
       const qs = new URLSearchParams({ limit: "4" });
       if (state.selectedCounterId) qs.set("counterId", String(state.selectedCounterId));
       const budgetVal = Number($("#v1-filter-budget")?.value || 0);
-      if (budgetVal > 0) qs.set("maxPricePaise", String(Math.round(budgetVal * 100)));
+      if (budgetVal > 0) qs.set("maxBudgetPaise", String(Math.round(budgetVal * 100)));
       const data = await v1Fetch(`/api/v1/ai/recommendations?${qs}`);
       const items = data?.recommendations || data?.items || [];
       grid.replaceChildren();
@@ -605,7 +606,7 @@
         addBtn.type = "button";
         addBtn.className = "primary-button product-order-button";
         addBtn.textContent = "Add to cart";
-        addBtn.addEventListener("click", () => addItemV1(legacyShape, 1, []));
+        addBtn.addEventListener("click", () => addItemV1(legacyShape, 1, {}));
 
         const detailBtn = document.createElement("button");
         detailBtn.type = "button";
@@ -708,6 +709,10 @@
   }
 
   async function addItemV1(product, qty = 1, customizations = {}) {
+    const safeCustomizations =
+      customizations && !Array.isArray(customizations) && typeof customizations === "object"
+        ? customizations
+        : {};
     if (typeof window.addToCart === "function") {
       for (let i = 0; i < qty; i++) window.addToCart(product);
     }
@@ -715,7 +720,7 @@
       try {
         await v1Fetch(`/api/v1/cart/items/${product.id}`, {
           method: "PUT",
-          body: JSON.stringify({ quantity: qty, customizations })
+          body: JSON.stringify({ quantity: qty, customizations: safeCustomizations })
         });
       } catch { /* local cart fallback already updated */ }
     }

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from "react";
+import React, { createContext, useCallback, useContext, useRef, useState } from "react";
 import { apiRequest } from "../api/client";
 import { CartLineInput, CustomizationOption, FulfillmentMode, MenuItemSummary, OrderQuote } from "../types/api";
 import { useAuth } from "./AuthContext";
@@ -22,9 +22,16 @@ const CartContext = createContext<CartContextValue | null>(null);
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
   const [lines, setLines] = useState<CartLineInput[]>([]);
+  const linesRef = useRef<CartLineInput[]>([]);
   const [selectedCounterId, setSelectedCounterId] = useState<number | null>(null);
   const [discountCode, setDiscountCode] = useState<string>("");
   const [quote, setQuote] = useState<OrderQuote | null>(null);
+
+  const commitLines = useCallback((nextLines: CartLineInput[]) => {
+    linesRef.current = nextLines;
+    setLines(nextLines);
+    setQuote(null);
+  }, []);
 
   const addItem = useCallback(
     async (
@@ -35,29 +42,28 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ) => {
       const custMap: Record<string, unknown> = {};
       for (const c of customizations) custMap[c.name] = true;
-      let nextQty = quantity;
-      let nextMode = fulfillmentType;
-      setLines(prev => {
-        const existing = prev.find(l => l.menuItemId === item.id);
-        if (existing) {
-          nextQty = Math.min(50, existing.quantity + quantity);
-          nextMode = existing.fulfillmentType || fulfillmentType;
-          return prev.map(l =>
-            l.menuItemId === item.id ? { ...l, quantity: nextQty, customizations: custMap, fulfillmentType: nextMode } : l
-          );
-        }
-        return [
-          ...prev,
-          {
-            menuItemId: item.id,
-            name: item.name,
-            unitPricePaise: item.pricePaise,
-            quantity,
-            customizations: custMap,
-            fulfillmentType
-          }
-        ];
-      });
+      const prev = linesRef.current;
+      const existing = prev.find(l => l.menuItemId === item.id);
+      const nextQty = existing ? Math.min(50, existing.quantity + quantity) : quantity;
+      const nextMode = existing ? existing.fulfillmentType || fulfillmentType : fulfillmentType;
+      const nextLines = existing
+        ? prev.map(l =>
+            l.menuItemId === item.id
+              ? { ...l, quantity: nextQty, customizations: custMap, fulfillmentType: nextMode }
+              : l
+          )
+        : [
+            ...prev,
+            {
+              menuItemId: item.id,
+              name: item.name,
+              unitPricePaise: item.pricePaise,
+              quantity: nextQty,
+              customizations: custMap,
+              fulfillmentType: nextMode
+            }
+          ];
+      commitLines(nextLines);
       if (item.counterId && !selectedCounterId) {
         setSelectedCounterId(item.counterId);
       }
@@ -72,54 +78,40 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     },
-    [selectedCounterId, user?.role]
+    [commitLines, selectedCounterId, user?.role]
   );
 
   const updateQuantity = useCallback(
     async (menuItemId: number, quantity: number) => {
-      setQuote(null);
+      const prev = linesRef.current;
       if (quantity <= 0) {
-        setLines(prev => prev.filter(l => l.menuItemId !== menuItemId));
+        commitLines(prev.filter(l => l.menuItemId !== menuItemId));
         if (user?.role === "student") {
           await apiRequest(`/api/v1/cart/items/${menuItemId}`, { method: "DELETE" }).catch(() => null);
         }
         return;
       }
-      let mode: FulfillmentMode = "READY_TO_EAT";
-      setLines(prev =>
-        prev.map(l => {
-          if (l.menuItemId === menuItemId) {
-            mode = l.fulfillmentType || "READY_TO_EAT";
-            return { ...l, quantity };
-          }
-          return l;
-        })
-      );
+      const existing = prev.find(l => l.menuItemId === menuItemId);
+      const mode: FulfillmentMode = existing?.fulfillmentType || "READY_TO_EAT";
+      const custMap: Record<string, unknown> = existing?.customizations || {};
+      commitLines(prev.map(l => (l.menuItemId === menuItemId ? { ...l, quantity } : l)));
       if (user?.role === "student") {
         await apiRequest(`/api/v1/cart/items/${menuItemId}`, {
           method: "PUT",
-          body: JSON.stringify({ quantity, customizations: {}, fulfillmentType: mode })
+          body: JSON.stringify({ quantity, customizations: custMap, fulfillmentType: mode })
         }).catch(() => null);
       }
     },
-    [user?.role]
+    [commitLines, user?.role]
   );
 
   const setFulfillmentType = useCallback(
     async (menuItemId: number, fulfillmentType: FulfillmentMode) => {
-      setQuote(null);
-      let currentQty = 1;
-      let currentCust: Record<string, unknown> = {};
-      setLines(prev =>
-        prev.map(l => {
-          if (l.menuItemId === menuItemId) {
-            currentQty = l.quantity;
-            currentCust = l.customizations;
-            return { ...l, fulfillmentType };
-          }
-          return l;
-        })
-      );
+      const prev = linesRef.current;
+      const existing = prev.find(l => l.menuItemId === menuItemId);
+      const currentQty = existing?.quantity ?? 1;
+      const currentCust = existing?.customizations ?? {};
+      commitLines(prev.map(l => (l.menuItemId === menuItemId ? { ...l, fulfillmentType } : l)));
       if (user?.role === "student") {
         await apiRequest(`/api/v1/cart/items/${menuItemId}`, {
           method: "PUT",
@@ -127,16 +119,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }).catch(() => null);
       }
     },
-    [user?.role]
+    [commitLines, user?.role]
   );
 
   const clearCart = useCallback(async () => {
-    setLines([]);
-    setQuote(null);
+    commitLines([]);
     if (user?.role === "student") {
       await apiRequest("/api/v1/cart", { method: "DELETE" }).catch(() => null);
     }
-  }, [user?.role]);
+  }, [commitLines, user?.role]);
 
   const refreshQuote = useCallback(
     async (pickupSlot?: string | null, loyaltyPointsRedeemed = 0): Promise<OrderQuote | null> => {
