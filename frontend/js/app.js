@@ -269,6 +269,7 @@ const CART_STORAGE_KEY = 'ace-canteen-cart-v1';
 const CART_CUST_STORAGE_KEY = 'ace-canteen-cart-cust-v1';
 let cart = (() => { try { const raw = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } })();
 window.aceCartCustomizations = (() => { try { const raw = JSON.parse(localStorage.getItem(CART_CUST_STORAGE_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } })();
+let preserveCartStatusMessage = false;
 const money = value => `₹${Number(value || 0).toFixed(2)}`;
 function saveCart() {
   try {
@@ -277,12 +278,20 @@ function saveCart() {
   } catch { /* private browsing/storage disabled: cart remains in memory */ }
 }
 function cartLines() { return Object.entries(cart).map(([id, quantity]) => ({ product_id: Number(id), quantity: Number(quantity) })).filter(line => Number.isInteger(line.product_id) && line.product_id > 0 && Number.isInteger(line.quantity) && line.quantity > 0); }
-function renderCart(message = '') {
+function renderCart(message = '', options = {}) {
   const list = document.querySelector('#cart-items'); const status = document.querySelector('#cart-message'); const subtotal = document.querySelector('#cart-subtotal');
   if (!list || !status || !subtotal) return;
   list.replaceChildren(); const lines = cartLines();
-  if (message) status.textContent = message;
-  else status.textContent = lines.length ? `${lines.reduce((sum, line) => sum + line.quantity, 0)} item(s) in your cart. Review the current total before placing the order.` : 'Your cart is empty. Add items from the catalogue above.';
+  if (lines.length > 0) preserveCartStatusMessage = false;
+  if (message) {
+    preserveCartStatusMessage = Boolean(options?.preserve && !lines.length);
+    status.textContent = message;
+  } else if (lines.length) {
+    status.textContent = `${lines.reduce((sum, line) => sum + line.quantity, 0)} item(s) in your cart. Review the current total before placing the order.`;
+  } else if (!preserveCartStatusMessage || !status.textContent.trim()) {
+    preserveCartStatusMessage = false;
+    status.textContent = 'Your cart is empty. Add items from the catalogue above.';
+  }
   let estimated = 0;
   for (const line of lines) {
     const row = document.createElement('div'); row.className = 'cart-line';
@@ -321,7 +330,8 @@ function addToCart(product) {
   if (window.aceCanteenUser.role !== 'student') { const msg = document.querySelector('#cart-message'); if (msg) msg.textContent = 'Only student accounts can place orders. Staff/admin accounts manage the canteen.'; return; }
   const wasEmpty = cartLines().length === 0;
   const id = String(product.id); const next = Number(cart[id] || 0) + 1;
-  if (next > 50) { renderCart('A maximum of 50 units per product is allowed.'); return; }
+  if (next > 50) { preserveCartStatusMessage = false; renderCart('A maximum of 50 units per product is allowed.'); return; }
+  preserveCartStatusMessage = false;
   cart[id] = next; window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[product.id] = product; saveCart();
   if (wasEmpty && product.counter_id) {
     const counterSel = document.querySelector('#v1-checkout-counter');
@@ -448,7 +458,7 @@ async function placeCartOrder() {
     cart = {}; window.aceCartCustomizations = {}; saveCart(); document.querySelector('#checkout-notes').value = '';
     document.querySelector('#checkout-reward-points').value = '0';
     document.querySelector('#checkout-use-wallet').checked = false;
-    renderCart(`${useWallet ? 'Prepaid wallet payment confirmed.' : 'Payment successful and verified.'} Order ${order.orderNumber}, pickup token #${order.tokenNumber}.`);
+    renderCart(`${useWallet ? 'Prepaid wallet payment confirmed.' : 'Payment successful and verified.'} Order ${order.orderNumber}, pickup token #${order.tokenNumber}.`, { preserve: true });
     document.querySelector('#my-orders-section').hidden = false;
     await loadMyOrders(); await loadCatalogue(); await loadPublicQueue();
     document.dispatchEvent(new CustomEvent('ace-orders-changed', { detail: order }));
@@ -464,7 +474,7 @@ async function placeCartOrder() {
       await loadMyOrders().catch(() => {});
       await loadCatalogue().catch(() => {});
       document.dispatchEvent(new CustomEvent('ace-orders-changed', { detail: createdOrder }));
-      renderCart(`Order ${createdOrder.orderNumber} saved (unpaid): ${error.message} Complete wallet payment or cancel in "My orders & tokens" below.`);
+      renderCart(`Order ${createdOrder.orderNumber} saved (unpaid): ${error.message} Complete wallet payment or cancel in "My orders & tokens" below.`, { preserve: true });
     } else {
       renderCart(`Checkout: ${error.message}`);
     }
@@ -473,7 +483,7 @@ async function placeCartOrder() {
 }
 document.querySelector('#cart-review')?.addEventListener('click', async () => { const button = document.querySelector('#cart-review'); button.disabled = true; try { await reviewCart(); } catch (error) { renderCart(`Could not review cart: ${error.message}`); } finally { button.disabled = !cartLines().length; } });
 document.querySelector('#cart-checkout')?.addEventListener('click', placeCartOrder);
-document.querySelector('#cart-clear')?.addEventListener('click', () => { cart = {}; window.aceCartCustomizations = {}; saveCart(); renderCart('Cart cleared.'); });
+document.querySelector('#cart-clear')?.addEventListener('click', () => { cart = {}; window.aceCartCustomizations = {}; preserveCartStatusMessage = false; saveCart(); renderCart('Cart cleared.'); });
 window.addToCart = addToCart;
 window.reviewCart = reviewCart;
 renderCart();
@@ -1292,7 +1302,7 @@ document.querySelector('#header-account-link')?.addEventListener('click', event 
   document.querySelector('#auth-email')?.focus({ preventScroll: true });
 });
 document.addEventListener('ace-auth-changed', event => {
-  const user = event.detail; syncHeaderAccount(user); renderCart(); const my = document.querySelector('#my-orders-section'); if (my) my.hidden = user?.role !== 'student';
+  const user = event.detail; if (!user) preserveCartStatusMessage = false; syncHeaderAccount(user); renderCart(); const my = document.querySelector('#my-orders-section'); if (my) my.hidden = user?.role !== 'student';
   if (user?.role === 'student') loadMyOrders(); if (['admin', 'staff'].includes(user?.role)) { loadOrderQueue(); loadStaffWorkflow(); }
 });
 

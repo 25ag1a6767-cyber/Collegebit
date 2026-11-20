@@ -479,7 +479,7 @@ def _apply_security_headers(response: JSONResponse, request: Request):
     if cfg_api.startswith(("https://", "http://")):
         cfg_ws = cfg_api.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
         extra_connect = f" {cfg_api} {cfg_ws}"
-    response.headers.setdefault("Content-Security-Policy", f"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://api.razorpay.com; script-src 'self' https://checkout.razorpay.com; style-src 'self'; img-src 'self' data: https:; connect-src 'self' {ws_schemes}{extra_connect} https://api.razorpay.com https://checkout.razorpay.com; frame-src https://checkout.razorpay.com https://api.razorpay.com")
+    response.headers.setdefault("Content-Security-Policy", f"default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self' https://api.razorpay.com; script-src 'self' https://checkout.razorpay.com; style-src 'self' 'sha256-twhjKut0sH54Pd9MJk5NfNRG9SjsPfvZZkpOZsN4xDo='; img-src 'self' data: https:; connect-src 'self' {ws_schemes}{extra_connect} https://api.razorpay.com https://checkout.razorpay.com; frame-src https://checkout.razorpay.com https://api.razorpay.com")
     if IS_PRODUCTION and request.url.scheme == "https":
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response

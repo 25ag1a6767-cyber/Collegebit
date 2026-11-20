@@ -54,3 +54,14 @@ def test_mobile_app_uses_config_not_hardcoded_urls_and_frame_ws_auth():
     static_cfg = (REPO_ROOT / "frontend" / "config.js").read_text(encoding="utf-8")
     assert "collegebitsApiUrl" in static_cfg
     assert "app-sai-e3e1.vercel.app" not in static_cfg
+
+
+def test_display_board_css_and_customer_razorpay_csp():
+    with TestClient(app) as client:
+        disp_css = client.get("/css/display.css")
+        assert disp_css.status_code == 200
+        assert ".board-column" in disp_css.text
+        assert ".token-card.ready" in disp_css.text
+        csp = client.get("/customer/").headers.get("content-security-policy", "")
+        assert "'unsafe-inline'" not in csp
+        assert "sha256-twhjKut0sH54Pd9MJk5NfNRG9SjsPfvZZkpOZsN4xDo=" in csp
