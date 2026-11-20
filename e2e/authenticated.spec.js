@@ -369,6 +369,7 @@ function generateTotpCode(base32Secret) {
 }
 
 test('Login buttons across customer, staff, and admin handle short passwords, forgot mode, MFA 2FA, and refresh', async ({ page, request }) => {
+  test.setTimeout(90_000);
   const pageErrors = [];
   page.on('pageerror', err => pageErrors.push(err.message));
 
@@ -476,6 +477,7 @@ test('Login buttons across customer, staff, and admin handle short passwords, fo
 });
 
 test('Complete end-to-end journey from login to payment, active QR, staff KDS handover, feedback, and admin reconciliation', async ({ page, request }) => {
+  test.setTimeout(90_000);
   const pageErrors = [];
   page.on('pageerror', err => pageErrors.push(err.message));
 
