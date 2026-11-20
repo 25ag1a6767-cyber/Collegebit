@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from sqlalchemy import select
 
 from app.database import Base, SessionLocal, engine
-from app.models import CanteenCounter, User, UserCounterAssignment, UserRole
+from app.models import CanteenCounter, Product, User, UserCounterAssignment, UserRole
 from app.security import hash_password
 from app.seed import seed_demo_data
 
@@ -46,4 +46,8 @@ with SessionLocal() as db:
     )
     if assignment is None:
         db.add(UserCounterAssignment(user_id=staff.id, counter_id=main_counter.id))
+    for product in db.scalars(select(Product)).all():
+        if product.stock_quantity < 100:
+            product.stock_quantity = 100
+        product.is_available = True
     db.commit()

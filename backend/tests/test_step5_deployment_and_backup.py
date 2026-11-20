@@ -122,3 +122,21 @@ def test_step5_encrypted_gfs_backup_secondary_copy_and_restore_drill(tmp_path, m
                 raise AssertionError("Tampered secondary encrypted backup must fail verification")
     finally:
         get_settings.cache_clear()
+
+
+def test_step5_alembic_postgres_widens_version_column_and_locks():
+    env_text = (REPO_ROOT / "backend" / "alembic" / "env.py").read_text(encoding="utf-8")
+    assert "_ensure_wide_alembic_version" in env_text
+    assert "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)" in env_text
+    assert "pg_advisory_xact_lock" in env_text
+    assert "version_num VARCHAR(128)" in env_text
+
+    # Confirm revision 0025 (>32 chars) and every other revision fit inside VARCHAR(128)
+    import re
+    rev_ids = []
+    for path in (REPO_ROOT / "backend" / "alembic" / "versions").glob("*.py"):
+        m = re.search(r'^revision\s*=\s*"([^"]+)"', path.read_text(encoding="utf-8"), re.M)
+        if m:
+            rev_ids.append(m.group(1))
+    assert any(len(r) > 32 for r in rev_ids)
+    assert all(len(r) <= 128 for r in rev_ids)
