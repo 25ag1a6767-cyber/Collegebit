@@ -571,6 +571,7 @@
       for (const item of items) {
         const legacyShape = {
           id: item.id,
+          counter_id: item.counterId,
           name: item.name,
           price: (item.pricePaise / 100).toFixed(2),
           stock_quantity: item.stockQuantity,
@@ -693,6 +694,7 @@
         const qty = Math.max(1, Math.min(20, Number(qtyInput.value || 1)));
         await addItemV1({
           id: item.id,
+          counter_id: item.counterId,
           name: item.name,
           price: (item.pricePaise / 100).toFixed(2),
           stock_quantity: item.stockQuantity
@@ -713,6 +715,11 @@
       customizations && !Array.isArray(customizations) && typeof customizations === "object"
         ? customizations
         : {};
+    window.aceCartCustomizations = window.aceCartCustomizations || {};
+    if (Object.keys(safeCustomizations).length) {
+      window.aceCartCustomizations[String(product.id)] = safeCustomizations;
+      try { localStorage.setItem("ace-canteen-cart-cust-v1", JSON.stringify(window.aceCartCustomizations)); } catch {}
+    }
     if (typeof window.addToCart === "function") {
       for (let i = 0; i < qty; i++) window.addToCart(product);
     }
@@ -730,6 +737,15 @@
   // 6. S03 — Coupon, Counter & Tax Authoritative Quote
   // ============================================================================
   async function quoteCartV1() {
+    if (typeof window.reviewCart === "function") {
+      try {
+        return await window.reviewCart();
+      } catch (err) {
+        const msg = $("#cart-message");
+        if (msg) msg.textContent = err.message;
+        return null;
+      }
+    }
     const breakdown = $("#v1-quote-breakdown");
     const msg = $("#cart-message");
     if (!window.aceCanteenToken || window.aceCanteenUser?.role !== "student") {
@@ -739,7 +755,11 @@
     let rawCart = {};
     try { rawCart = JSON.parse(localStorage.getItem("ace-canteen-cart-v1") || "{}"); } catch { rawCart = {}; }
     const items = Object.entries(rawCart)
-      .map(([id, q]) => ({ menuItemId: Number(id), quantity: Number(q), customizations: {} }))
+      .map(([id, q]) => ({
+        menuItemId: Number(id),
+        quantity: Number(q),
+        customizations: (window.aceCartCustomizations?.[String(id)] || {})
+      }))
       .filter(x => x.menuItemId > 0 && x.quantity > 0);
     if (!items.length) {
       if (breakdown) breakdown.hidden = true;
@@ -749,21 +769,32 @@
     const fulfillmentType = $("#v1-checkout-fulfillment")?.value || "READY_TO_EAT";
     const couponCode = $("#v1-coupon-code")?.value.trim() || null;
     const pickupSlot = $("#pickup-slot")?.value || null;
+    const loyaltyPointsRedeemed = Number($("#checkout-reward-points")?.value || 0);
+    const payWithWallet = Boolean($("#checkout-use-wallet")?.checked);
     try {
       const q = await v1Fetch("/api/v1/orders/quote", {
         method: "POST",
-        body: JSON.stringify({ items: items.map(x => ({ ...x, fulfillmentType })), fulfillmentType, counterId, couponCode, pickupSlot })
+        body: JSON.stringify({
+          items: items.map(x => ({ ...x, fulfillmentType })),
+          fulfillmentType,
+          counterId,
+          couponCode,
+          pickupSlot,
+          loyaltyPointsRedeemed,
+          payWithWallet
+        })
       });
       if (breakdown) {
         breakdown.hidden = false;
         $("#v1-q-subtotal").textContent = paise(q.subtotalPaise);
         if ($("#v1-q-packaging")) $("#v1-q-packaging").textContent = paise(q.packagingChargePaise || 0);
-        $("#v1-q-discount").textContent = `−${paise(q.discountPaise || 0)}`;
+        $("#v1-q-discount").textContent = `−${paise(q.couponDiscountPaise ?? q.discountPaise ?? 0)}`;
+        if ($("#v1-q-rewards")) $("#v1-q-rewards").textContent = `−${paise(q.loyaltyDiscountPaise || 0)}`;
         $("#v1-q-tax").textContent = paise(q.taxPaise || 0);
         $("#v1-q-total").textContent = paise(q.totalPaise);
       }
       if (msg) {
-        msg.textContent = couponCode && q.discountPaise > 0
+        msg.textContent = couponCode && (q.couponDiscountPaise ?? q.discountPaise) > 0
           ? `Offer ${couponCode.toUpperCase()} applied! Payable total: ${paise(q.totalPaise)}.`
           : `Verified quote ready: ${paise(q.totalPaise)} (includes taxes).`;
       }
@@ -777,12 +808,21 @@
   // ============================================================================
   // 7. S04 — Live Order Timeline, Short-Lived QR & Manual Fallback Code
   // ============================================================================
+  let activeOrdersSeq = 0;
   async function loadStudentActiveOrders() {
     const panel = $("#v1-active-orders-panel");
     if (!panel || !window.aceCanteenToken || window.aceCanteenUser?.role !== "student") return;
+    const mySeq = ++activeOrdersSeq;
     try {
       const res = await v1Fetch("/api/v1/users/me/orders?limit=10");
+      if (mySeq !== activeOrdersSeq) return;
       const orders = Array.isArray(res) ? res : (res?.items || []);
+      const preservedQrs = new Map();
+      panel.querySelectorAll("[data-qr-order-id]").forEach(slot => {
+        if (slot.childNodes.length > 0 || slot.textContent.trim()) {
+          preservedQrs.set(slot.getAttribute("data-qr-order-id"), slot);
+        }
+      });
       panel.replaceChildren();
       const active = orders.filter(o => !["completed", "collected", "cancelled"].includes(String(o.status).toLowerCase()));
       for (const o of active) {
@@ -813,7 +853,8 @@
 
         const actions = document.createElement("div");
         actions.className = "v1-inline-actions";
-        const qrContainer = document.createElement("div");
+        const qrContainer = preservedQrs.get(String(o.id)) || document.createElement("div");
+        qrContainer.setAttribute("data-qr-order-id", String(o.id));
 
         if (isPaidOrder) {
           const qrBtn = document.createElement("button");
@@ -839,7 +880,8 @@
             try {
               await v1Fetch(`/api/v1/orders/${o.id}/pay-with-wallet`, { method: "POST" });
               await loadStudentActiveOrders();
-              if (typeof window.loadMyOrders === "function") window.loadMyOrders();
+              if (typeof window.loadMyOrders === "function") await window.loadMyOrders();
+              if (typeof window.loadPublicQueue === "function") window.loadPublicQueue();
             } catch (err) {
               alert(err.message);
               walPayBtn.disabled = false;
@@ -862,7 +904,8 @@
                 body: JSON.stringify({ reason: "Cancelled by student before preparation" })
               });
               await loadStudentActiveOrders();
-              if (typeof window.loadMyOrders === "function") window.loadMyOrders();
+              if (typeof window.loadMyOrders === "function") await window.loadMyOrders();
+              if (typeof window.loadPublicQueue === "function") window.loadPublicQueue();
             } catch (err) {
               alert(err.message);
               cancelBtn.disabled = false;
@@ -1529,7 +1572,6 @@
   $("#v1-refresh-reco")?.addEventListener("click", loadRecommendations);
   $("#v1-apply-filters")?.addEventListener("click", applyV1MenuFilters);
   $("#v1-apply-coupon")?.addEventListener("click", quoteCartV1);
-  $("#cart-review")?.addEventListener("click", quoteCartV1);
   $("#v1-modal-close")?.addEventListener("click", () => { $("#v1-item-modal").hidden = true; });
   $("#v1-item-modal")?.addEventListener("click", e => { if (e.target.id === "v1-item-modal") e.currentTarget.hidden = true; });
 
@@ -2180,6 +2222,10 @@
   }
 
   document.addEventListener("ace-auth-changed", ev => syncV1ForAuth(ev.detail));
+  document.addEventListener("ace-orders-changed", () => {
+    if (window.aceCanteenUser?.role === "student") loadStudentActiveOrders();
+    if (["staff", "admin"].includes(window.aceCanteenUser?.role)) loadStaffKds();
+  });
 
   // Initial boot
   loadCounters();

@@ -12,7 +12,7 @@ import { apiRequest } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 
 export const AuthScreen: React.FC = () => {
-  const { mfaChallengeToken, signIn, verifyMfaLogin, registerStudent } = useAuth();
+  const { mfaChallengeToken, signIn, verifyMfaLogin, cancelMfaLogin, registerStudent } = useAuth();
   const [mode, setMode] = useState<"login" | "register" | "forgot">("login");
   const [fullName, setFullName] = useState("");
   const [identifier, setIdentifier] = useState("");
@@ -70,7 +70,12 @@ export const AuthScreen: React.FC = () => {
       setError(mode === "login" ? "Enter your email address or phone number." : "Enter your college email address.");
       return;
     }
-    if (password.length < 12) {
+    if (mode === "login") {
+      if (!password) {
+        setError("Enter your password.");
+        return;
+      }
+    } else if (password.length < 12) {
       setError("Password must be at least 12 characters.");
       return;
     }
@@ -206,6 +211,16 @@ export const AuthScreen: React.FC = () => {
               keyboardType="number-pad"
               placeholder="6-digit TOTP or recovery code"
             />
+            <TouchableOpacity
+              onPress={() => {
+                cancelMfaLogin();
+                setMfaCode("");
+                setError(null);
+                setInfoMsg(null);
+              }}
+            >
+              <Text style={styles.forgotLink}>← Back to Sign in</Text>
+            </TouchableOpacity>
           </>
         )}
 

@@ -86,8 +86,10 @@
             <form id="auth-form">
               <label id="auth-name-wrap" hidden>Full name<input id="auth-name" autocomplete="name" minlength="2" maxlength="120" placeholder="Your full name"></label>
               <label id="auth-email-wrap">Email address<input id="auth-email" type="email" autocomplete="email" required placeholder="you@college.edu"></label>
-              <label id="auth-password-wrap"><span id="auth-password-label">Password</span><input id="auth-password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required placeholder="At least 12 characters"></label>
+              <label id="auth-password-wrap"><span id="auth-password-label">Password</span><input id="auth-password" type="password" autocomplete="current-password" maxlength="128" required placeholder="Enter your password"></label>
+              <label id="auth-mfa-wrap" hidden>Authenticator or recovery code<input id="auth-mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="6-digit TOTP or recovery code"></label>
               <button class="primary-button auth-submit" type="submit" id="auth-submit">Sign in</button>
+              <button type="button" class="link-button" id="auth-mfa-cancel" hidden>← Back to Sign in</button>
               <button type="button" class="link-button" id="auth-forgot">Forgot your password?</button>
               <p class="legal-inline-note">By ordering, you agree to the <a href="/legal#privacy">Privacy Policy</a> &amp; <a href="/legal#terms">Terms (No-Refund Policy)</a>.</p>
             </form>

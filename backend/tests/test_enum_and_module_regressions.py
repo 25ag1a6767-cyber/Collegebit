@@ -482,3 +482,72 @@ def test_admin_legacy_purchase_orders_get_and_hash_links_and_station_flags(monke
         assert any(d["code"] == f"REG_{suffix.upper()}" and d.get("id") and d.get("title") for d in disc_active.json()["data"]["items"])
 
 
+def test_sqlite_startup_upgrades_alembic_0025_db_for_login(tmp_path, monkeypatch):
+    """Regression: starting the app against a 0025 SQLite DB auto-upgrades to 0029 so login never 500s on missing columns."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    import app.main as main_mod
+
+    db_file = tmp_path / "stale_0025.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file.as_posix()}")
+    get_settings.cache_clear()
+    cfg = Config(str(REPO_ROOT / "backend" / "alembic.ini"))
+    cfg.set_main_option("script_location", str(REPO_ROOT / "backend" / "alembic"))
+    command.upgrade(cfg, "0025_phase89_enterprise_intelligence")
+
+    tmp_engine = create_engine(f"sqlite:///{db_file.as_posix()}", future=True)
+    try:
+        monkeypatch.setattr(main_mod, "engine", tmp_engine)
+        main_mod._sync_dev_sqlite_schema()
+        with sqlite3.connect(db_file) as conn:
+            assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0029_user_allergen_preferences"
+            user_cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+            assert "allergen_preferences_json" in user_cols
+    finally:
+        tmp_engine.dispose()
+        get_settings.cache_clear()
+
+
+def test_v1_login_refresh_and_mfa_challenge_envelope():
+    """Verify V1 refresh uses 'success': True (consumed by staff-portal.js) and MFA returns mfaRequired + verify-login works."""
+    from app.security import totp_code_at
+
+    uid, email, _ = _make_user(UserRole.STAFF, "mfa-staff-reg")
+    with TestClient(app) as client:
+        login_res = client.post("/api/v1/auth/login", json={"identifier": email, "password": "RegressionPass-2026!"})
+        assert login_res.status_code == 200, login_res.text
+        tok = login_res.json()["data"]["accessToken"]
+        rt = login_res.json()["data"]["refreshToken"]
+        assert login_res.json()["success"] is True
+
+        ref_res = client.post("/api/v1/auth/refresh", json={"refreshToken": rt})
+        assert ref_res.status_code == 200, ref_res.text
+        assert ref_res.json()["success"] is True
+        assert ref_res.json()["data"]["accessToken"]
+
+        setup = client.post("/api/v1/auth/mfa/setup", headers={"Authorization": f"Bearer {tok}"})
+        assert setup.status_code == 200
+        secret = setup.json()["data"]["secret"]
+        enable = client.post(
+            "/api/v1/auth/mfa/enable",
+            headers={"Authorization": f"Bearer {tok}"},
+            json={"code": totp_code_at(secret)},
+        )
+        assert enable.status_code == 200, enable.text
+
+        chal_res = client.post("/api/v1/auth/login", json={"identifier": email, "password": "RegressionPass-2026!"})
+        assert chal_res.status_code == 200
+        chal_data = chal_res.json()["data"]
+        assert chal_data["mfaRequired"] is True
+        assert chal_data["mfaChallengeToken"]
+
+        fin_res = client.post(
+            "/api/v1/auth/mfa/verify-login",
+            json={"mfaChallengeToken": chal_data["mfaChallengeToken"], "code": totp_code_at(secret)},
+        )
+        assert fin_res.status_code == 200, fin_res.text
+        assert fin_res.json()["data"]["accessToken"]
+
+

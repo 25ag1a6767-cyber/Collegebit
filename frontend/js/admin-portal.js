@@ -11,6 +11,7 @@
   const state = {
     accessToken: sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem("ace_v1_access_token") || "",
     refreshToken: sessionStorage.getItem(REFRESH_KEY) || localStorage.getItem("ace_v1_refresh_token") || "",
+    mfaChallengeToken: "",
     user: null,
     activeTab: "bi",
     biOptionsLoaded: false,
@@ -124,20 +125,29 @@
     const ctype = res.headers.get("content-type") || "";
     const payload = ctype.includes("application/json") ? await res.json() : null;
     if (!res.ok) {
+      const errMsg = (payload && payload.error && payload.error.message) || ("Request failed (" + res.status + ")");
       if (res.status === 401) {
-        throw new Error("Invalid email/phone or password. Please verify your administrator credentials.");
+        if (path === "/api/v1/auth/login") {
+          throw new Error("Invalid email/phone or password. Please verify your administrator credentials.");
+        }
+        if (path === "/api/v1/auth/mfa/verify-login") {
+          throw new Error(errMsg || "Invalid authenticator or recovery code.");
+        }
+        throw new Error("Your administrator session has expired. Please sign in again.");
       }
       if (res.status === 403) {
         const code = (payload && payload.error && payload.error.code) || "";
         if (code === "ACCOUNT_DISABLED") {
           throw new Error("This administrator account has been deactivated.");
         }
+        if (code === "EMAIL_NOT_VERIFIED") {
+          throw new Error(errMsg);
+        }
         throw new Error("Access denied: Administrator role is required.");
       }
       if (res.status >= 500) {
         throw new Error("Server error (" + res.status + "). Please try again in a moment.");
       }
-      const errMsg = (payload && payload.error && payload.error.message) || ("Request failed (" + res.status + ")");
       throw new Error(errMsg);
     }
     return payload ? payload.data : null;
@@ -209,29 +219,82 @@
     }
   }
 
+  function setAdminMfaMode(enabled, challengeToken) {
+    state.mfaChallengeToken = enabled ? (challengeToken || "") : "";
+    const credWrap = $("admin-credentials-wrap");
+    const mfaWrap = $("admin-mfa-wrap");
+    const idInput = $("admin-identifier");
+    const pwInput = $("admin-password");
+    const mfaInput = $("admin-mfa-code");
+    const cancelBtn = $("btn-admin-mfa-cancel");
+    const submitBtn = $("btn-admin-login");
+    if (credWrap) credWrap.hidden = enabled;
+    if (idInput) {
+      idInput.disabled = enabled;
+      idInput.required = !enabled;
+    }
+    if (pwInput) {
+      pwInput.disabled = enabled;
+      pwInput.required = !enabled;
+    }
+    if (mfaWrap) mfaWrap.hidden = !enabled;
+    if (mfaInput) {
+      mfaInput.disabled = !enabled;
+      mfaInput.required = enabled;
+      if (!enabled) mfaInput.value = "";
+    }
+    if (cancelBtn) cancelBtn.hidden = !enabled;
+    if (submitBtn) submitBtn.textContent = enabled ? "Verify 2FA & Sign In" : "Authenticate to Admin Console";
+  }
+
   async function onAdminLoginSubmit(ev) {
     ev.preventDefault();
     showAlert("", "");
-    saveTokens("", "");
-    localStorage.removeItem("ace_v1_access_token");
-    localStorage.removeItem("ace_v1_refresh_token");
-    const identifier = $("admin-identifier").value.trim();
-    const password = $("admin-password").value;
+    const loginBtn = $("btn-admin-login");
+    if (loginBtn) loginBtn.disabled = true;
     try {
-      const data = await apiFetch("/api/v1/auth/login", {
-        method: "POST",
-        body: { identifier, password }
-      });
+      let data;
+      if (state.mfaChallengeToken) {
+        const code = ($("admin-mfa-code")?.value || "").trim();
+        if (!code) {
+          showAlert("Enter your 6-digit authenticator or recovery code.", "error");
+          return;
+        }
+        data = await apiFetch("/api/v1/auth/mfa/verify-login", {
+          method: "POST",
+          body: { mfaChallengeToken: state.mfaChallengeToken, code }
+        });
+      } else {
+        saveTokens("", "");
+        localStorage.removeItem("ace_v1_access_token");
+        localStorage.removeItem("ace_v1_refresh_token");
+        const identifier = $("admin-identifier").value.trim();
+        const password = $("admin-password").value;
+        data = await apiFetch("/api/v1/auth/login", {
+          method: "POST",
+          body: { identifier, password }
+        });
+        if (data && data.mfaRequired && data.mfaChallengeToken) {
+          setAdminMfaMode(true, data.mfaChallengeToken);
+          showAlert("Two-factor authentication is required. Enter your 6-digit code below.", "");
+          $("admin-mfa-code")?.focus();
+          return;
+        }
+      }
       if (!data.user || String(data.user.role).toUpperCase() !== "ADMIN") {
+        setAdminMfaMode(false);
         showAlert("Access denied: Only ADMIN accounts may sign in to the Enterprise Administration Console.", "error");
         return;
       }
+      setAdminMfaMode(false);
       saveTokens(data.accessToken, data.refreshToken);
       setSignedInUI(data.user);
       showAlert("Authenticated as " + data.user.fullName + ".", "success");
       await loadActiveTab();
     } catch (err) {
       showAlert(err.message, "error");
+    } finally {
+      if (loginBtn) loginBtn.disabled = false;
     }
   }
 
@@ -1432,6 +1495,10 @@
   // ============================================================================
   function bindEvents() {
     $("admin-login-form").addEventListener("submit", onAdminLoginSubmit);
+    $("btn-admin-mfa-cancel")?.addEventListener("click", () => {
+      setAdminMfaMode(false);
+      showAlert("", "");
+    });
     $("btn-admin-logout").addEventListener("click", onAdminLogout);
     $("btn-admin-refresh").addEventListener("click", () => loadActiveTab());
     $("btn-runtime-diagnostics")?.addEventListener("click", () => loadRuntimeDiagnostics());

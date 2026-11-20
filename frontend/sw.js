@@ -1,5 +1,5 @@
 "use strict";
-const CACHE_NAME = "ace-canteen-shell-v13";
+const CACHE_NAME = "ace-canteen-shell-v14";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   "/customer/",
@@ -85,6 +85,23 @@ self.addEventListener("fetch", event => {
   }
 
   if (!APP_SHELL.includes(url.pathname) || url.search) return;
+  if (url.pathname.startsWith("/js/") || url.pathname.startsWith("/css/")) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const response = await fetch(request);
+        if (response.ok && response.type === "basic") {
+          await cache.put(request, response.clone());
+        }
+        return response;
+      } catch {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        return new Response("Offline", { status: 503, statusText: "Offline" });
+      }
+    })());
+    return;
+  }
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
     const cached = await cache.match(request);

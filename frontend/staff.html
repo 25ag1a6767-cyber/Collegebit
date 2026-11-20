@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#12372a">
   <title>CollegeBits — Kitchen &amp; Counter Staff Portal</title>
   <link rel="stylesheet" href="/css/staff-portal.css">
+  <script src="/config.js" defer></script>
   <script src="/js/charts-v2.js" defer></script>
   <script src="/js/vendor/jsQR.js" defer></script>
   <script src="/js/staff-portal.js" defer></script>
@@ -37,16 +38,24 @@
       <h1 id="staff-login-heading">Canteen Staff Sign In</h1>
       <p>Authorized kitchen and pickup counter staff only. Student accounts cannot access this portal.</p>
       <form id="staff-login-form">
-        <label>Staff Email or Phone
-          <input id="staff-login-id" type="text" required autocomplete="username" placeholder="Enter your registered email or phone">
-        </label>
-        <label>Password
-          <div class="pw-row">
-            <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
-            <button type="button" id="btn-toggle-staff-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
-          </div>
-        </label>
+        <div id="staff-credentials-wrap">
+          <label>Staff Email or Phone
+            <input id="staff-login-id" type="text" required autocomplete="username" placeholder="Enter your registered email or phone">
+          </label>
+          <label>Password
+            <div class="pw-row">
+              <input id="staff-login-pw" type="password" required autocomplete="current-password" placeholder="Enter password">
+              <button type="button" id="btn-toggle-staff-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
+            </div>
+          </label>
+        </div>
+        <div id="staff-mfa-wrap" hidden>
+          <label>Two-Factor Authentication Code
+            <input id="staff-mfa-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="6-digit TOTP or recovery code" disabled>
+          </label>
+        </div>
         <button type="submit" class="btn btn-primary" id="staff-login-submit">Sign in to Kitchen Desk</button>
+        <button type="button" class="btn btn-outline" id="staff-mfa-cancel" hidden>← Back to Sign in</button>
       </form>
     </section>
 

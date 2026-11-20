@@ -30,6 +30,7 @@ interface AuthContextValue {
   mfaChallengeToken: string | null;
   signIn: (identifier: string, password: string) => Promise<void>;
   verifyMfaLogin: (code: string) => Promise<void>;
+  cancelMfaLogin: () => void;
   registerStudent: (fullName: string, email: string, password: string, phone?: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -174,6 +175,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [mfaChallengeToken, refreshProfile]);
 
+  const cancelMfaLogin = useCallback(() => {
+    setMfaChallengeToken(null);
+  }, []);
+
   const registerStudent = useCallback(
     async (fullName: string, email: string, password: string, phone?: string) => {
       await apiRequest("/api/v1/auth/register", {
@@ -219,6 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mfaChallengeToken,
         signIn,
         verifyMfaLogin,
+        cancelMfaLogin,
         registerStudent,
         refreshProfile,
         signOut

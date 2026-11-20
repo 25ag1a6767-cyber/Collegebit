@@ -32,16 +32,24 @@
       <h1 id="admin-login-heading">Administrator Sign In</h1>
       <p>Restricted to authorized college canteen administrators (`ADMIN` role). All administrative actions are recorded in immutable audit logs.</p>
       <form id="admin-login-form">
-        <label for="admin-identifier">Admin Email or Phone
-          <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="Enter your registered email or phone" />
-        </label>
-        <label for="admin-password">Password
-          <div class="pw-row">
-            <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••••" />
-            <button type="button" id="btn-toggle-admin-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
-          </div>
-        </label>
+        <div id="admin-credentials-wrap">
+          <label for="admin-identifier">Admin Email or Phone
+            <input id="admin-identifier" name="identifier" type="text" autocomplete="username" required placeholder="Enter your registered email or phone" />
+          </label>
+          <label for="admin-password">Password
+            <div class="pw-row">
+              <input id="admin-password" name="password" type="password" autocomplete="current-password" required placeholder="••••••••••••" />
+              <button type="button" id="btn-toggle-admin-pw" class="btn-pw-toggle" aria-label="Toggle password visibility">👁️ Show</button>
+            </div>
+          </label>
+        </div>
+        <div id="admin-mfa-wrap" hidden>
+          <label for="admin-mfa-code">Two-Factor Authentication Code
+            <input id="admin-mfa-code" name="totpCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="6-digit TOTP or recovery code" disabled />
+          </label>
+        </div>
         <button type="submit" id="btn-admin-login" class="btn btn-primary">Authenticate to Admin Console</button>
+        <button type="button" id="btn-admin-mfa-cancel" class="btn btn-outline" hidden>← Back to Sign in</button>
       </form>
     </section>
 
@@ -1035,6 +1043,7 @@
     </div>
   </main>
 
+  <script src="/config.js" defer></script>
   <script src="/js/charts-v2.js" defer></script>
   <script src="/js/admin-portal.js" defer></script>
 </body>

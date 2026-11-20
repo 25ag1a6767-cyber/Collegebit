@@ -94,21 +94,32 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
       setPointsBalance(Math.max(0, pointsBalance - (Number(rewardPoints) || 0)));
 
       if (!payWithWallet) {
-        const intent = await apiRequest<UpiPaymentIntent>("/api/v1/payments/upi/intent", {
-          method: "POST",
-          body: JSON.stringify({ orderId: created.id })
-        });
+        try {
+          const intent = await apiRequest<UpiPaymentIntent>("/api/v1/payments/upi/intent", {
+            method: "POST",
+            body: JSON.stringify({ orderId: created.id })
+          });
 
-        if (intent.upiIntentUri) {
-          // iOS reports canOpenURL=false for undeclared schemes, so attempt the
-          // open directly and fall back to a clear message when no UPI app exists.
-          try {
-            await Linking.openURL(intent.upiIntentUri);
-          } catch {
-            setStatusMessage(
-              "No UPI app found on this phone. Install Google Pay, PhonePe, Paytm or BHIM to complete payment."
-            );
+          if (intent.upiIntentUri) {
+            // iOS reports canOpenURL=false for undeclared schemes, so attempt the
+            // open directly and fall back to a clear message when no UPI app exists.
+            try {
+              await Linking.openURL(intent.upiIntentUri);
+            } catch {
+              setStatusMessage(
+                "No UPI app found on this phone. Install Google Pay, PhonePe, Paytm or BHIM to complete payment."
+              );
+            }
           }
+        } catch (payErr) {
+          await clearCart();
+          setStatusMessage(
+            `Order #${created.id} created (unpaid): ${
+              payErr instanceof Error ? payErr.message : "Payment gateway unavailable"
+            }. Open Orders to pay with wallet or cancel.`
+          );
+          onOrderCreated();
+          return;
         }
       }
 

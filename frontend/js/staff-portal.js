@@ -74,21 +74,33 @@
       }
     }
     const payload = await res.json().catch(() => ({}));
-    if (!res.ok || payload.ok === false) {
+    if (!res.ok || payload.success === false) {
+      const errMsg = (payload.error && payload.error.message) || payload.detail || ("Request failed (" + res.status + ")");
       if (res.status === 401) {
-        throw new Error("Invalid email/phone or password. Please verify your credentials.");
+        if (path === "/auth/login") {
+          throw new Error("Invalid email/phone or password. Please verify your credentials.");
+        }
+        if (path === "/auth/mfa/verify-login") {
+          throw new Error(errMsg || "Invalid authenticator or recovery code.");
+        }
+        if (path !== "/auth/refresh") {
+          clearSession();
+        }
+        throw new Error("Your staff session has expired. Please sign in again.");
       }
       if (res.status === 403) {
         const code = (payload.error && payload.error.code) || "";
         if (code === "ACCOUNT_DISABLED") {
           throw new Error("This staff account is deactivated/suspended. Please contact the canteen administrator.");
         }
+        if (code === "EMAIL_NOT_VERIFIED") {
+          throw new Error(errMsg);
+        }
         throw new Error("Access denied: You do not have permission to access staff portal resources.");
       }
       if (res.status >= 500) {
         throw new Error("Server error (" + res.status + "). Please try again in a moment.");
       }
-      const errMsg = (payload.error && payload.error.message) || payload.detail || ("Request failed (" + res.status + ")");
       throw new Error(errMsg);
     }
     return payload.data !== undefined ? payload.data : payload;
@@ -102,8 +114,8 @@
         body: JSON.stringify({ refreshToken: state.refreshToken })
       });
       const j = await r.json();
-      if (r.ok && j.ok && j.data && j.data.accessToken) {
-        saveTokens(j.data.accessToken, j.data.refreshToken);
+      if (r.ok && (j.success || j.ok) && j.data && j.data.accessToken) {
+        saveTokens(j.data.accessToken, j.data.refreshToken || state.refreshToken);
         return true;
       }
     } catch (_) {}
@@ -114,8 +126,10 @@
   function saveTokens(access, refresh) {
     state.accessToken = access || "";
     state.refreshToken = refresh || "";
-    sessionStorage.setItem(TOKEN_KEY, state.accessToken);
+    if (state.accessToken) sessionStorage.setItem(TOKEN_KEY, state.accessToken);
+    else sessionStorage.removeItem(TOKEN_KEY);
     if (state.refreshToken) sessionStorage.setItem(REFRESH_KEY, state.refreshToken);
+    else sessionStorage.removeItem(REFRESH_KEY);
   }
 
   function clearSession() {
@@ -960,21 +974,79 @@
       });
     }
 
+    function setStaffMfaMode(enabled, challengeToken) {
+      state.mfaChallengeToken = enabled ? (challengeToken || "") : "";
+      const credWrap = $("staff-credentials-wrap");
+      const mfaWrap = $("staff-mfa-wrap");
+      const mfaInput = $("staff-mfa-code");
+      const cancelBtn = $("staff-mfa-cancel");
+      const idInput = $("staff-login-id");
+      const pwInput = $("staff-login-pw");
+      const submitBtn = $("staff-login-submit");
+      if (credWrap) credWrap.hidden = enabled;
+      if (idInput) {
+        idInput.disabled = enabled;
+        idInput.required = !enabled;
+      }
+      if (pwInput) {
+        pwInput.disabled = enabled;
+        pwInput.required = !enabled;
+      }
+      if (mfaWrap) mfaWrap.hidden = !enabled;
+      if (mfaInput) {
+        mfaInput.disabled = !enabled;
+        mfaInput.required = enabled;
+        if (!enabled) mfaInput.value = "";
+      }
+      if (cancelBtn) cancelBtn.hidden = !enabled;
+      if (submitBtn) submitBtn.textContent = enabled ? "Verify 2FA Code" : "Sign in to Kitchen Desk";
+    }
+
+    $("staff-mfa-cancel")?.addEventListener("click", () => {
+      setStaffMfaMode(false);
+      showBanner("", "");
+    });
+
     $("staff-login-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       showBanner("", "");
-      clearSession();
+      const submitBtn = $("staff-login-submit");
+      if (submitBtn) submitBtn.disabled = true;
       try {
+        if (state.mfaChallengeToken) {
+          const code = ($("staff-mfa-code")?.value || "").trim();
+          if (!code) throw new Error("Enter your 6-digit authenticator or recovery code.");
+          const res = await api("/auth/mfa/verify-login", {
+            method: "POST",
+            body: { mfaChallengeToken: state.mfaChallengeToken, code }
+          });
+          if (!res.accessToken) throw new Error("Could not complete 2FA verification.");
+          setStaffMfaMode(false);
+          saveTokens(res.accessToken, res.refreshToken);
+          await bootstrapAuthenticated();
+          return;
+        }
+        clearSession();
         const identifier = $("staff-login-id").value.trim();
         const password = $("staff-login-pw").value;
         const res = await api("/auth/login", {
           method: "POST",
           body: { identifier, password }
         });
+        if (res.mfaRequired && res.mfaChallengeToken) {
+          setStaffMfaMode(true, res.mfaChallengeToken);
+          showBanner("Two-factor authentication is required. Enter your 6-digit code below.", "");
+          $("staff-mfa-code")?.focus();
+          return;
+        }
+        if (!res.accessToken) throw new Error("Sign-in did not return a session token.");
+        setStaffMfaMode(false);
         saveTokens(res.accessToken, res.refreshToken);
         await bootstrapAuthenticated();
       } catch (err) {
         showBanner(err.message, "error");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     });
 

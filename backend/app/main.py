@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from sqlalchemy import select, text, func, or_, cast, String
+from sqlalchemy import inspect, select, text, func, or_, cast, String
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
@@ -192,6 +192,42 @@ def _clear_login_failures(key: str) -> None:
     with _login_attempts_lock:
         _login_attempts.pop(key, None)
 
+def _sync_dev_sqlite_schema() -> None:
+    """Keep local or serverless SQLite schemas aligned when the app starts directly without running alembic."""
+    if engine.dialect.name != "sqlite":
+        return
+    alembic_ini = PROJECT_DIR / "backend" / "alembic.ini"
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "alembic_version" in tables and alembic_ini.is_file():
+        from alembic import command as alembic_command
+        from alembic.config import Config as AlembicConfig
+
+        cfg = AlembicConfig(str(alembic_ini))
+        cfg.set_main_option("script_location", str(PROJECT_DIR / "backend" / "alembic"))
+        with engine.connect() as conn:
+            cfg.attributes["connection"] = conn
+            alembic_command.upgrade(cfg, "head")
+            conn.commit()
+    elif "users" in tables:
+        with engine.begin() as conn:
+            user_cols = {c["name"] for c in inspector.get_columns("users")}
+            if "allergen_preferences_json" not in user_cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allergen_preferences_json TEXT"))
+            if "user_notification_preferences" in tables:
+                pref_cols = {c["name"] for c in inspector.get_columns("user_notification_preferences")}
+                for col_name, col_ddl in (
+                    ("whatsapp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                    ("sms_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+                    ("ntfy_topic", "VARCHAR(120)"),
+                    ("telegram_chat_id", "VARCHAR(64)"),
+                    ("telegram_link_token", "VARCHAR(64)"),
+                    ("telegram_link_expires_at", "DATETIME"),
+                ):
+                    if col_name not in pref_cols:
+                        conn.execute(text(f"ALTER TABLE user_notification_preferences ADD COLUMN {col_name} {col_ddl}"))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("Starting %s in %s mode", settings.app_name, settings.environment)
@@ -200,12 +236,16 @@ async def lifespan(_: FastAPI):
     if IS_PRODUCTION:
         # Production schema and users must come solely from Alembic migrations and CLI provisioning.
         try:
+            if settings.auto_create_tables:
+                _sync_dev_sqlite_schema()
+                Base.metadata.create_all(bind=engine)
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
         except Exception as exc:
             logger.error("Database startup check failed: %s", exc, exc_info=True)
     else:
         if settings.auto_create_tables:
+            _sync_dev_sqlite_schema()
             Base.metadata.create_all(bind=engine)
         if settings.seed_demo_data:
             with SessionLocal() as db:

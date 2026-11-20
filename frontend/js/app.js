@@ -266,9 +266,16 @@
 
 // Phase 5 cart: persisted locally for convenience; prices and stock are always revalidated by the server.
 const CART_STORAGE_KEY = 'ace-canteen-cart-v1';
+const CART_CUST_STORAGE_KEY = 'ace-canteen-cart-cust-v1';
 let cart = (() => { try { const raw = JSON.parse(localStorage.getItem(CART_STORAGE_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } })();
+window.aceCartCustomizations = (() => { try { const raw = JSON.parse(localStorage.getItem(CART_CUST_STORAGE_KEY) || '{}'); return raw && typeof raw === 'object' ? raw : {}; } catch { return {}; } })();
 const money = value => `₹${Number(value || 0).toFixed(2)}`;
-function saveCart() { try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart)); } catch { /* private browsing/storage disabled: cart remains in memory */ } }
+function saveCart() {
+  try {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+    localStorage.setItem(CART_CUST_STORAGE_KEY, JSON.stringify(window.aceCartCustomizations || {}));
+  } catch { /* private browsing/storage disabled: cart remains in memory */ }
+}
 function cartLines() { return Object.entries(cart).map(([id, quantity]) => ({ product_id: Number(id), quantity: Number(quantity) })).filter(line => Number.isInteger(line.product_id) && line.product_id > 0 && Number.isInteger(line.quantity) && line.quantity > 0); }
 function renderCart(message = '') {
   const list = document.querySelector('#cart-items'); const status = document.querySelector('#cart-message'); const subtotal = document.querySelector('#cart-subtotal');
@@ -300,6 +307,8 @@ function renderCart(message = '') {
   const checkout = document.querySelector('#cart-checkout'); const review = document.querySelector('#cart-review');
   if (checkout) checkout.disabled = !lines.length || window.aceCanteenClosed === true;
   if (review) review.disabled = !lines.length;
+  const quoteBreakdown = document.querySelector('#v1-quote-breakdown');
+  if (quoteBreakdown && !lines.length) quoteBreakdown.hidden = true;
   const mobileBadge = document.querySelector('#mobile-cart-badge');
   if (mobileBadge) {
     const totalCount = lines.reduce((sum, line) => sum + line.quantity, 0);
@@ -310,9 +319,17 @@ function renderCart(message = '') {
 function addToCart(product) {
   if (!window.aceCanteenToken || !window.aceCanteenUser) { document.querySelector('#account')?.scrollIntoView({ behavior: 'smooth' }); const msg = document.querySelector('#auth-message'); if (msg) msg.textContent = 'Sign in as a student before adding items to your order.'; return; }
   if (window.aceCanteenUser.role !== 'student') { const msg = document.querySelector('#cart-message'); if (msg) msg.textContent = 'Only student accounts can place orders. Staff/admin accounts manage the canteen.'; return; }
+  const wasEmpty = cartLines().length === 0;
   const id = String(product.id); const next = Number(cart[id] || 0) + 1;
   if (next > 50) { renderCart('A maximum of 50 units per product is allowed.'); return; }
-  cart[id] = next; window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[product.id] = product; saveCart(); renderCart(`${product.name} added to your cart.`);
+  cart[id] = next; window.aceCatalogueProducts = window.aceCatalogueProducts || {}; window.aceCatalogueProducts[product.id] = product; saveCart();
+  if (wasEmpty && product.counter_id) {
+    const counterSel = document.querySelector('#v1-checkout-counter');
+    if (counterSel && [...counterSel.options].some(o => o.value === String(product.counter_id))) {
+      counterSel.value = String(product.counter_id);
+    }
+  }
+  renderCart(`${product.name} added to your cart.`);
   document.querySelector('#cart-section')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function checkoutPayload(overrides = {}) {
@@ -324,7 +341,7 @@ function checkoutPayload(overrides = {}) {
       menuItemId: line.product_id,
       quantity: line.quantity,
       fulfillmentType,
-      customizations: {}
+      customizations: (window.aceCartCustomizations?.[String(line.product_id)] || {})
     })),
     fulfillmentType,
     counterId: counterValue ? Number(counterValue) : null,
@@ -389,6 +406,7 @@ async function placeCartOrder() {
   const useWallet = Boolean(document.querySelector('#checkout-use-wallet')?.checked);
   if (!useWallet && !window.Razorpay) { renderCart('Payment checkout did not load. Check your connection and reload the page.'); return; }
   button.disabled = true; const original = button.textContent; button.textContent = 'Preparing secure checkout…';
+  let createdOrder = null;
   try {
     const quote = await reviewCart();
     if (!quote || !window.confirm(`Continue to checkout for ${money(Number(quote.totalPaise) / 100)}?`)) return;
@@ -396,7 +414,8 @@ async function placeCartOrder() {
       ...checkoutPayload(),
       idempotencyKey: window.crypto?.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
     });
-    let order = createdResponse.order;
+    createdOrder = createdResponse.order;
+    let order = createdOrder;
     if (!useWallet) {
       const payment = await customerV1Request('/api/v1/payments/upi/intent', { orderId: order.id });
       order = await new Promise((resolve, reject) => {
@@ -409,7 +428,7 @@ async function placeCartOrder() {
           order_id: payment.providerOrderId,
           prefill: payment.prefill,
           theme: { color: '#176b4d' },
-          modal: { ondismiss: () => reject(new Error('Payment window closed. Check order history before retrying.')) },
+          modal: { ondismiss: () => reject(new Error('Payment window closed. Check order history below before retrying.')) },
           handler: async result => {
             try {
               const verified = await customerV1Request('/api/v1/payments/verify', {
@@ -417,7 +436,7 @@ async function placeCartOrder() {
                 razorpayPaymentId: result.razorpay_payment_id,
                 razorpaySignature: result.razorpay_signature
               });
-              if (!verified.verified) throw new Error('Payment could not be verified. Check order history before paying again.');
+              if (!verified.verified) throw new Error('Payment could not be verified. Check order history below before paying again.');
               resolve(verified.order);
             } catch (error) { reject(error); }
           }
@@ -426,23 +445,37 @@ async function placeCartOrder() {
         checkout.open();
       });
     }
-    cart = {}; saveCart(); document.querySelector('#checkout-notes').value = '';
+    cart = {}; window.aceCartCustomizations = {}; saveCart(); document.querySelector('#checkout-notes').value = '';
     document.querySelector('#checkout-reward-points').value = '0';
     document.querySelector('#checkout-use-wallet').checked = false;
     renderCart(`${useWallet ? 'Prepaid wallet payment confirmed.' : 'Payment successful and verified.'} Order ${order.orderNumber}, pickup token #${order.tokenNumber}.`);
     document.querySelector('#my-orders-section').hidden = false;
-    await loadMyOrders(); await loadCatalogue();
+    await loadMyOrders(); await loadCatalogue(); await loadPublicQueue();
+    document.dispatchEvent(new CustomEvent('ace-orders-changed', { detail: order }));
     customerV1Request('/api/v1/rewards/me', undefined, 'GET').then(account => {
       const pointsInput = document.querySelector('#checkout-reward-points');
       if (pointsInput && account) pointsInput.max = String(account.pointsBalance || 0);
     }).catch(() => {});
     document.querySelector('#my-orders-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  } catch (error) { renderCart(`Checkout: ${error.message}`); }
+  } catch (error) {
+    if (createdOrder) {
+      cart = {}; window.aceCartCustomizations = {}; saveCart();
+      document.querySelector('#my-orders-section').hidden = false;
+      await loadMyOrders().catch(() => {});
+      await loadCatalogue().catch(() => {});
+      document.dispatchEvent(new CustomEvent('ace-orders-changed', { detail: createdOrder }));
+      renderCart(`Order ${createdOrder.orderNumber} saved (unpaid): ${error.message} Complete wallet payment or cancel in "My orders & tokens" below.`);
+    } else {
+      renderCart(`Checkout: ${error.message}`);
+    }
+  }
   finally { button.disabled = !cartLines().length || window.aceCanteenClosed === true; button.textContent = original; }
 }
 document.querySelector('#cart-review')?.addEventListener('click', async () => { const button = document.querySelector('#cart-review'); button.disabled = true; try { await reviewCart(); } catch (error) { renderCart(`Could not review cart: ${error.message}`); } finally { button.disabled = !cartLines().length; } });
 document.querySelector('#cart-checkout')?.addEventListener('click', placeCartOrder);
-document.querySelector('#cart-clear')?.addEventListener('click', () => { cart = {}; saveCart(); renderCart('Cart cleared.'); });
+document.querySelector('#cart-clear')?.addEventListener('click', () => { cart = {}; window.aceCartCustomizations = {}; saveCart(); renderCart('Cart cleared.'); });
+window.addToCart = addToCart;
+window.reviewCart = reviewCart;
 renderCart();
 
 const catalogueGrid = document.querySelector("#catalogue-grid");
@@ -550,13 +583,17 @@ if (productSearch && productType) {
   const form = document.querySelector('#auth-form');
   if (!form) return;
   const SESSION_KEY = 'ace-canteen-session-v1';
-  const store = {
-    save(value) { try { localStorage.setItem(SESSION_KEY, value); } catch { /* storage disabled: session lasts until refresh */ } },
-    load() { try { return localStorage.getItem(SESSION_KEY) || ''; } catch { return ''; } },
-    clear() { try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ } }
-  };
-  let mode = 'login'; // login | register | forgot | reset
+  const REFRESH_KEY = 'ace-canteen-refresh-v1';
+  const makeStore = key => ({
+    save(value) { try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch { /* storage disabled: session lasts until refresh */ } },
+    load() { try { return localStorage.getItem(key) || ''; } catch { return ''; } },
+    clear() { try { localStorage.removeItem(key); } catch { /* ignore */ } }
+  });
+  const store = makeStore(SESSION_KEY);
+  const refreshStore = makeStore(REFRESH_KEY);
+  let mode = 'login'; // login | register | forgot | reset | mfa
   let resetToken = '';
+  let mfaChallengeToken = '';
   const nameWrap = document.querySelector('#auth-name-wrap');
   const nameInput = document.querySelector('#auth-name');
   const emailWrap = document.querySelector('#auth-email-wrap');
@@ -564,6 +601,9 @@ if (productSearch && productType) {
   const passwordWrap = document.querySelector('#auth-password-wrap');
   const passwordLabel = document.querySelector('#auth-password-label');
   const passwordInput = document.querySelector('#auth-password');
+  const mfaWrap = document.querySelector('#auth-mfa-wrap');
+  const mfaInput = document.querySelector('#auth-mfa-code');
+  const mfaCancelButton = document.querySelector('#auth-mfa-cancel');
   const forgotButton = document.querySelector('#auth-forgot');
   const submit = document.querySelector('#auth-submit');
   const message = document.querySelector('#auth-message');
@@ -573,28 +613,62 @@ if (productSearch && productType) {
     login: { submit: 'Sign in', hint: 'Sign in with your registered email and password.', password: 'Password', auto: 'current-password' },
     register: { submit: 'Create student account', hint: 'Registration creates a student account.', password: 'Password', auto: 'new-password' },
     forgot: { submit: 'Email me a reset link', hint: 'Enter your account email and we will send a link to set a new password.', password: 'Password', auto: 'off' },
-    reset: { submit: 'Save new password', hint: 'Choose a new password of at least 12 characters.', password: 'New password (12+ characters)', auto: 'new-password' }
+    reset: { submit: 'Save new password', hint: 'Choose a new password of at least 12 characters.', password: 'New password (12+ characters)', auto: 'new-password' },
+    mfa: { submit: 'Verify 2FA code', hint: 'Enter your 6-digit authenticator or recovery code.', password: 'Password', auto: 'current-password' }
   };
   function setMode(next, hint) {
     mode = next;
+    if (mode !== 'mfa') mfaChallengeToken = '';
     const label = labels[mode];
     document.querySelectorAll('[data-auth-mode]').forEach(b => b.classList.toggle('active', b.dataset.authMode === mode));
     nameWrap.hidden = mode !== 'register';
+    nameInput.disabled = mode !== 'register';
     nameInput.required = mode === 'register';
-    emailWrap.hidden = mode === 'reset';
-    emailInput.required = mode !== 'reset';
-    passwordWrap.hidden = mode === 'forgot';
-    passwordInput.required = mode !== 'forgot';
+    emailWrap.hidden = mode === 'reset' || mode === 'mfa';
+    emailInput.disabled = mode === 'reset' || mode === 'mfa';
+    emailInput.required = mode !== 'reset' && mode !== 'mfa';
+    passwordWrap.hidden = mode === 'forgot' || mode === 'mfa';
+    passwordInput.disabled = mode === 'forgot' || mode === 'mfa';
+    passwordInput.required = mode !== 'forgot' && mode !== 'mfa';
+    if (mode === 'register' || mode === 'reset') {
+      passwordInput.setAttribute('minlength', '12');
+      passwordInput.placeholder = 'At least 12 characters';
+    } else {
+      passwordInput.removeAttribute('minlength');
+      passwordInput.placeholder = 'Enter your password';
+    }
     passwordInput.autocomplete = label.auto;
     passwordLabel.textContent = label.password;
+    if (mfaWrap && mfaInput && mfaCancelButton) {
+      mfaWrap.hidden = mode !== 'mfa';
+      mfaInput.disabled = mode !== 'mfa';
+      mfaInput.required = mode === 'mfa';
+      mfaCancelButton.hidden = mode !== 'mfa';
+    }
     submit.textContent = label.submit;
     forgotButton.hidden = mode !== 'login';
     setMessage(hint ?? label.hint);
   }
   document.querySelectorAll('[data-auth-mode]').forEach(button => button.addEventListener('click', () => setMode(button.dataset.authMode)));
   forgotButton.addEventListener('click', () => setMode('forgot'));
+  mfaCancelButton?.addEventListener('click', () => {
+    if (mfaInput) mfaInput.value = '';
+    setMode('login');
+  });
 
-  function applySession(token, user) {
+  function normalizeSessionUser(raw) {
+    if (!raw) return null;
+    return {
+      ...raw,
+      full_name: raw.full_name ?? raw.fullName ?? raw.email ?? 'User',
+      fullName: raw.fullName ?? raw.full_name ?? raw.email ?? 'User',
+      role: String(raw.role || 'student').toLowerCase(),
+      must_change_password: Boolean(raw.must_change_password ?? raw.mustChangePassword)
+    };
+  }
+
+  function applySession(token, rawUser) {
+    const user = normalizeSessionUser(rawUser);
     window.aceCanteenToken = token;
     window.aceCanteenUser = user;
     document.dispatchEvent(new CustomEvent('ace-auth-changed', { detail: user }));
@@ -648,27 +722,56 @@ if (productSearch && productType) {
         message.className = 'auth-message success';
         return;
       }
-      const payload = { email: emailInput.value.trim(), password: passwordInput.value };
-      if (mode === 'register') payload.full_name = nameInput.value.trim();
-      const response = await postJson(`/api/auth/${mode === 'register' ? 'register' : 'login'}`, payload);
-      const data = await readJson(response);
-      if (!response.ok) throw new Error(formatAuthError(data, 'Request failed.'));
+      if (mode === 'mfa') {
+        const code = (mfaInput?.value || '').trim();
+        if (!code) throw new Error('Enter your 6-digit authenticator or recovery code.');
+        const response = await postJson('/api/v1/auth/mfa/verify-login', { mfaChallengeToken, code });
+        const data = await readJson(response);
+        if (!response.ok) throw new Error(formatAuthError(data, 'Invalid authenticator or recovery code.'));
+        const resData = data?.data || data;
+        if (!resData?.accessToken) throw new Error('Could not complete 2FA verification.');
+        mfaChallengeToken = '';
+        if (mfaInput) mfaInput.value = '';
+        store.save(resData.accessToken);
+        refreshStore.save(resData.refreshToken || '');
+        applySession(resData.accessToken, resData.user);
+        return;
+      }
       if (mode === 'register') {
-        const loginRes = await postJson('/api/auth/login', { email: payload.email, password: payload.password });
+        const payload = { full_name: nameInput.value.trim(), email: emailInput.value.trim(), password: passwordInput.value };
+        const response = await postJson('/api/auth/register', payload);
+        const data = await readJson(response);
+        if (!response.ok) throw new Error(formatAuthError(data, 'Request failed.'));
+        const loginRes = await postJson('/api/v1/auth/login', { identifier: payload.email, password: payload.password });
         const loginData = await readJson(loginRes);
-        if (loginRes.ok && loginData.access_token) {
-          store.save(loginData.access_token);
-          applySession(loginData.access_token, loginData.user);
+        const loginPayload = loginData?.data || loginData;
+        if (loginRes.ok && loginPayload?.accessToken) {
+          store.save(loginPayload.accessToken);
+          refreshStore.save(loginPayload.refreshToken || '');
+          applySession(loginPayload.accessToken, loginPayload.user);
           return;
         }
-        setMode('login', 'Account created. Sign in with your new credentials.');
+        setMode('login', formatAuthError(loginData, 'Account created. Sign in with your new credentials.'));
         message.className = 'auth-message success';
         emailInput.value = payload.email;
         passwordInput.value = '';
         return;
       }
-      store.save(data.access_token);
-      applySession(data.access_token, data.user);
+      const response = await postJson('/api/v1/auth/login', { identifier: emailInput.value.trim(), password: passwordInput.value });
+      const data = await readJson(response);
+      if (!response.ok) throw new Error(formatAuthError(data, 'Invalid email or password.'));
+      const resData = data?.data || data;
+      if (resData?.mfaRequired && resData?.mfaChallengeToken) {
+        mfaChallengeToken = resData.mfaChallengeToken;
+        if (mfaInput) mfaInput.value = '';
+        setMode('mfa');
+        mfaInput?.focus();
+        return;
+      }
+      if (!resData?.accessToken) throw new Error('Sign-in did not return a session token.');
+      store.save(resData.accessToken);
+      refreshStore.save(resData.refreshToken || '');
+      applySession(resData.accessToken, resData.user);
     } catch (error) { setMessage(error.message || 'Could not connect to the server.', 'error'); }
     finally { submit.disabled = false; }
   });
@@ -679,17 +782,31 @@ if (productSearch && productType) {
     const button = passwordForm.querySelector('button[type=submit]'); button.disabled = true;
     message.textContent = 'Updating password…'; message.className = 'auth-message';
     try {
-      const response = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.aceCanteenToken}` }, body: JSON.stringify({ current_password: document.querySelector('#current-password').value, new_password: document.querySelector('#new-password').value }) });
+      const response = await fetch(apiUrl('/api/auth/change-password'), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${window.aceCanteenToken}` }, body: JSON.stringify({ current_password: document.querySelector('#current-password').value, new_password: document.querySelector('#new-password').value }) });
       const data = await readJson(response);
-      if (!response.ok) throw new Error(data.detail || 'Could not change password.');
+      if (!response.ok) throw new Error(formatAuthError(data, 'Could not change password.'));
       message.textContent = 'Password changed. Your old session has been signed out; sign in again with your new password.'; message.className = 'auth-message success'; passwordForm.reset(); document.querySelector('#auth-logout').click();
     } catch (error) { message.textContent = error.message; message.className = 'auth-message error'; }
     finally { button.disabled = false; }
   });
   document.querySelector('#auth-logout').addEventListener('click', () => {
+    const prevRefresh = refreshStore.load();
+    const prevAccess = window.aceCanteenToken;
     store.clear();
+    refreshStore.clear();
+    if (prevRefresh || prevAccess) {
+      fetch(apiUrl('/api/v1/auth/logout'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(prevAccess ? { Authorization: `Bearer ${prevAccess}` } : {})
+        },
+        body: JSON.stringify({ refreshToken: prevRefresh || null })
+      }).catch(() => {});
+    }
     window.aceCanteenToken = '';
     window.aceCanteenUser = null;
+    mfaChallengeToken = '';
     document.dispatchEvent(new CustomEvent('ace-auth-changed', { detail: null }));
     form.reset(); form.hidden = false; accountPanel.hidden = true;
     document.querySelectorAll('.auth-tab').forEach(b => b.hidden = false);
@@ -710,8 +827,24 @@ if (productSearch && productType) {
     if (saved) {
       fetch(apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${saved}` } })
         .then(async response => {
-          if (response.ok) applySession(saved, await response.json());
-          else if (response.status === 401) store.clear(); // expired or invalidated session
+          if (response.ok) {
+            applySession(saved, await response.json());
+          } else if (response.status === 401) {
+            const rt = refreshStore.load();
+            if (rt) {
+              const refRes = await postJson('/api/v1/auth/refresh', { refreshToken: rt });
+              const refJson = await readJson(refRes);
+              const refData = refJson?.data || refJson;
+              if (refRes.ok && refData?.accessToken) {
+                store.save(refData.accessToken);
+                refreshStore.save(refData.refreshToken || rt);
+                applySession(refData.accessToken, refData.user);
+                return;
+              }
+            }
+            store.clear();
+            refreshStore.clear();
+          }
         })
         .catch(() => { /* offline or server restarting: keep the stored token and let the user retry */ });
     }
@@ -978,13 +1111,14 @@ function orderRow(order, showCustomer = false, workflowStage = "all") {
   info.append(title, detail); row.append(info);
   if (!showCustomer && order.payment_status === 'paid' && order.pickup_qr_code) {
     const pickup = document.createElement('div'); pickup.className = 'order-pickup-qr';
-    const label = document.createElement('strong'); label.textContent = order.status === 'completed' ? 'Pickup completed' : 'Your unique pickup QR';
+    const done = ['completed', 'collected'].includes(order.status);
+    const label = document.createElement('strong'); label.textContent = done ? 'Pickup completed' : 'Your unique pickup QR';
     const code = document.createElement('div'); code.className = 'pickup-qr-image';
-    const note = document.createElement('small'); note.textContent = order.status === 'completed' ? 'This QR has already been used.' : 'Show this QR to canteen staff when your order is ready. Keep it private.';
+    const note = document.createElement('small'); note.textContent = done ? 'This QR has already been used.' : 'Show this QR to canteen staff when your order is ready. Keep it private.';
     pickup.append(label, code, note); row.append(pickup);
-    if (order.status !== 'completed' && window.QRCode) new window.QRCode(code, { text: `${window.location.origin}/pickup#code=${encodeURIComponent(order.pickup_qr_code)}`, width: 156, height: 156, correctLevel: window.QRCode.CorrectLevel.M });
+    if (!done && window.QRCode) new window.QRCode(code, { text: `${window.location.origin}/pickup#code=${encodeURIComponent(order.pickup_qr_code)}`, width: 156, height: 156, correctLevel: window.QRCode.CorrectLevel.M });
   }
-  if (!showCustomer && order.payment_status === 'paid' && !['completed', 'cancelled'].includes(order.status)) {
+  if (!showCustomer && order.payment_status === 'paid' && !['completed', 'collected', 'cancelled'].includes(order.status)) {
     const tracker = document.createElement('div'); tracker.className = 'order-live-tracker'; tracker.setAttribute('aria-live', 'polite'); tracker.textContent = 'Updating live queue position…'; row.append(tracker);
     orderApi(`/api/orders/${order.id}/queue-position`).then(position => {
       const heading = document.createElement('strong');
@@ -995,7 +1129,7 @@ function orderRow(order, showCustomer = false, workflowStage = "all") {
       tracker.replaceChildren(heading, estimate);
     }).catch(() => { tracker.textContent = 'Live tracking is temporarily unavailable. Your order status is shown above.'; });
   }
-  if (!showCustomer && order.payment_status === 'paid' && order.status === 'completed') {
+  if (!showCustomer && order.payment_status === 'paid' && ['completed', 'collected'].includes(order.status)) {
     const feedback = document.createElement('div'); feedback.className = 'order-feedback'; feedback.setAttribute('aria-label', 'Order feedback');
     const heading = document.createElement('strong'); heading.textContent = 'How was your order?';
     const form = document.createElement('form'); form.className = 'feedback-form';
@@ -1019,6 +1153,8 @@ async function loadMyOrders() {
   list.replaceChildren(); message.textContent = 'Loading your orders…';
   try { const orders = await orderApi('/api/orders/mine'); if (!orders.length) message.textContent = 'You have not placed any orders yet.'; else { message.textContent = `${orders.length} order(s) found. Keep your token for collection.`; orders.forEach(order => list.append(orderRow(order))); } } catch (error) { message.textContent = error.message; }
 }
+window.loadMyOrders = loadMyOrders;
+window.loadPublicQueue = loadPublicQueue;
 async function loadOrderQueue() {
   const list = document.querySelector('#order-queue-list'), message = document.querySelector('#order-queue-message'); if (!list || !message || !['admin', 'staff'].includes(window.aceCanteenUser?.role)) return;
   list.replaceChildren(); message.textContent = 'Loading incoming orders…';
@@ -1145,13 +1281,15 @@ function syncHeaderAccount(user = window.aceCanteenUser) {
   else { link.textContent = 'Sign in / Account'; label.textContent = ''; label.hidden = true; }
 }
 syncHeaderAccount();
-document.querySelector('#header-account-link')?.addEventListener('click', () => {
+document.querySelector('#header-account-link')?.addEventListener('click', event => {
+  event.preventDefault();
   const user = window.aceCanteenUser;
   if (user) {
     const target = user.role === 'student' ? document.querySelector('#my-orders-section') : document.querySelector('#catalogue-management');
     if (target && !target.hidden) { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
   }
   document.querySelector('#account')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.querySelector('#auth-email')?.focus({ preventScroll: true });
 });
 document.addEventListener('ace-auth-changed', event => {
   const user = event.detail; syncHeaderAccount(user); renderCart(); const my = document.querySelector('#my-orders-section'); if (my) my.hidden = user?.role !== 'student';
