@@ -100,7 +100,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const topic = String(event.topic || "");
           if (topic && topic !== "connected" && topic !== "authenticated" && topic !== "pong") {
             setLastRealtimeTick(Date.now());
-            const payload = (event.payload || {}) as Record<string, unknown>;
+            const payload = (event.data || event.payload || {}) as Record<string, unknown>;
             if (topic === "notification.created") {
               const title = String(payload.title || "CollegeBits Update");
               const body = String(payload.message || "");

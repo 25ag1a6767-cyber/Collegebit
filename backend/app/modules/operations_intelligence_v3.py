@@ -7,16 +7,19 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
+import hmac
 import json
 import secrets
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import get_settings
 from app.database import get_db
 from app.envelope import ApiError, ok
 from app.models import (
@@ -28,6 +31,7 @@ from app.models import (
     GroupOrder,
     GroupOrderParticipantItem,
     Ingredient,
+    InventoryMovementType,
     KitchenStation,
     MealPassPlan,
     MealPassUsage,
@@ -38,6 +42,7 @@ from app.models import (
     OrderQualityFeedback,
     OrderStatus,
     PackagingLedger,
+    PaymentIncident,
     PaymentStatus,
     Product,
     ProductFulfillmentConfig,
@@ -63,7 +68,7 @@ from app.modules.common import (
     record_order_status_change,
     record_product_stock_movement,
 )
-from app.security import get_current_user, require_roles
+from app.security import assert_counter_access, get_current_user, require_roles
 
 router = APIRouter(tags=["v3-operations-intelligence"])
 
@@ -164,6 +169,7 @@ def reopen_kitchen_station_v1(
     st = db.get(KitchenStation, station_id)
     if not st:
         raise ApiError(404, "STATION_NOT_FOUND", "Kitchen station not found.")
+    assert_counter_access(db, manager, st.counter_id)
     st.auto_paused = False
     st.is_active = True
     st.active_order_count = 0
@@ -248,6 +254,7 @@ def mark_overdue_order_uncollected_v1(
     order = db.scalar(select(Order).where(Order.id == order_id).with_for_update())
     if not order:
         raise ApiError(404, "ORDER_NOT_FOUND", "Order not found.")
+    assert_counter_access(db, staff, order.counter_id)
     if order.status in {OrderStatus.COLLECTED, OrderStatus.COMPLETED} or order.collected_at is not None:
         raise ApiError(409, "ORDER_ALREADY_COLLECTED", "Collected orders cannot be marked uncollected.")
     if order.status != OrderStatus.READY:
@@ -256,6 +263,17 @@ def mark_overdue_order_uncollected_v1(
     prev = order.status.value
     order.status = OrderStatus.CANCELLED
     order.exception_reason = f"Uncollected no-show ({reason.strip()})"[:255]
+    if order.payment_status == PaymentStatus.PAID:
+        db.add(
+            PaymentIncident(
+                order_id=order.id,
+                incident_type="order_uncollected_no_show",
+                amount_paise=order.effective_total_paise,
+                status="open",
+                description=f"Paid order #{order.order_number or order.id} marked uncollected ({reason.strip()}). Payment preserved under strict no-refunds policy.",
+                flagged_by_user_id=staff.id,
+            )
+        )
     record_order_status_change(db, order, prev, "UNCOLLECTED_NO_SHOW", staff.id, reason.strip())
     notify_user(
         db,
@@ -883,14 +901,17 @@ def record_sustainability_waste_v1(
     cost_loss = 0
     deducted = False
     if payload.productId is not None:
-        p = db.get(Product, payload.productId)
+        p = db.scalar(select(Product).where(Product.id == payload.productId).with_for_update())
         if p:
             qty_int = max(1, int(payload.quantity))
-            record_product_stock_movement(db, p, -qty_int, "waste", f"Waste ({payload.wasteCategory}): {payload.reason}", actor_user_id=staff.id)
+            record_product_stock_movement(db, p, -qty_int, InventoryMovementType.WASTE, f"Waste ({payload.wasteCategory}): {payload.reason}", actor_user_id=staff.id)
+            p.stock_quantity = max(0, p.stock_quantity - qty_int)
+            if p.stock_quantity == 0:
+                p.is_available = False
             cost_loss = qty_int * int(p.cost_paise or p.effective_price_paise)
             deducted = True
     elif payload.ingredientId is not None:
-        ing = db.get(Ingredient, payload.ingredientId)
+        ing = db.scalar(select(Ingredient).where(Ingredient.id == payload.ingredientId).with_for_update())
         if ing:
             ing.current_quantity = max(Decimal("0.00"), Decimal(ing.current_quantity) - Decimal(payload.quantity))
             if ing.cost_per_unit is not None:
@@ -1069,6 +1090,8 @@ def check_out_staff_shift_v1(
     sh = db.get(StaffShift, shift_id)
     if not sh:
         raise ApiError(404, "SHIFT_NOT_FOUND", "Staff shift not found.")
+    if user.role == UserRole.STAFF and sh.staff_user_id != user.id:
+        raise ApiError(403, "SHIFT_FORBIDDEN", "Cannot check out of another staff member's shift.")
     sh.checked_out_at = datetime.now(timezone.utc)
     sh.status = "completed"
     if handoverNotes:
@@ -1586,12 +1609,27 @@ def activate_meal_pass_verified_v1(
     pass_id: int,
     request: Request,
     gatewayPaymentId: str = Query(min_length=4),
+    gatewaySignature: str | None = Query(default=None, max_length=200),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     mp = db.get(StudentMealPass, pass_id)
-    if not mp or (user.role == UserRole.STUDENT and mp.user_id != user.id):
+    if not mp or (user.role != UserRole.ADMIN and mp.user_id != user.id):
         raise ApiError(404, "MEAL_PASS_NOT_FOUND", "Student meal pass not found.")
+    cfg = get_settings()
+    is_non_dev = cfg.environment.lower() not in {"development", "test"}
+    if is_non_dev or gatewaySignature is not None:
+        if not cfg.razorpay_key_secret:
+            raise ApiError(503, "PAYMENT_GATEWAY_NOT_CONFIGURED", "Payment verification secret is not configured.")
+        if not gatewaySignature:
+            raise ApiError(400, "MISSING_PAYMENT_SIGNATURE", "Payment gateway signature is required.")
+        expected = hmac.new(
+            cfg.razorpay_key_secret.encode("utf-8"),
+            f"{mp.gateway_order_id or ''}|{gatewayPaymentId.strip()}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, gatewaySignature.strip()):
+            raise ApiError(400, "INVALID_PAYMENT_SIGNATURE", "Payment signature verification failed.")
     mp.gateway_payment_id = gatewayPaymentId.strip()
     mp.status = "active"
     db.commit()
@@ -1606,11 +1644,23 @@ def redeem_meal_pass_meal_v1(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    mp_check = db.get(StudentMealPass, pass_id)
+    if not mp_check:
+        raise ApiError(404, "MEAL_PASS_NOT_FOUND", "Student meal pass not found.")
+    if user.role == UserRole.STUDENT and mp_check.user_id != user.id:
+        raise ApiError(403, "MEAL_PASS_FORBIDDEN", "Cannot redeem another student's meal pass.")
     idem = (idempotency_key or f"mp-use-{uuid.uuid4().hex[:12]}").strip()
     existing_use = db.scalar(select(MealPassUsage).where(MealPassUsage.idempotency_key == idem))
     if existing_use:
         mp_cur = db.get(StudentMealPass, pass_id)
         return ok(request, {"passId": pass_id, "duplicateSkipped": True, "remainingMeals": mp_cur.remaining_meals if mp_cur else 0})
+
+    now = datetime.now(timezone.utc)
+    if mp_check.expires_at is not None and as_utc(mp_check.expires_at) <= now:
+        if mp_check.status == "active":
+            mp_check.status = "expired"
+            db.commit()
+        raise ApiError(409, "MEAL_PASS_UNAVAILABLE", "Meal pass has expired.")
 
     upd = db.execute(
         update(StudentMealPass)
@@ -1618,8 +1668,10 @@ def redeem_meal_pass_meal_v1(
             StudentMealPass.id == pass_id,
             StudentMealPass.status == "active",
             StudentMealPass.remaining_meals >= 1,
+            or_(StudentMealPass.expires_at.is_(None), StudentMealPass.expires_at > now),
         )
         .values(remaining_meals=StudentMealPass.remaining_meals - 1)
+        .execution_options(synchronize_session="fetch")
     )
     if (upd.rowcount or 0) != 1:
         raise ApiError(409, "MEAL_PASS_UNAVAILABLE", "Meal pass is inactive, expired, or has zero remaining meals.")
@@ -1639,7 +1691,10 @@ def submit_daily_canteen_closing_v1(
     staff: User = Depends(require_roles("staff", "admin")),
     db: Session = Depends(get_db),
 ):
-    b_date = payload.businessDate or date.today()
+    tz = ZoneInfo(get_settings().canteen_timezone)
+    b_date = payload.businessDate or datetime.now(tz).date()
+    day_start = datetime.combine(b_date, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+    day_end = day_start + timedelta(days=1)
     existing = db.scalar(
         select(DailyCanteenClosing).where(
             DailyCanteenClosing.business_date == b_date,
@@ -1651,12 +1706,18 @@ def submit_daily_canteen_closing_v1(
             raise ApiError(409, "CLOSING_LOCKED", "Daily closing record is already locked and approved.")
         return ok(request, {"id": existing.id, "businessDate": existing.business_date.isoformat(), "isLocked": False})
 
-    tot_orders = db.scalar(select(func.count(Order.id))) or 0
-    comp_orders = db.scalar(select(func.count(Order.id)).where(Order.status.in_([OrderStatus.COMPLETED, OrderStatus.COLLECTED]))) or 0
-    canc_orders = db.scalar(select(func.count(Order.id)).where(Order.status == OrderStatus.CANCELLED)) or 0
-    succ_paise = db.scalar(select(func.coalesce(func.sum(Order.total_paise), 0)).where(Order.payment_status == PaymentStatus.PAID)) or 0
-    pend_paise = db.scalar(select(func.coalesce(func.sum(Order.total_paise), 0)).where(Order.payment_status == PaymentStatus.PENDING)) or 0
-    waste_paise = db.scalar(select(func.coalesce(func.sum(WasteRecord.cost_loss_paise), 0))) or 0
+    order_filters = [Order.created_at >= day_start, Order.created_at < day_end]
+    tot_orders = db.scalar(select(func.count(Order.id)).where(*order_filters)) or 0
+    comp_orders = db.scalar(select(func.count(Order.id)).where(*order_filters, Order.status.in_([OrderStatus.COMPLETED, OrderStatus.COLLECTED]))) or 0
+    canc_orders = db.scalar(select(func.count(Order.id)).where(*order_filters, Order.status == OrderStatus.CANCELLED)) or 0
+    succ_paise = db.scalar(select(func.coalesce(func.sum(Order.total_paise), 0)).where(*order_filters, Order.payment_status == PaymentStatus.PAID)) or 0
+    pend_paise = db.scalar(select(func.coalesce(func.sum(Order.total_paise), 0)).where(*order_filters, Order.payment_status == PaymentStatus.PENDING)) or 0
+    waste_paise = db.scalar(
+        select(func.coalesce(func.sum(WasteRecord.cost_loss_paise), 0)).where(
+            WasteRecord.recorded_at >= day_start,
+            WasteRecord.recorded_at < day_end,
+        )
+    ) or 0
 
     row = DailyCanteenClosing(
         business_date=b_date,

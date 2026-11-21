@@ -36,6 +36,7 @@ from app.models import (
     Order,
     OrderReview,
     OrderStatus,
+    PaymentIncident,
     PaymentStatus,
     Product,
     ProductBatch,
@@ -699,6 +700,17 @@ def admin_override_order_status_v1(
             paid_rec = next((p for p in order.payments if p.status == "SUCCESS"), None)
             if paid_rec is not None:
                 paid_rec.late_capture_flagged = True
+            db.add(
+                PaymentIncident(
+                    order_id=order.id,
+                    payment_id=paid_rec.id if paid_rec is not None else None,
+                    incident_type="admin_cancelled_paid_order",
+                    amount_paise=order.effective_total_paise,
+                    status="open",
+                    description=f"Admin cancelled paid order #{order.order_number or order.id}: {payload.reason.strip()}. Financial record preserved under strict no-refunds policy.",
+                    flagged_by_user_id=admin.id,
+                )
+            )
     else:
         if order.payment_status != PaymentStatus.PAID:
             raise ApiError(409, "PAYMENT_REQUIRED", "Cannot advance unpaid order to fulfillment states.")

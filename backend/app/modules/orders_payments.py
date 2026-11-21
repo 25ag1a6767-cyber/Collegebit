@@ -31,6 +31,8 @@ from app.models import (
     Cart,
     CartItem,
     CheckoutIdempotency,
+    Discount,
+    InventoryMovement,
     InventoryMovementType,
     Order,
     OrderItem,
@@ -145,16 +147,20 @@ def _resolve_pickup_slot_v1(db: Session, counter_id: int, raw_slot: str | None) 
 def _restore_order_inventory_once(db: Session, order: Order, reason: str, actor_user_id: int | None = None) -> None:
     """Idempotently restore product stock, FEFO batch allocations and recipe ingredients for an unfulfilled order."""
     already_released = db.scalar(
-        select( func.count() )
-        .select_from(Order.__table__.metadata.tables["inventory_movements"])
-        .where(
-            Order.__table__.metadata.tables["inventory_movements"].c.order_id == order.id,
-            Order.__table__.metadata.tables["inventory_movements"].c.movement_type == InventoryMovementType.RELEASE.value,
+        select(func.count(InventoryMovement.id)).where(
+            InventoryMovement.order_id == order.id,
+            InventoryMovement.movement_type == InventoryMovementType.RELEASE,
         )
     )
     if already_released and int(already_released) > 0:
         restore_order_reward_points(db, order, actor_user_id)
         return
+    if order.payment_status != PaymentStatus.PAID and order.coupon_code:
+        offer_row = db.scalar(
+            select(Discount).where(func.upper(Discount.code) == order.coupon_code.strip().upper()).with_for_update()
+        )
+        if offer_row is not None and offer_row.usage_count > 0:
+            offer_row.usage_count -= 1
     restore_order_reward_points(db, order, actor_user_id)
     release_batch_stock_once(db, order.id)
     restore_recipe_ingredients(db, order.id, actor_user_id=actor_user_id)
@@ -619,10 +625,13 @@ def _execute_create_order_v1(
                 station_id = f_cfg.station_id
                 pkg_instr = f_cfg.packaging_instructions
                 if station_id is not None:
-                    st_row = db.get(KitchenStation, station_id)
+                    st_row = db.scalar(select(KitchenStation).where(KitchenStation.id == station_id).with_for_update())
                     if st_row and (st_row.auto_paused or not st_row.is_active or st_row.active_order_count >= st_row.max_concurrent_orders):
-                        st_row.auto_paused = True
-                        db.flush()
+                        db.rollback()
+                        st_persist = db.get(KitchenStation, station_id)
+                        if st_persist is not None:
+                            st_persist.auto_paused = True
+                            db.commit()
                         raise ApiError(
                             409,
                             "STATION_CAPACITY_FULL",
@@ -1427,6 +1436,8 @@ async def payment_webhook_v1(
         event = json.loads(raw_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise ApiError(400, "INVALID_WEBHOOK_JSON", "Webhook body must be valid UTF-8 JSON.")
+    if not isinstance(event, dict):
+        raise ApiError(400, "INVALID_WEBHOOK_JSON", "Webhook body must be a JSON object.")
 
     payload_hash = hashlib.sha256(raw_body).hexdigest()
     webhook_id = (x_razorpay_event_id or payload_hash).strip()[:160]
@@ -2106,7 +2117,12 @@ def list_and_search_tokens_v1(
         .where(Order.token_date == date_str)
     )
     if counterId:
+        assert_counter_access(db, staff, counterId)
         stmt = stmt.where(Order.counter_id == counterId)
+    elif staff.role == UserRole.STAFF:
+        assigned_ids = get_staff_assigned_counter_ids(db, staff)
+        if assigned_ids:
+            stmt = stmt.where(Order.counter_id.in_(assigned_ids))
 
     if status and status.lower() != "all":
         st_clean = status.lower()

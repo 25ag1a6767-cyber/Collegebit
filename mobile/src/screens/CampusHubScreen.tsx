@@ -191,9 +191,10 @@ export const CampusHubScreen: React.FC = () => {
 
   const handleLoadBulkTokens = async (bulkOrderId: number) => {
     try {
-      const res = await apiRequest<{ tokens?: BulkTokenEntry[] }>(`/api/v1/bulk-orders/${bulkOrderId}/tokens?limit=15`);
-      setBulkTokens(res.tokens || []);
-      setStatusMessage(`Loaded ${(res.tokens || []).length} bulk QR token(s) for Bulk Order #${bulkOrderId}.`);
+      const res = await apiRequest<{ items?: BulkTokenEntry[]; tokens?: BulkTokenEntry[] }>(`/api/v1/bulk-orders/${bulkOrderId}/tokens?limit=15`);
+      const list = res.items || res.tokens || [];
+      setBulkTokens(list);
+      setStatusMessage(`Loaded ${list.length} bulk QR token(s) for Bulk Order #${bulkOrderId}.`);
     } catch (err) {
       setStatusMessage(err instanceof Error ? err.message : "Could not load bulk QR tokens");
     }

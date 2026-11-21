@@ -28,6 +28,10 @@
     return node;
   }
 
+  function rupeesFromPaise(paiseVal) {
+    return "₹" + (Number(paiseVal || 0) / 100).toFixed(2);
+  }
+
   function showBanner(msg, kind) {
     const b = $("staff-banner");
     if (!b) return;
@@ -632,6 +636,22 @@
   async function verifyPickupPayload(body) {
     const box = $("pickup-result-box");
     try {
+      const rawTok = body && body.pickupToken ? String(body.pickupToken).trim() : "";
+      if (rawTok.startsWith("bmt_")) {
+        const res = await api("/pickup/verify", {
+          method: "POST",
+          body: {
+            qrToken: rawTok,
+            counterId: Number(state.selectedCounterId || 1)
+          }
+        });
+        box.className = "status-banner success";
+        box.textContent = `Verified & Collected Bulk Token! Recipient ${res.fullName || res.recipientIdentifier} (Bulk Order #${res.bulkOrderId}) handed over.`;
+        box.hidden = false;
+        $("qr-token-input").value = "";
+        await loadKitchenBatches();
+        return;
+      }
       const res = await api("/pickups/verify", { method: "POST", body });
       box.className = "status-banner success";
       box.textContent = `Verified & Collected! Order ${res.order.orderNumber} (Token #${res.order.tokenNumber}) handed over.`;

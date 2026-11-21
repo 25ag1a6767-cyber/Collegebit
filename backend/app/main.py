@@ -219,10 +219,9 @@ def _sync_dev_sqlite_schema() -> None:
                 for col_name, col_ddl in (
                     ("whatsapp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
                     ("sms_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
-                    ("ntfy_topic", "VARCHAR(120)"),
+                    ("ntfy_topic", "VARCHAR(80)"),
                     ("telegram_chat_id", "VARCHAR(64)"),
                     ("telegram_link_token", "VARCHAR(64)"),
-                    ("telegram_link_expires_at", "DATETIME"),
                 ):
                     if col_name not in pref_cols:
                         conn.execute(text(f"ALTER TABLE user_notification_preferences ADD COLUMN {col_name} {col_ddl}"))
@@ -671,12 +670,20 @@ def _build_ios_mobileconfig_xml(target_url: str) -> str:
 @app.get("/download/app.mobileconfig", include_in_schema=False)
 @app.get("/ios.mobileconfig", include_in_schema=False)
 async def download_ios_mobileconfig(request: Request) -> Response:
+    import re
+    from html import escape as _xml_escape
     default_host = urlparse(settings.public_base_url).netloc or "localhost:8000"
-    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or default_host).split(",")[0].strip()
-    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip()
+    raw_host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or default_host).split(",")[0].strip()
+    if not re.fullmatch(r"[A-Za-z0-9.-]+(?::\d{1,5})?", raw_host):
+        host = default_host
+    else:
+        host = raw_host
+    proto = (request.headers.get("x-forwarded-proto") or request.url.scheme or "https").split(",")[0].strip().lower()
+    if proto not in ("http", "https"):
+        proto = "https"
     if host not in ("localhost", "127.0.0.1", "testserver") and not host.startswith("127.0.0.1:") and not host.startswith("localhost:"):
         proto = "https"
-    customer_url = f"{proto}://{host}/customer/"
+    customer_url = _xml_escape(f"{proto}://{host}/customer/", quote=True)
     xml_body = _build_ios_mobileconfig_xml(customer_url)
     return Response(
         content=xml_body.encode("utf-8"),
@@ -1468,14 +1475,24 @@ def create_payment_order(payload: OrderCreateIn, idempotency_key: str | None = H
     for line in payload.items:
         quantities[line.product_id] = quantities.get(line.product_id, 0) + line.quantity
     products = db.scalars(select(Product).where(Product.id.in_(list(quantities))).options(joinedload(Product.category)).with_for_update()).all()
+    def _cleanup_idem() -> None:
+        if idem_record and idem_record.id:
+            try:
+                db.delete(idem_record)
+                db.commit()
+            except Exception:
+                db.rollback()
+
     by_id = {product.id: product for product in products}
     if len(by_id) != len(quantities):
+        _cleanup_idem()
         raise HTTPException(status_code=422, detail="One or more products no longer exist")
     lines = []
     subtotal = Decimal("0.00")
     for product_id, quantity in quantities.items():
         product = by_id[product_id]
         if not product.is_available or not product.category.is_active or product.stock_quantity < quantity:
+            _cleanup_idem()
             raise HTTPException(status_code=409, detail=f"{product.name} is unavailable or has insufficient stock")
         price = Decimal(product.price)
         total = (price * quantity).quantize(Decimal("0.01"))
@@ -1595,7 +1612,7 @@ def payment_status(order_id: int, user: User = Depends(require_roles("student", 
         if item.get("status") == "authorized":
             return {"status": "processing", "retry_allowed": False, "order": _order_payload(order)}
 
-    expected_amount = int((Decimal(order.subtotal) * 100).quantize(Decimal("1")))
+    expected_amount = order.effective_total_paise
     for item in items:
         if item.get("status") == "captured":
             amt = int(item.get("amount", 0))
@@ -2109,6 +2126,18 @@ def update_order_status(order_id: int, payload: OrderStatusIn, background: Backg
                 _record_stock_movement(db, product, line.quantity, InventoryMovementType.RELEASE, f"Released stock for cancelled order {order.id}", actor_user_id=staff.id, order_id=order.id, before=before_stock)
                 if product.category.is_active:
                     product.is_available = True
+        if order.payment_status == PaymentStatus.PAID:
+            from app.models import PaymentIncident
+            db.add(
+                PaymentIncident(
+                    order_id=order.id,
+                    incident_type="staff_cancelled_paid_order",
+                    amount_paise=order.effective_total_paise,
+                    status="open",
+                    description=f"Paid order #{order.order_number or order.id} cancelled via legacy queue by user #{staff.id}. Payment preserved under strict no-refunds policy.",
+                    flagged_by_user_id=staff.id,
+                )
+            )
     previous_status = order.status.value
     order.status = target
     if target == OrderStatus.COMPLETED:

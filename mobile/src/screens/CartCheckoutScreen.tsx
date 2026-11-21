@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { apiRequest, formatRupeesFromPaise } from "../api/client";
+import { API_BASE_URL, apiRequest, formatRupeesFromPaise } from "../api/client";
 import { useCart } from "../context/CartContext";
 import { OrderRecord, UpiPaymentIntent } from "../types/api";
 
@@ -107,9 +107,13 @@ export const CartCheckoutScreen: React.FC<Props> = ({ onOrderCreated }) => {
               await Linking.openURL(intent.upiIntentUri);
             } catch {
               setStatusMessage(
-                "No UPI app found on this phone. Install Google Pay, PhonePe, Paytm or BHIM to complete payment."
+                "No UPI app found on this phone. Complete checkout on web or open Orders to pay from prepaid wallet."
               );
             }
+          } else {
+            // Standard Razorpay checkout is hosted on web when direct UPI URI is absent
+            const checkoutUrl = `${API_BASE_URL}/customer/#my-orders-section`;
+            Linking.openURL(checkoutUrl).catch(() => null);
           }
         } catch (payErr) {
           await clearCart();

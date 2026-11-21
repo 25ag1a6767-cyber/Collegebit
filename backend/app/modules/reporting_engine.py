@@ -358,12 +358,18 @@ def render_xlsx_workbook(
     return out.getvalue()
 
 
+def _safe_csv_cell(val: Any) -> Any:
+    if isinstance(val, str) and val and val[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + val
+    return val
+
+
 def render_csv_bytes(columns: list[str], rows: list[list[Any]]) -> bytes:
     sio = io.StringIO(newline="")
     writer = csv.writer(sio)
-    writer.writerow(columns)
+    writer.writerow([_safe_csv_cell(c) for c in columns])
     for r in rows:
-        writer.writerow(r)
+        writer.writerow([_safe_csv_cell(c) for c in r])
     return sio.getvalue().encode("utf-8")
 
 

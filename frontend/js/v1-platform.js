@@ -201,6 +201,7 @@
     svg.append(bg, path);
     return svg;
   }
+  window.renderCollegeBitsQrSvg = renderQrSvg;
 
   // ============================================================================
   // 2. Shared v1 API Client & State
@@ -368,16 +369,17 @@
   function handleRealtimeEvent(msg) {
     const topic = String(msg?.topic || "");
     if (!topic || topic === "connected" || topic === "authenticated" || topic === "pong") return;
-    if (topic === "notification.created" && msg?.payload) {
-      const title = msg.payload.title || "Canteen update";
-      const bodyText = msg.payload.message || "";
+    const evData = msg?.data || msg?.payload || {};
+    if (topic === "notification.created" && (msg?.data || msg?.payload)) {
+      const title = evData.title || "Canteen update";
+      const bodyText = evData.message || "";
       showLiveToast(title, bodyText);
-      showFreeLocalBrowserAlert(title, bodyText, `${msg.payload.entityType || "ntf"}-${msg.payload.entityId || "0"}`);
+      showFreeLocalBrowserAlert(title, bodyText, `${evData.entityType || "ntf"}-${evData.entityId || "0"}`);
     } else if (topic === "order.ready") {
-      const tok = msg?.payload?.tokenNumber ? `Token #${msg.payload.tokenNumber}` : "Your order";
+      const tok = evData?.tokenNumber ? `Token #${evData.tokenNumber}` : "Your order";
       const bodyText = `${tok} — show your pickup QR at the counter.`;
       showLiveToast("Order ready for pickup", bodyText);
-      showFreeLocalBrowserAlert("Order ready for pickup", bodyText, `ready-${msg?.payload?.id || tok}`);
+      showFreeLocalBrowserAlert("Order ready for pickup", bodyText, `ready-${evData?.id || tok}`);
     }
     if (topic.startsWith("order.") || topic.startsWith("pickup.")) {
       loadCounters();
@@ -417,7 +419,7 @@
       if (checkoutSelect) {
         const prev = checkoutSelect.value;
         checkoutSelect.replaceChildren();
-        counters.forEach(c => checkoutSelect.append(new Option(`${c.name} (~${c.estimatedWaitMinutes ?? 5}m wait)`, String(c.id))));
+        counters.forEach(c => checkoutSelect.append(new Option(`${c.name} (~${c.approximateWaitMinutes ?? c.estimatedWaitMinutes ?? 5}m wait)`, String(c.id))));
         if (prev) checkoutSelect.value = prev;
       }
       if (staffSelect) {
@@ -441,7 +443,7 @@
 
         const meta = document.createElement("div");
         meta.className = "v1-counter-meta";
-        meta.textContent = `Wait ~${c.estimatedWaitMinutes ?? 5} min · Active queue: ${c.activeOrders ?? 0}`;
+        meta.textContent = `Wait ~${c.approximateWaitMinutes ?? c.estimatedWaitMinutes ?? 5} min · Active queue: ${c.activeQueueOrders ?? c.activeOrders ?? 0}`;
         card.append(head, meta);
         card.addEventListener("click", () => {
           state.selectedCounterId = state.selectedCounterId === c.id ? null : c.id;
@@ -1382,7 +1384,7 @@
       const res = await v1Fetch(`/api/v1/staff/orders?${qs}`);
       const orders = Array.isArray(res) ? res : (res?.items || []);
       grid.replaceChildren();
-      const active = orders.filter(o => ["pending", "confirmed", "preparing", "ready"].includes(String(o.status).toLowerCase()));
+      const active = orders.filter(o => ["pending", "confirmed", "accepted", "preparing", "ready"].includes(String(o.status).toLowerCase()));
       msg.textContent = active.length
         ? `${active.length} live paid ticket(s) in kitchen/handover queue.`
         : "No active paid tickets waiting right now.";
@@ -1434,10 +1436,10 @@
         };
 
         const st = String(o.rawStatus || o.status || "").toLowerCase();
-        if (st === "pending") addAction("Accept Ticket", "accept");
+        if (st === "pending" || st === "confirmed") addAction("Accept Ticket", "accept");
         if (st === "confirmed" || st === "accepted") addAction("Start Prep", "start");
         if (st === "accepted" || st === "preparing") addAction("Mark Ready", "ready");
-        if (["pending", "confirmed", "preparing"].includes(st)) {
+        if (["pending", "confirmed", "accepted", "preparing"].includes(st)) {
           const exBtn = document.createElement("button");
           exBtn.type = "button";
           exBtn.className = "cancel-order-button";
@@ -1545,9 +1547,9 @@
       if (wasteList) {
         wasteList.replaceChildren();
         const alerts = [
-          ...(waste?.predictedIngredientShortages || []).map(s => `Predicted shortage: ${s.ingredientName} (need ${s.projectedNeed} ${s.unit}, have ${s.currentStock})`),
-          ...(waste?.wastageHotspots || []).map(w => `Wastage hotspot: ${w.name} (${w.wastedQuantity} wasted)`),
-          ...(waste?.expiringBatches || []).map(b => `Expiring batch ${b.batchCode}: ${b.productName} (${b.quantityRemaining} left, exp ${b.expiryDate})`)
+          ...(waste?.predictedIngredientShortages || []).map(s => `Predicted shortage: ${s.ingredientName} (need ${s.projectedDemandToday ?? s.projectedNeed ?? 0} ${s.unit}, have ${s.currentQuantity ?? s.currentStock ?? 0})`),
+          ...(waste?.wastageHotspots || []).map(w => `Wastage hotspot: ${w.itemName || w.name} (${w.unitsWasted ?? w.wastedQuantity ?? 0} wasted)`),
+          ...(waste?.spoilageRiskBatches || waste?.expiringBatches || []).map(b => `Expiring batch ${b.batchCode}: ${b.itemName || b.productName} (${b.quantityRemaining} left, exp ${b.expiryDate})`)
         ];
         if (!alerts.length) {
           const okItem = document.createElement("div");
@@ -1839,8 +1841,8 @@
         body: JSON.stringify({
           code: $("#v1-disc-code").value.trim().toUpperCase(),
           description: $("#v1-disc-title").value.trim(),
-          discountPercent: dtype === "percentage" ? rawVal : null,
-          discountPaise: dtype === "fixed" ? Math.round(rawVal * 100) : null,
+          discountPercent: dtype === "percentage" ? rawVal : 0,
+          discountPaise: dtype === "fixed" ? Math.round(rawVal * 100) : 0,
           minOrderPaise: Math.round(Number($("#v1-disc-min").value || 0) * 100),
           isActive: true
         })
@@ -2041,7 +2043,37 @@
     }
     try {
       const res = await v1Fetch(`/api/v1/bulk-orders/${bid}/payment-intent`, { method: "POST" });
-      msg.textContent = `Payment Intent Ready (${res.gatewayOrderId}) · Amount: ${paise(res.amountPaise)} (${res.status}). Complete checkout via Razorpay.`;
+      if (typeof window.Razorpay === "function" && res.razorpayKeyId && res.gatewayOrderId && !String(res.razorpayKeyId).startsWith("rzp_test_sandbox")) {
+        await new Promise((resolve, reject) => {
+          const checkout = new window.Razorpay({
+            key: res.razorpayKeyId,
+            amount: res.amountPaise,
+            currency: res.currency || "INR",
+            name: "CollegeBits",
+            description: `Bulk Order #${bid}`,
+            order_id: res.gatewayOrderId,
+            modal: { ondismiss: () => reject(new Error("Bulk payment window closed before completion.")) },
+            handler: async r => {
+              try {
+                await v1Fetch(`/api/v1/bulk-orders/${bid}/payments/verify`, {
+                  method: "POST",
+                  body: JSON.stringify({
+                    razorpayOrderId: r.razorpay_order_id,
+                    razorpayPaymentId: r.razorpay_payment_id,
+                    razorpaySignature: r.razorpay_signature
+                  })
+                });
+                resolve();
+              } catch (err) { reject(err); }
+            }
+          });
+          checkout.on("payment.failed", ev => reject(new Error(ev?.error?.description || "Bulk payment failed.")));
+          checkout.open();
+        });
+        msg.textContent = `Bulk Order #${bid} payment verified and confirmed.`;
+      } else {
+        msg.textContent = `Payment Intent Ready (${res.gatewayOrderId}) · Amount: ${paise(res.amountPaise)} (${res.status}). Complete checkout via Razorpay.`;
+      }
       msg.className = "management-message success";
     } catch (err) {
       msg.textContent = err.message;
@@ -2173,7 +2205,33 @@
           btn.addEventListener("click", async () => {
             try {
               const ord = await v1Fetch(`/api/v1/meal-passes/${pl.id}/purchase`, { method: "POST" });
-              lbl.textContent = `Pass #${ord.passId} created (${ord.status}). Verify payment in Razorpay to activate.`;
+              if (typeof window.Razorpay === "function" && ord.gatewayOrderId && String(ord.gatewayOrderId).startsWith("order_") && !String(ord.gatewayOrderId).startsWith("order_mp_") && ord.keyId) {
+                await new Promise((resolve, reject) => {
+                  const checkout = new window.Razorpay({
+                    key: ord.keyId,
+                    amount: pl.pricePaise,
+                    currency: "INR",
+                    name: "CollegeBits",
+                    description: `Meal Pass: ${pl.name}`,
+                    order_id: ord.gatewayOrderId,
+                    modal: { ondismiss: () => reject(new Error("Meal pass payment window closed.")) },
+                    handler: async r => {
+                      try {
+                        const qs = new URLSearchParams({
+                          gatewayPaymentId: r.razorpay_payment_id,
+                          gatewaySignature: r.razorpay_signature || ""
+                        });
+                        await v1Fetch(`/api/v1/meal-passes/${ord.passId}/activate-verified?${qs}`, { method: "POST" });
+                        resolve();
+                      } catch (err) { reject(err); }
+                    }
+                  });
+                  checkout.open();
+                });
+                lbl.textContent = `Pass #${ord.passId} activated!`;
+              } else {
+                lbl.textContent = `Pass #${ord.passId} created (${ord.status}). Verify payment in Razorpay to activate.`;
+              }
             } catch (err) {
               lbl.textContent = err.message;
             }
@@ -2240,7 +2298,8 @@
   v1Fetch("/api/v1/payments/methods").then(pm => {
     const hint = $("#v1-payment-methods-hint");
     if (hint && pm) {
-      hint.textContent = `Online Only Policy (No Refunds): ${(pm.supportedMethods || ["UPI", "Card", "Wallet"]).join(" / ")}`;
+      const methods = (pm.allowedMethods || pm.supportedMethods || ["upi", "prepaid_wallet"]).map(m => String(m).toUpperCase().replaceAll("_", " "));
+      hint.textContent = `Online Only Policy (No Refunds): ${methods.join(" / ")}`;
     }
   }).catch(() => {});
 

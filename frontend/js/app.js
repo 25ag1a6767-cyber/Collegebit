@@ -1127,6 +1127,7 @@ function orderRow(order, showCustomer = false, workflowStage = "all") {
     const note = document.createElement('small'); note.textContent = done ? 'This QR has already been used.' : 'Show this QR to canteen staff when your order is ready. Keep it private.';
     pickup.append(label, code, note); row.append(pickup);
     if (!done && window.QRCode) new window.QRCode(code, { text: `${window.location.origin}/pickup#code=${encodeURIComponent(order.pickup_qr_code)}`, width: 156, height: 156, correctLevel: window.QRCode.CorrectLevel.M });
+    else if (!done && typeof window.renderCollegeBitsQrSvg === 'function') code.append(window.renderCollegeBitsQrSvg(`${window.location.origin}/pickup#code=${encodeURIComponent(order.pickup_qr_code)}`));
   }
   if (!showCustomer && order.payment_status === 'paid' && !['completed', 'collected', 'cancelled'].includes(order.status)) {
     const tracker = document.createElement('div'); tracker.className = 'order-live-tracker'; tracker.setAttribute('aria-live', 'polite'); tracker.textContent = 'Updating live queue position…'; row.append(tracker);
@@ -1327,7 +1328,7 @@ window.setInterval(() => {
   };
   const message = (id, text, kind = '') => { const el = byId(id); if (el) { el.textContent = text; el.className = `management-message ${kind}`.trim(); } };
   const option = (select, value, label) => { const el = document.createElement('option'); el.value = String(value); el.textContent = label; select.append(el); };
-  const canManage = () => Boolean(window.aceCanteenToken && ['staff', 'admin'].includes(window.aceCanteenUser?.role));
+  const canManage = () => Boolean(window.aceCanteenToken && window.aceCanteenUser?.role === 'admin');
   let productsCache = [];
 
   async function loadProducts() {

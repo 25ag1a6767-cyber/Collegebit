@@ -7,7 +7,8 @@
   async function load() {
     const code = new URLSearchParams(window.location.hash.slice(1)).get('code');
     if (!code) throw new Error('This pickup link is missing its secure code. Please open the QR code again.');
-    const response = await fetch('/api/pickup/status', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ code }), cache: 'no-store' });
+    const url = window.collegebitsApiUrl ? window.collegebitsApiUrl('/api/pickup/status') : '/api/pickup/status';
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ code }), cache: 'no-store' });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.detail || 'Could not verify this pickup code.');
     title.textContent = `Order #${data.order_id} · Token #${data.token_number ?? '—'}`;

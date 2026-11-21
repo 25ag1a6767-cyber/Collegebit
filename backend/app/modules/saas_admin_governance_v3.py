@@ -17,7 +17,8 @@ import uuid
 from typing import Any
 
 from cryptography.fernet import Fernet
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
+from app.emailer import send_email
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -315,9 +316,9 @@ def accept_admin_invitation_v1(
         db.add(user)
         db.flush()
     else:
-        user.password_hash = hash_password(payload.password)
+        if not user.is_active:
+            raise ApiError(403, "ACCOUNT_DISABLED", "This account has been deactivated.")
         user.email_verified_at = user.email_verified_at or datetime.now(timezone.utc)
-        user.is_active = True
 
     existing_mem = db.scalar(
         select(SaasTenantMember).where(SaasTenantMember.tenant_id == inv.tenant_id, SaasTenantMember.user_id == user.id)
@@ -346,7 +347,7 @@ def accept_admin_invitation_v1(
     )
     db.commit()
     db.refresh(user)
-    jwt_tok = create_access_token(user, mfa_verified=True)
+    jwt_tok = create_access_token(user, mfa_verified=not bool(user.mfa_enabled))
     return ok(
         request,
         {
@@ -391,16 +392,18 @@ def invite_additional_college_admin_v1(
         {"tenant_id": tenant.id, "invited_email": inv.email, "role": inv.tenant_role},
     )
     db.commit()
+    inv_out: dict[str, Any] = {
+        "invitationId": inv.id,
+        "tenantId": tenant.id,
+        "email": inv.email,
+        "tenantRole": inv.tenant_role,
+        "expiresAt": as_utc(inv.expires_at),
+    }
+    if get_settings().environment.lower() in {"development", "test"}:
+        inv_out["inviteToken"] = raw_token
     return ok(
         request,
-        {
-            "invitationId": inv.id,
-            "tenantId": tenant.id,
-            "email": inv.email,
-            "tenantRole": inv.tenant_role,
-            "inviteToken": raw_token,
-            "expiresAt": as_utc(inv.expires_at),
-        },
+        inv_out,
         status_code=201,
     )
 
@@ -585,7 +588,10 @@ def request_verified_email_change_v1(
     db.add(req_row)
     record_audit(db, "auth.email_change_requested", "user", user.id, user.id, {"old_email": user.email, "new_email": new_email})
     db.commit()
-    return ok(request, {"requestId": req_row.id, "verificationToken": raw_tok, "expiresAt": as_utc(req_row.expires_at)})
+    res_data: dict[str, Any] = {"requestId": req_row.id, "expiresAt": as_utc(req_row.expires_at)}
+    if get_settings().environment.lower() in {"development", "test"}:
+        res_data["verificationToken"] = raw_tok
+    return ok(request, res_data)
 
 
 @router.post("/auth/email-change/verify")
@@ -637,6 +643,7 @@ def change_password_secure_v1(
 def forgot_password_request_v1(
     request: Request,
     payload: ForgotPasswordIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     from app.main import _check_login_rate, _login_rate_key, _record_failed_login
@@ -649,8 +656,9 @@ def forgot_password_request_v1(
     _record_failed_login(rate_key)
 
     user = db.scalar(select(User).where(func.lower(User.email) == email_norm))
-    is_dev = get_settings().environment.lower() in {"development", "test"}
-    if not user:
+    cfg = get_settings()
+    is_dev = cfg.environment.lower() in {"development", "test"}
+    if not user or not user.is_active:
         return ok(request, {"submitted": True})
     raw_tok = f"rst_{user.id}_{secrets.token_urlsafe(24)}"
     rec = PasswordResetTokenRecord(
@@ -661,6 +669,14 @@ def forgot_password_request_v1(
     db.add(rec)
     record_audit(db, "auth.password_reset_requested", "user", user.id, user.id, {"method": "token_hash"})
     db.commit()
+    reset_url = f"{cfg.public_base_url.rstrip('/')}/customer/#v1-reset={raw_tok}"
+    email_body = (
+        f"Hello {user.full_name},\n\n"
+        f"Use this reset token in the CollegeBits app or web portal:\n{raw_tok}\n\n"
+        f"Direct link: {reset_url}\n\n"
+        "This token expires in 30 minutes and works once.\n"
+    )
+    background.add_task(send_email, user.email, "Reset your CollegeBits password", email_body)
     data: dict[str, Any] = {"submitted": True}
     if is_dev:
         data["sandboxResetToken"] = raw_tok

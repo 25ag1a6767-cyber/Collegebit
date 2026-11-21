@@ -300,7 +300,8 @@
 
   function renderDonutChart(container, opts) {
     if (!container) return;
-    const items = ((opts && opts.items) || []).filter((x) => Number(x.value || 0) > 0);
+    const rawItems = (opts && (opts.items || opts.slices)) || [];
+    const items = rawItems.filter((x) => Number(x.value || 0) > 0);
     const fmt = (opts && opts.formatValue) || defaultFmt;
     if (!items.length) {
       renderEmpty(container, (opts && opts.emptyMessage) || "No category sales in selected period.");

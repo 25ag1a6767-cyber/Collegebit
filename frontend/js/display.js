@@ -67,7 +67,8 @@
     const counterVal = sel ? sel.value : "";
     const q = counterVal ? "?counterId=" + encodeURIComponent(counterVal) : "";
     try {
-      const res = await fetch("/api/v1/queue/display-board" + q, { cache: "no-store" });
+      const apiPath = "/api/v1/queue/display-board" + q;
+      const res = await fetch(window.collegebitsApiUrl ? window.collegebitsApiUrl(apiPath) : apiPath, { cache: "no-store" });
       if (!res.ok) return;
       const body = await res.json();
       const data = body.data || body;
@@ -209,7 +210,7 @@
 
   function connectWs() {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${proto}//${window.location.host}/api/v1/ws`;
+    const wsUrl = window.collegebitsWsUrl ? window.collegebitsWsUrl("/api/v1/ws") : `${proto}//${window.location.host}/api/v1/ws`;
     let ws;
     try {
       ws = new WebSocket(wsUrl);

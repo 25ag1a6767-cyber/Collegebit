@@ -365,7 +365,7 @@ def get_menu_alias_v1(
                     "pricePaise": p.effective_price_paise,
                     "stockQuantity": p.stock_quantity,
                     "isAvailable": bool(p.is_available and p.stock_quantity > 0),
-                    "prepTimeMinutes": p.prep_time_minutes,
+                    "prepTimeMinutes": p.preparation_minutes or 10,
                 }
                 for p in items
             ],
@@ -1170,7 +1170,12 @@ def verify_and_apply_bulk_payment(
         }
 
     cfg = get_settings()
-    secret = (cfg.razorpay_key_secret or "sandbox_bulk_secret").encode("utf-8")
+    raw_secret = (cfg.razorpay_key_secret or "").strip()
+    if verify_hmac and not raw_secret:
+        if cfg.environment.lower() not in {"development", "test"}:
+            raise ApiError(503, "PAYMENT_GATEWAY_NOT_CONFIGURED", "Payment gateway secret is not configured.")
+        raw_secret = "sandbox_bulk_secret"
+    secret = raw_secret.encode("utf-8")
     if verify_hmac:
         expected_sig = hmac.new(
             secret,
@@ -1327,6 +1332,9 @@ def verify_bulk_order_payment_endpoint_v1(
     )
     if not pay:
         raise ApiError(404, "BULK_PAYMENT_NOT_FOUND", "Matching bulk payment intent not found.")
+    bo = db.get(BulkOrder, pay.bulk_order_id)
+    if user.role != UserRole.ADMIN and pay.payer_user_id != user.id and (not bo or bo.coordinator_id != user.id):
+        raise ApiError(403, "FORBIDDEN", "Not authorized to verify this bulk payment.")
     result = verify_and_apply_bulk_payment(
         db,
         pay,
@@ -1640,14 +1648,17 @@ def export_bulk_order_tokens_v1(
     writer.writerow(["recipient_identifier", "full_name", "department", "pickup_date", "pickup_slot", "counter_id", "token_status", "qr_token"])
     for r in export_rows:
         writer.writerow([
-            r["recipientIdentifier"],
-            r["fullName"],
-            r["department"],
-            r["pickupDate"],
-            r["pickupSlot"],
-            r["counterId"],
-            r["tokenStatus"],
-            r["qrToken"],
+            ("'" + v if isinstance(v, str) and v and v[0] in ("=", "+", "-", "@", "\t", "\r") else v)
+            for v in (
+                r["recipientIdentifier"],
+                r["fullName"],
+                r["department"],
+                r["pickupDate"],
+                r["pickupSlot"],
+                r["counterId"],
+                r["tokenStatus"],
+                r["qrToken"],
+            )
         ])
     return Response(
         content=out_csv.getvalue().encode("utf-8"),
@@ -1761,11 +1772,20 @@ def _redeem_single_bulk_token_atomic(
         raise ApiError(409, "TOKEN_REVOKED", "This QR token was revoked and replaced.")
 
     now = datetime.now(timezone.utc)
+    if tok.status == "expired":
+        raise ApiError(410, "TOKEN_EXPIRED", "This QR token has expired.")
     exp = tok.expires_at if tok.expires_at.tzinfo else tok.expires_at.replace(tzinfo=timezone.utc)
     if exp < now:
         tok.status = "expired"
-        db.commit()
+        if db.in_nested_transaction():
+            db.flush()
+        else:
+            db.commit()
         raise ApiError(410, "TOKEN_EXPIRED", "This QR token has expired.")
+
+    bo = db.get(BulkOrder, tok.bulk_order_id)
+    if not bo or bo.status == "cancelled":
+        raise ApiError(409, "BULK_ORDER_CANCELLED", "Cancelled bulk orders cannot be collected.")
 
     rec = db.scalar(
         select(BulkOrderRecipient)
@@ -1864,10 +1884,10 @@ def verify_single_pickup_v1(
         return ok(request, res)
 
     # Fallback for individual order pk_... token
-    from app.modules.orders_payments import PickupVerifyIn, verify_and_complete_pickup_v1
-    return verify_and_complete_pickup_v1(
+    from app.modules.orders_payments import VerifyPickupIn, verify_and_collect_pickup_v1
+    return verify_and_collect_pickup_v1(
+        payload=VerifyPickupIn(pickupToken=raw),
         request=request,
-        payload=PickupVerifyIn(pickupToken=raw, note=payload.notes),
         staff=staff,
         db=db,
     )

@@ -19,6 +19,8 @@ export const AuthScreen: React.FC = () => {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
+  const [hasResetToken, setHasResetToken] = useState(false);
+  const [resetToken, setResetToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
@@ -43,6 +45,33 @@ export const AuthScreen: React.FC = () => {
     }
 
     if (mode === "forgot") {
+      if (hasResetToken) {
+        if (resetToken.trim().length < 12) {
+          setError("Enter the password reset token from your email.");
+          return;
+        }
+        if (password.length < 12) {
+          setError("New password must be at least 12 characters.");
+          return;
+        }
+        setBusy(true);
+        try {
+          await apiRequest("/api/v1/auth/password/reset", {
+            method: "POST",
+            body: JSON.stringify({ resetToken: resetToken.trim(), newPassword: password })
+          });
+          setHasResetToken(false);
+          setResetToken("");
+          setPassword("");
+          setMode("login");
+          setInfoMsg("Password updated. Sign in with your new password.");
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Could not reset password");
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
       if (!identifier.trim().includes("@")) {
         setError("Enter your registered college email address.");
         return;
@@ -53,7 +82,7 @@ export const AuthScreen: React.FC = () => {
           method: "POST",
           body: JSON.stringify({ email: identifier.trim() })
         });
-        setInfoMsg("If an account matches that email, a password reset link has been sent.");
+        setInfoMsg("If an account matches that email, a password reset link & token have been sent.");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not request password reset");
       } finally {
@@ -165,9 +194,9 @@ export const AuthScreen: React.FC = () => {
               </>
             )}
 
-            {mode !== "forgot" && (
+            {(mode !== "forgot" || hasResetToken) && (
               <>
-                <Text style={styles.label}>Password (12+ characters)</Text>
+                <Text style={styles.label}>{hasResetToken ? "New Password (12+ characters)" : "Password (12+ characters)"}</Text>
                 <TextInput
                   style={styles.input}
                   value={password}
@@ -178,10 +207,24 @@ export const AuthScreen: React.FC = () => {
               </>
             )}
 
+            {mode === "forgot" && hasResetToken && (
+              <>
+                <Text style={styles.label}>Reset Token</Text>
+                <TextInput
+                  style={styles.input}
+                  value={resetToken}
+                  onChangeText={setResetToken}
+                  autoCapitalize="none"
+                  placeholder="Paste reset token from email"
+                />
+              </>
+            )}
+
             {mode === "login" && (
               <TouchableOpacity
                 onPress={() => {
                   setMode("forgot");
+                  setHasResetToken(false);
                   setError(null);
                   setInfoMsg(null);
                 }}
@@ -190,15 +233,29 @@ export const AuthScreen: React.FC = () => {
               </TouchableOpacity>
             )}
             {mode === "forgot" && (
-              <TouchableOpacity
-                onPress={() => {
-                  setMode("login");
-                  setError(null);
-                  setInfoMsg(null);
-                }}
-              >
-                <Text style={styles.forgotLink}>← Back to Sign in</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => {
+                    setHasResetToken(v => !v);
+                    setError(null);
+                    setInfoMsg(null);
+                  }}
+                >
+                  <Text style={styles.forgotLink}>
+                    {hasResetToken ? "Need a reset email instead?" : "Have a reset token? Enter it here"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setMode("login");
+                    setHasResetToken(false);
+                    setError(null);
+                    setInfoMsg(null);
+                  }}
+                >
+                  <Text style={styles.forgotLink}>← Back to Sign in</Text>
+                </TouchableOpacity>
+              </>
             )}
           </>
         ) : (
@@ -237,7 +294,9 @@ export const AuthScreen: React.FC = () => {
                 : mode === "login"
                 ? "Sign in"
                 : mode === "forgot"
-                ? "Send Reset Link"
+                ? hasResetToken
+                  ? "Confirm Password Reset"
+                  : "Send Reset Link"
                 : "Create Student Account"}
             </Text>
           )}

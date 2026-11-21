@@ -347,10 +347,15 @@ class Order(Base):
 
     @property
     def effective_total_paise(self) -> int:
-        if self.total_paise is not None and self.total_paise > 0:
-            return int(self.total_paise)
-        if self.final_total and Decimal(self.final_total) > 0:
+        if self.final_total is not None and (
+            Decimal(self.final_total) > 0
+            or (self.discount_amount is not None and Decimal(self.discount_amount) > 0)
+        ):
             return rupees_to_paise(self.final_total)
+        if self.total_paise is not None and (
+            self.total_paise > 0 or (self.discount_paise is not None and self.discount_paise > 0)
+        ):
+            return int(self.total_paise)
         return rupees_to_paise(self.subtotal)
 
 
@@ -2163,7 +2168,7 @@ def _sync_order_paise(_mapper, _connection, target: Order) -> None:
     target.discount_paise = rupees_to_paise(target.discount_amount or Decimal("0.00"))
     target.tax_paise = rupees_to_paise(target.tax_amount or Decimal("0.00"))
     computed_total = max(0, target.subtotal_paise - target.discount_paise + target.tax_paise)
-    if target.final_total is None or Decimal(target.final_total) == Decimal("0.00"):
+    if target.final_total is None or (Decimal(target.final_total) == Decimal("0.00") and computed_total > 0):
         target.final_total = paise_to_rupees(computed_total)
         target.total_paise = computed_total
     else:

@@ -12,6 +12,7 @@ import re
 import secrets
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, Header, Query, Request
@@ -147,7 +148,7 @@ class PickupSlotBookIn(BaseModel):
     quantity: int = Field(default=1, ge=1, le=500)
 
 
-@router.get("/pickup-slots")
+@router.get("/pickup-slots/windows")
 def list_pickup_slots_v1(
     request: Request,
     slotDate: date | None = Query(default=None),
@@ -556,6 +557,8 @@ def verify_role_otp_v1(
         user = db.scalar(select(User).where(User.phone == ident))
     if user is not None and user.role != UserRole.STUDENT:
         raise ApiError(403, "FORBIDDEN", "Staff and administrator accounts cannot sign in via guest OTP.")
+    if user is not None and not user.is_active:
+        raise ApiError(403, "ACCOUNT_DISABLED", "This account has been deactivated.")
 
     _clear_login_failures(rate_key)
     ch.verified = True
@@ -756,15 +759,30 @@ def get_daily_financial_settlement_v1(
     _: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
-    target_d = settlementDate or date.today()
+    tz = ZoneInfo(get_settings().canteen_timezone)
+    target_d = settlementDate or datetime.now(tz).date()
+    day_start = datetime.combine(target_d, datetime.min.time(), tzinfo=tz).astimezone(timezone.utc)
+    day_end = day_start + timedelta(days=1)
+
     online_indiv_paise = db.scalar(
-        select(func.coalesce(func.sum(Order.total_paise), 0)).where(Order.payment_status == PaymentStatus.PAID)
+        select(func.coalesce(func.sum(Order.total_paise), 0)).where(
+            Order.payment_status == PaymentStatus.PAID,
+            Order.created_at >= day_start,
+            Order.created_at < day_end,
+        )
     ) or 0
     online_bulk_paise = db.scalar(
-        select(func.coalesce(func.sum(BulkOrder.paid_paise), 0))
+        select(func.coalesce(func.sum(BulkOrder.paid_paise), 0)).where(
+            BulkOrder.created_at >= day_start,
+            BulkOrder.created_at < day_end,
+        )
     ) or 0
     walkin_cash_paise = db.scalar(
-        select(func.coalesce(func.sum(WalkinPosOrder.total_paise), 0)).where(WalkinPosOrder.payment_method == "cash")
+        select(func.coalesce(func.sum(WalkinPosOrder.total_paise), 0)).where(
+            WalkinPosOrder.payment_method == "cash",
+            WalkinPosOrder.created_at >= day_start,
+            WalkinPosOrder.created_at < day_end,
+        )
     ) or 0
 
     verified_online = int(online_indiv_paise) + int(online_bulk_paise)
@@ -1175,6 +1193,15 @@ def create_tenant_scoped_order_v1(
     tenant = _assert_tenant_isolation(db, tenant_id, user, require_admin_role=False, forged_header_tenant_id=x_tenant_id)
     if tenant.status == "suspended":
         raise ApiError(403, "TENANT_SUSPENDED", "This college tenant is currently suspended (read-only export mode).")
+    if payload.outletId is not None:
+        outlet = db.scalar(
+            select(SaasOutlet).where(
+                SaasOutlet.id == payload.outletId,
+                SaasOutlet.tenant_id == tenant.id,
+            )
+        )
+        if not outlet:
+            raise ApiError(404, "OUTLET_NOT_FOUND", "Outlet does not belong to this tenant.")
 
     raw_tok = f"tqr_{tenant.id}_{secrets.token_urlsafe(18)}"
     tok_hash = hashlib.sha256(raw_tok.encode("utf-8")).hexdigest()
@@ -1217,9 +1244,11 @@ def list_tenant_scoped_orders_v1(
     db: Session = Depends(get_db),
 ):
     tenant = _assert_tenant_isolation(db, tenant_id, user, require_admin_role=False, forged_header_tenant_id=x_tenant_id)
-    rows = db.scalars(
-        select(SaasTenantOrder).where(SaasTenantOrder.tenant_id == tenant.id).order_by(SaasTenantOrder.id.desc())
-    ).all()
+    mem = db.scalar(select(SaasTenantMember).where(SaasTenantMember.tenant_id == tenant.id, SaasTenantMember.user_id == user.id))
+    stmt = select(SaasTenantOrder).where(SaasTenantOrder.tenant_id == tenant.id)
+    if not mem or mem.tenant_role not in {"college_owner", "college_admin", "canteen_manager", "staff", "kitchen_manager", "counter_staff", "read_only_auditor", "finance_admin"}:
+        stmt = stmt.where(SaasTenantOrder.user_id == user.id)
+    rows = db.scalars(stmt.order_by(SaasTenantOrder.id.desc())).all()
     return ok(
         request,
         {

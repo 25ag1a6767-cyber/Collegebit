@@ -483,7 +483,7 @@
     const catPie = g.categorySalesPie || [];
     (Ch.renderDonutChart || Ch.renderPieChart)($("chart-category-pie"), {
       centerTitle: "Category ₹",
-      slices: catPie.map((r) => ({ label: r.categoryName, value: formatRupeesNum(r.revenuePaise) })),
+      items: catPie.map((r) => ({ label: r.categoryName, value: formatRupeesNum(r.revenuePaise) })),
       formatValue: fmtCurrencyShort
     });
 
@@ -508,7 +508,7 @@
     const payTotals = (g.paymentSuccessFailure && g.paymentSuccessFailure.totals) || [];
     (Ch.renderDonutChart || Ch.renderPieChart)($("chart-payment-status"), {
       centerTitle: "Payments",
-      slices: payTotals.map((r) => ({ label: r.status, value: r.count }))
+      items: payTotals.map((r) => ({ label: r.status, value: r.count }))
     });
 
     // 11. Inventory Consumption Graph
@@ -621,10 +621,18 @@
 
     const sumBox = $("rep-preview-summary");
     const sumFrag = document.createDocumentFragment();
-    const sumObj = d.summary || {};
-    Object.keys(sumObj).forEach((k) => {
-      sumFrag.appendChild(el("span", "pill pill-actual", k + ": " + sumObj[k]));
-    });
+    const sumObj = d.summary || [];
+    if (Array.isArray(sumObj)) {
+      sumObj.forEach((it) => {
+        if (it && typeof it === "object") {
+          sumFrag.appendChild(el("span", "pill pill-actual", (it.label || "") + ": " + (it.value ?? "")));
+        }
+      });
+    } else if (typeof sumObj === "object") {
+      Object.keys(sumObj).forEach((k) => {
+        sumFrag.appendChild(el("span", "pill pill-actual", k + ": " + sumObj[k]));
+      });
+    }
     sumBox.replaceChildren(sumFrag);
 
     const trHead = el("tr");
@@ -721,12 +729,17 @@
     const demFrag = document.createDocumentFragment();
     (d.foodDemandPredictions || []).forEach((it) => {
       const tr = el("tr");
-      tr.appendChild(el("td", "", it.name));
-      tr.appendChild(el("td", "", String(it.predictedUnits)));
-      tr.appendChild(el("td", "", String(it.recommendedPrep)));
-      tr.appendChild(el("td", "", String(it.currentStock)));
+      tr.appendChild(el("td", "", it.itemName || it.name || ("Item #" + it.menuItemId)));
+      tr.appendChild(el("td", "", String(it.predictedUnits ?? 0)));
+      tr.appendChild(el("td", "", String(it.recommendedPrep ?? 0)));
+      const hasStock = it.currentStock !== undefined && it.currentStock !== null;
+      tr.appendChild(el("td", "", hasStock ? String(it.currentStock) : ((it.lower ?? 0) + "–" + (it.upper ?? 0) + " band")));
       const sfTd = el("td");
-      sfTd.appendChild(el("span", "pill " + (it.shortfall > 0 ? "pill-danger" : "pill-ok"), it.shortfall > 0 ? ("Short " + it.shortfall) : "Covered"));
+      if (it.shortfall !== undefined && it.shortfall !== null) {
+        sfTd.appendChild(el("span", "pill " + (it.shortfall > 0 ? "pill-danger" : "pill-ok"), it.shortfall > 0 ? ("Short " + it.shortfall) : "Covered"));
+      } else {
+        sfTd.appendChild(el("span", "pill " + (it.lowConfidence ? "pill-warn" : "pill-ok"), it.lowConfidence ? "Low sample" : "Verified"));
+      }
       tr.appendChild(sfTd);
       demFrag.appendChild(tr);
     });
@@ -1862,7 +1875,8 @@
     $("btn-backup-run").addEventListener("click", async () => {
       try {
         const r = await apiFetch("/api/v1/admin/backups/run", { method: "POST", body: {} });
-        showAlert("Encrypted GFS backup created & verified (" + Math.round((r.sizeBytes || 0) / 1024) + " KB).", "success");
+        const bytes = r.encryptedSizeBytes ?? r.sizeBytes ?? 0;
+        showAlert("Encrypted GFS backup created & verified (" + Math.max(1, Math.round(bytes / 1024)) + " KB).", "success");
         await loadGovernanceModule();
       } catch (err) {
         showAlert(err.message, "error");
@@ -1872,7 +1886,8 @@
     $("btn-backup-drill").addEventListener("click", async () => {
       try {
         const r = await apiFetch("/api/v1/admin/backups/restore-test", { method: "POST", body: {} });
-        showAlert("Non-destructive restore drill PASSED (" + (r.verification && r.verification.engine) + ").", "success");
+        const eng = r.engine || (r.verification && r.verification.engine) || "verified";
+        showAlert("Non-destructive restore drill PASSED (" + eng + ").", "success");
         await loadGovernanceModule();
       } catch (err) {
         showAlert(err.message, "error");

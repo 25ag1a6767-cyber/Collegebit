@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Linking,
   Modal,
   RefreshControl,
   ScrollView,
@@ -8,7 +9,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-import { apiRequest, formatRupeesFromPaise } from "../api/client";
+import { API_BASE_URL, apiRequest, formatRupeesFromPaise } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { OrderRecord, PickupTokenResponse } from "../types/api";
 import { buildQrMatrix } from "../utils/qrMatrix";
@@ -98,6 +99,19 @@ export const OrdersTrackingScreen: React.FC = () => {
       await loadOrders();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Cannot cancel order");
+    }
+  };
+
+  const payOrderWithWallet = async (orderId: number) => {
+    setMessage(null);
+    try {
+      await apiRequest(`/api/v1/orders/${orderId}/pay-with-wallet`, {
+        method: "POST"
+      });
+      setMessage(`Order #${orderId} paid from prepaid wallet.`);
+      await loadOrders();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not pay order from wallet");
     }
   };
 
@@ -207,6 +221,23 @@ export const OrdersTrackingScreen: React.FC = () => {
                 <Text style={styles.expiry}>
                   Valid until {new Date(tok.expiresAt).toLocaleTimeString()} · Single-use
                 </Text>
+              </View>
+            )}
+
+            {statusLower === "pending" && !isPaid && (
+              <View style={styles.ratingRow}>
+                <TouchableOpacity
+                  style={styles.walletPayBtn}
+                  onPress={() => payOrderWithWallet(order.id)}
+                >
+                  <Text style={styles.walletPayText}>Pay with Wallet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.walletPayBtn}
+                  onPress={() => Linking.openURL(`${API_BASE_URL}/customer/#my-orders-section`).catch(() => null)}
+                >
+                  <Text style={styles.walletPayText}>Pay via Razorpay Web</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -380,6 +411,16 @@ const styles = StyleSheet.create({
     alignItems: "center"
   },
   cancelText: { color: "#b42318", fontWeight: "700", fontSize: 12 },
+  walletPayBtn: {
+    flex: 1,
+    backgroundColor: "#eef6f0",
+    borderWidth: 1,
+    borderColor: "#155d3d",
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: "center"
+  },
+  walletPayText: { color: "#155d3d", fontWeight: "700", fontSize: 12 },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10 },
   starBtn: {
     paddingHorizontal: 9,
