@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import json
-from typing import Any
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 

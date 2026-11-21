@@ -150,7 +150,8 @@ export const HomeScreen: React.FC<Props> = ({ onNavigate }) => {
 
       <Text style={styles.sectionTitle}>AI-Recommended Meals</Text>
       {recommendations.map((entry, idx) => {
-        const item = entry.item || (entry as unknown as AIRecommendationEntry["item"]);
+        const item = entry?.item || (entry as unknown as AIRecommendationEntry["item"]);
+        if (!item?.id) return null;
         return (
           <View key={`${item.id}-${idx}`} style={styles.recoCard}>
             <Text style={styles.reasonPill}>{entry.reasons?.[0] || "Popular campus pick"}</Text>

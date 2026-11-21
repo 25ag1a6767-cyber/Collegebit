@@ -157,42 +157,6 @@ class OrderOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class OrderItemIn(BaseModel):
-    product_id: int = Field(gt=0)
-    quantity: int = Field(ge=1, le=50)
-
-class OrderCreateIn(BaseModel):
-    items: list[OrderItemIn] = Field(min_length=1, max_length=30)
-    notes: str | None = Field(default=None, max_length=500)
-    pickup_slot: str | None = Field(default=None, max_length=40)
-
-class OrderStatusIn(BaseModel):
-    status: str = Field(pattern="^(confirmed|preparing|ready|completed|cancelled)$")
-
-class OrderItemOut(BaseModel):
-    id: int
-    product_id: int
-    product_name: str
-    unit_price: Decimal
-    quantity: int
-    line_total: Decimal
-    model_config = ConfigDict(from_attributes=True)
-
-class OrderOut(BaseModel):
-    id: int
-    user_id: int
-    token_number: int | None
-    token_date: str | None
-    status: str
-    payment_status: str
-    subtotal: Decimal
-    notes: str | None
-    created_at: datetime
-    updated_at: datetime
-    items: list[OrderItemOut]
-    model_config = ConfigDict(from_attributes=True)
-
-
 class StockAdjustmentIn(BaseModel):
     product_id: int = Field(gt=0)
     movement_type: str = Field(pattern="^(receipt|adjustment|waste)$")

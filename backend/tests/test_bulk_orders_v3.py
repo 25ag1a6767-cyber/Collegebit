@@ -27,18 +27,15 @@ import hmac
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.config import get_settings
 from app.database import SessionLocal
 from app.main import app
 from app.models import (
     BulkMealToken,
-    BulkOrder,
-    BulkPickupRecord,
     CanteenCounter,
     Category,
-    PaymentIncident,
     Product,
     User,
     UserRole,
@@ -423,6 +420,7 @@ def test_500_available_meals_vs_600_simultaneous_requests_zero_overselling_and_i
                 "items": [{"menuItemId": limited_prod_id, "quantity": 5}],
             },
         )
+        assert bo_unreserved.status_code == 201
         # Re-enable product availability flag without stock to simulate race between intent and capture
         with SessionLocal() as db:
             p_row = db.get(Product, limited_prod_id)

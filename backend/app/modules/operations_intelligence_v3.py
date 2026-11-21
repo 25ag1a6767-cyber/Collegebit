@@ -17,13 +17,12 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
 from app.envelope import ApiError, ok
 from app.models import (
-    CanteenCounter,
     DailyCanteenClosing,
     EquipmentAsset,
     EquipmentMaintenanceTicket,
@@ -41,7 +40,6 @@ from app.models import (
     OrderItemFulfillment,
     OrderQualityFeedback,
     OrderStatus,
-    PackagingLedger,
     PaymentIncident,
     PaymentStatus,
     Product,

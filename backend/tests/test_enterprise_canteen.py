@@ -12,11 +12,8 @@ Tests:
 """
 from __future__ import annotations
 
-import datetime
-from datetime import timezone
 import io
 import zipfile
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
@@ -26,17 +23,15 @@ from app.models import (
     CanteenCounter,
     Category,
     Order,
-    OrderItem,
     OrderStatus,
     Payment,
     PaymentStatus,
-    Pickup,
     Product,
     User,
     UserRole,
 )
 from app.modules.common import format_token_display
-from app.security import create_access_token, hash_password
+from app.security import hash_password
 
 
 def _hdr(token: str) -> dict[str, str]:
@@ -197,7 +192,7 @@ def test_dedicated_pickup_inspection_and_collection_workflow():
         qr_res = client.post(f"/api/v1/orders/{order_id}/pickup-token", headers=_hdr(stu_tok))
         assert qr_res.status_code == 200
         raw_qr_token = qr_res.json()["data"]["pickupToken"]
-        manual_code = qr_res.json()["data"]["manualPickupCode"]
+        assert qr_res.json()["data"]["manualPickupCode"]
 
         # 5. Kitchen marks ready
         ready_res = client.post(f"/api/v1/staff/orders/{order_id}/ready", headers=_hdr(stf_tok))
@@ -309,7 +304,7 @@ def test_token_management_search_endpoint():
         order_id = ord_res.json()["data"]["order"]["id"]
         _mark_paid(order_id)
 
-        tok_res = client.get(f"/api/v1/tokens?search=tok-stu", headers=_hdr(stf_tok))
+        tok_res = client.get("/api/v1/tokens?search=tok-stu", headers=_hdr(stf_tok))
         assert tok_res.status_code == 200
         titems = tok_res.json()["data"]["items"]
         assert any(t["orderId"] == order_id for t in titems)

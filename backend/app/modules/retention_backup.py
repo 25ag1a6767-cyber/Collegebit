@@ -20,7 +20,6 @@ from decimal import Decimal
 import hashlib
 import json
 import logging
-import os
 from pathlib import Path
 import shutil
 import sqlite3
@@ -37,7 +36,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
-from app.database import IS_POSTGRES, IS_SQLITE, SQLALCHEMY_DATABASE_URL, get_db
+from app.database import SQLALCHEMY_DATABASE_URL, get_db
 from app.envelope import ApiError, ok
 from app.models import (
     AIInteraction,

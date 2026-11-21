@@ -300,6 +300,9 @@ class Order(Base):
         UniqueConstraint("token_number", "token_date", name="uq_order_daily_token"),
         Index("ix_orders_status_created", "status", "created_at"),
         Index("ix_orders_counter_status_created", "counter_id", "status", "created_at"),
+        Index("ix_orders_user_created", "user_id", "created_at", "id"),
+        Index("ix_orders_payment_created", "payment_status", "created_at", "id"),
+        Index("ix_orders_queue_lookup", "token_date", "payment_status", "created_at", "id", "status"),
         CheckConstraint("subtotal >= 0", name="ck_orders_subtotal_nonnegative"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -519,6 +522,7 @@ class InventoryMovement(Base):
         CheckConstraint("quantity_before >= 0", name="ck_inventory_movement_before_nonnegative"),
         CheckConstraint("quantity_after >= 0", name="ck_inventory_movement_after_nonnegative"),
         Index("ix_inventory_movements_product_created", "product_id", "created_at"),
+        Index("ix_inventory_movements_order_created", "order_id", "created_at", "id"),
         Index("ix_inventory_movements_created", "created_at"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -539,7 +543,11 @@ class InventoryMovement(Base):
 class AuditEvent(Base):
     """Append-only record of privileged operational changes and important events."""
     __tablename__ = "audit_events"
-    __table_args__ = (Index("ix_audit_events_created", "created_at"), Index("ix_audit_events_actor_created", "actor_user_id", "created_at"))
+    __table_args__ = (
+        Index("ix_audit_events_created", "created_at"),
+        Index("ix_audit_events_actor_created", "actor_user_id", "created_at"),
+        Index("ix_audit_events_entity_created", "entity_type", "entity_id", "created_at", "id"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -556,6 +564,7 @@ class Notification(Base):
     __table_args__ = (
         Index("ix_notifications_user_created", "user_id", "created_at"),
         Index("ix_notifications_user_read", "user_id", "is_read"),
+        Index("ix_notifications_user_read_at", "user_id", "read_at"),
     )
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

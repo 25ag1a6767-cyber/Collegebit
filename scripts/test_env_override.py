@@ -1,6 +1,5 @@
 import os
 import sys
-from pathlib import Path
 
 os.environ["DATABASE_URL"] = "sqlite:///./backend/test_isolated.db"
 sys.path.insert(0, "backend")

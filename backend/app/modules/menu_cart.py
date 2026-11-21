@@ -30,7 +30,6 @@ from app.models import (
     Product,
     RecipeItem,
     User,
-    paise_to_rupees,
     rupees_to_paise,
 )
 from app.modules.common import (

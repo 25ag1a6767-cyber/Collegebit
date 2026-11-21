@@ -20,7 +20,6 @@ import hashlib
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
@@ -104,9 +103,7 @@ def test_complete_multi_college_admin_lifecycle_ownership_transfer_and_tenant_is
 
         acc_b = client.post("/api/v1/saas/invitations/accept", json={"inviteToken": inv_tok_b, "password": "OwnerB#Strong2026!"})
         assert acc_b.status_code == 200
-        owner_b_tok = acc_b.json()["data"]["accessToken"]
         owner_b_id = acc_b.json()["data"]["user"]["id"]
-        owner_b_h = {"Authorization": f"Bearer {owner_b_tok}"}
 
         # 3. Separation of Admin Levels: College Owner A CANNOT access Platform Super Admin endpoints (403)
         assert client.post(
@@ -132,7 +129,6 @@ def test_complete_multi_college_admin_lifecycle_ownership_transfer_and_tenant_is
             json={"email": fin_email, "fullName": "Finance Admin A", "tenantRole": "finance_admin"},
         ).json()["data"]
         fin_acc = client.post("/api/v1/saas/invitations/accept", json={"inviteToken": fin_inv["inviteToken"], "password": "FinAdmin#2026!"}).json()["data"]
-        fin_a_id = fin_acc["user"]["id"]
         fin_a_tok = fin_acc["accessToken"]
         fin_a_h = {"Authorization": f"Bearer {fin_a_tok}"}
 

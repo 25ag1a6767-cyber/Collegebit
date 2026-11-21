@@ -27,7 +27,7 @@ if str(BACKEND_DIR) not in sys.path:
 @pytest.fixture(scope="session", autouse=True)
 def isolated_test_database_lifecycle():
     from app.database import Base, SessionLocal, engine
-    import app.models
+    import app.models  # noqa: F401
     from app.seed import seed_demo_data
 
     Base.metadata.create_all(bind=engine)

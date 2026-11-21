@@ -16,7 +16,6 @@ from app.models import (
     Order,
     OrderItem,
     OrderStatus,
-    Payment,
     PaymentStatus,
     Product,
     User,

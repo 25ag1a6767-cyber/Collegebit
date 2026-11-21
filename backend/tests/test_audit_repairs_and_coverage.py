@@ -25,7 +25,6 @@ from app.models import (
     KitchenStation,
     MealPassPlan,
     Order,
-    OrderItem,
     OrderStatus,
     PaymentIncident,
     PaymentStatus,

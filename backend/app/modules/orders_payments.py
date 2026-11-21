@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 import hashlib
 import hmac
 import json
@@ -19,7 +18,7 @@ from fastapi.responses import Response
 import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import case, func, or_, select, text, update
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
@@ -29,7 +28,6 @@ from app.envelope import ApiError, ok
 from app.models import (
     CanteenCounter,
     Cart,
-    CartItem,
     CheckoutIdempotency,
     Discount,
     InventoryMovement,
@@ -428,7 +426,7 @@ def quote_order_v1(
     subtotal_paise = 0
     total_packaging_paise = 0
     max_prep = 6
-    from app.models import KitchenStation, ProductFulfillmentConfig
+    from app.models import ProductFulfillmentConfig
     for ln in lines_in:
         p = by_id[ln.menuItemId]
         extra_paise, cleaned_cust = compute_customization_extra_paise(p, ln.customizations)

@@ -37,7 +37,6 @@ from app.models import (
     OutboxEvent,
     Payment,
     PaymentStatus,
-    PickupToken,
     Product,
     ProductBatch,
     RefreshSession,

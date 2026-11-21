@@ -36,7 +36,7 @@ from app import models  # noqa: F401 - registers ORM models with Base.metadata
 from app.envelope import ApiError, fail, http_exception_to_v1, is_v1_request, sanitize_validation_errors, validation_exception_to_v1
 from app.models import Category, Product, User, UserRole, Order, OrderItem, OrderStatus, PaymentStatus, InventoryMovement, InventoryMovementType, AuditEvent, Notification, Favorite, OrderReview, PaymentWebhookEvent, CheckoutIdempotency, PickupToken
 from app.realtime import build_ws_client_for_user, flush_outbox_async, hub
-from app.schemas import CategoryOut, ProductOut, ProductCreate, RegisterIn, LoginIn, UserOut, TokenOut, RoleUpdateIn, CategoryCreate, ProductUpdate, CategoryUpdate, ChangePasswordIn, ForgotPasswordIn, ResetPasswordIn, AdminUserCreateIn, OrderCreateIn, OrderOut, OrderStatusIn, StockAdjustmentIn, StockThresholdUpdate
+from app.schemas import CategoryOut, ProductOut, ProductCreate, RegisterIn, LoginIn, UserOut, TokenOut, RoleUpdateIn, CategoryCreate, ProductUpdate, CategoryUpdate, ChangePasswordIn, ForgotPasswordIn, ResetPasswordIn, AdminUserCreateIn, OrderCreateIn, OrderStatusIn, StockAdjustmentIn, StockThresholdUpdate
 from app.security import hash_password, verify_password, create_access_token, decode_access_token, get_current_user, hash_opaque_token, require_roles, create_password_reset_token, read_password_reset_token
 from app.emailer import send_email
 from app.seed import seed_demo_data
@@ -2253,7 +2253,7 @@ def create_purchase_order(payload: PurchaseOrderCreateIn, admin: User = Depends(
 
 @app.post("/api/admin/purchase-orders/{purchase_order_id}/receive", tags=["procurement"])
 def receive_purchase_order(purchase_order_id: int, admin: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
-    from app.models import Supplier, PurchaseOrder, ProductBatch
+    from app.models import PurchaseOrder, ProductBatch
     po = db.scalar(select(PurchaseOrder).where(PurchaseOrder.id == purchase_order_id).with_for_update())
     if po is None:
         raise HTTPException(status_code=404, detail="Purchase order not found")

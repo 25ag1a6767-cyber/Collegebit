@@ -2,8 +2,6 @@
 from __future__ import annotations
 import argparse
 import os
-import re
-import sys
 from dataclasses import dataclass, asdict
 from typing import Iterable
 

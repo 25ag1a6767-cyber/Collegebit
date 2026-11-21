@@ -32,12 +32,10 @@ from app.envelope import ApiError, ok
 from app.models import (
     CanteenCounter,
     Category,
-    Ingredient,
     InventoryMovement,
     InventoryMovementType,
     OperationalExpense,
     Order,
-    OrderItem,
     OrderStatus,
     OrderStatusHistory,
     Payment,

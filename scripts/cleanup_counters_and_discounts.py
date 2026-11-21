@@ -25,7 +25,6 @@ from app.models import (
 from sqlalchemy import select, delete, update
 
 def main():
-    import os
     from app.config import get_settings
     settings = get_settings()
     if settings.environment.lower() in ("production", "prod", "staging"):

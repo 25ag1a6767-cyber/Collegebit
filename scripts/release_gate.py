@@ -20,6 +20,13 @@ def run(label: str, command: list[str], *, required: bool = True) -> bool:
         print(f"SKIP: executable not found: {command[0]}")
         return not required
     env = dict(os.environ)
+    if os.name == "nt":
+        comspec = env.get("ComSpec") or env.get("COMSPEC") or ""
+        if not os.path.isfile(comspec):
+            fallback_cmd = Path(env.get("SystemRoot", r"C:\Windows")) / "System32" / "cmd.exe"
+            if fallback_cmd.is_file():
+                env["ComSpec"] = str(fallback_cmd)
+                env.pop("COMSPEC", None)
     env["PYTHONPATH"] = str(ROOT / "backend") + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     result = subprocess.run([resolved, *command[1:]], cwd=ROOT, env=env, check=False)
     print(f"{'PASS' if result.returncode == 0 else 'FAIL'}: {label} (exit {result.returncode})")

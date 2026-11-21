@@ -1,6 +1,5 @@
 """Phase 49: canteen hours, pause switch, pickup slots, order-ready email, shared (Redis) throttling."""
 import uuid
-from datetime import datetime
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from sqlalchemy import select

@@ -25,20 +25,16 @@ from app.database import get_db
 from app.envelope import ApiError, ok
 from app.models import (
     BulkOrder,
-    BulkOrderItem,
     BulkPickupRecord,
     CanteenCounter,
     GuestOtpChallenge,
     Order,
-    OrderItem,
     OrderStatus,
     Payment,
-    PaymentIncident,
     PaymentStatus,
     Pickup,
     PickupSlot,
     Product,
-    SaasApiKey,
     SaasCampus,
     SaasOutlet,
     SaasSubscription,
@@ -49,7 +45,7 @@ from app.models import (
     UserRole,
     WalkinPosOrder,
 )
-from app.modules.common import as_utc, get_app_setting, record_audit, set_app_setting
+from app.modules.common import as_utc, get_app_setting, record_audit
 from app.security import create_access_token, get_current_user, hash_password, require_roles
 
 router = APIRouter(tags=["v3-crowd-pos-saas"])

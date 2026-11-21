@@ -209,7 +209,6 @@ def test_admin_can_create_update_and_archive_products():
         from app.database import SessionLocal
         from app.models import User, UserRole
         from app.security import hash_password
-        from sqlalchemy import select
         suffix = uuid.uuid4().hex[:8]
         email = f"phase4-staff-{suffix}@example.edu"
         with SessionLocal() as db:
@@ -511,9 +510,6 @@ def test_checkout_quote_requires_student_authentication():
 
 
 def test_checkout_quote_uses_server_prices_and_merges_duplicate_lines():
-    from app.database import SessionLocal
-    from app.models import User
-    from sqlalchemy import select
     import uuid
     with TestClient(app) as client:
         email = f'phase5-quote-{uuid.uuid4().hex[:10]}@example.edu'
@@ -590,7 +586,7 @@ def test_phase6_payment_verification_rejects_invalid_signature():
             db.add(user); db.flush()
             max_tok = db.scalar(select(func.coalesce(func.max(Order.token_number), 9000)).where(Order.token_date == "2099-01-01")) or 9000
             order = Order(user_id=user.id, token_number=max_tok + 1, token_date="2099-01-01", status=OrderStatus.PENDING, payment_status=PaymentStatus.PENDING, subtotal="10.00", gateway_order_id=f"order_test_{suffix}")
-            db.add(order); db.commit(); user_id = user.id
+            db.add(order); db.commit()
         token = client.post("/api/auth/login", json={"email": email, "password": "payment-verification-password-123"}).json()["access_token"]
         old_secret = settings.razorpay_key_secret; settings.razorpay_key_secret = "test_secret_for_signature_check"
         try:
@@ -769,7 +765,6 @@ def test_phase12_admin_reports_and_audit_trail_are_role_protected_and_work():
     from app.database import SessionLocal
     from app.models import User, UserRole, AuditEvent
     from app.security import hash_password
-    from sqlalchemy import select
     with TestClient(app) as client:
         suffix = uuid.uuid4().hex[:10]
         email = f'phase12-admin-{suffix}@example.edu'
@@ -815,7 +810,6 @@ def test_phase13_notifications_are_user_scoped_and_can_be_marked_read():
     from uuid import uuid4
     from app.database import SessionLocal
     from app.models import Notification, User
-    from app.security import hash_password
 
     suffix = uuid4().hex[:10]
     with TestClient(app) as client:
@@ -956,7 +950,7 @@ def test_payment_webhook_delivery_is_idempotent():
     from app.main import settings
     from app.database import SessionLocal
     from app.models import PaymentWebhookEvent
-    from sqlalchemy import select, func
+    from sqlalchemy import select
 
     original_secret = settings.razorpay_webhook_secret
     settings.razorpay_webhook_secret = "phase18-test-webhook-secret"

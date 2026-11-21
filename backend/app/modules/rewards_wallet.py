@@ -19,7 +19,7 @@ from app.modules.common import (
     wallet_balance_paise,
 )
 from app.modules.orders_payments import _mark_order_paid_and_notify
-from app.security import get_current_user, require_roles
+from app.security import require_roles
 
 router = APIRouter(tags=["rewards-wallet"])
 

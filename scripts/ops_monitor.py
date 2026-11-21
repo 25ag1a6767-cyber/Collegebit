@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Operational checks for ACE Canteen health and backup freshness."""
 from __future__ import annotations
-import argparse, hashlib, json, os, sys, time
+import argparse, hashlib, json, os, time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError, HTTPError

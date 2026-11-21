@@ -21,7 +21,6 @@ from app.models import (
     Ingredient,
     PlatformSuperAdmin,
     SaasTenant,
-    SaasTenantMember,
     SaasTenantProfile,
     Supplier,
     User,

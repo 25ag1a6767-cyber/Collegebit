@@ -6,7 +6,7 @@ sys.path.insert(0, str(backend_path))
 
 from app.database import SessionLocal
 from app.models import User
-from app.security import verify_password, hash_password
+from app.security import verify_password
 from sqlalchemy import select
 
 db = SessionLocal()

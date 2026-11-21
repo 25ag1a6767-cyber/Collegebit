@@ -40,7 +40,6 @@ from app.models import (
     PaymentStatus,
     PickupToken,
     Product,
-    StockMovement,
     User,
     UserRole,
 )

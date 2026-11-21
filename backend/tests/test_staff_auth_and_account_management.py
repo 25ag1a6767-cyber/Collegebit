@@ -4,11 +4,10 @@ from __future__ import annotations
 import json
 import uuid
 from fastapi.testclient import TestClient
-from sqlalchemy import select
 
 from app.database import SessionLocal
 from app.main import app
-from app.models import CanteenCounter, User, UserRole
+from app.models import User, UserRole
 from app.security import create_access_token, hash_password
 
 

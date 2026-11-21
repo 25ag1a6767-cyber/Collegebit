@@ -4,7 +4,6 @@ import uuid
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 import pytest
-from sqlalchemy import select
 
 from app.config import Settings
 from app.database import SessionLocal

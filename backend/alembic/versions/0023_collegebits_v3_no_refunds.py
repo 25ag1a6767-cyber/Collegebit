@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from alembic import op
-import sqlalchemy as sa
 from sqlalchemy import inspect, text
 
 from app.database import Base

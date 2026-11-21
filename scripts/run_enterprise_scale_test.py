@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 from pathlib import Path
-import statistics
 import sys
 import tempfile
 import time
@@ -51,10 +50,7 @@ def run_enterprise_scale_benchmark() -> dict:
             CanteenCounter,
             Category,
             Order,
-            OrderItem,
-            OrderStatus,
             Payment,
-            PaymentStatus,
             PickupToken,
             Product,
             User,

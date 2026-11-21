@@ -9,10 +9,12 @@ import {
   View
 } from "react-native";
 import { apiRequest, formatRupeesFromPaise } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { CustomizationOption, MenuItemDetail, MenuItemSummary } from "../types/api";
 
 export const MenuScreen: React.FC = () => {
+  const { user } = useAuth();
   const { selectedCounterId, addItem } = useCart();
   const [search, setSearch] = useState("");
   const [dietary, setDietary] = useState("");
@@ -26,13 +28,14 @@ export const MenuScreen: React.FC = () => {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const loadFavorites = useCallback(async () => {
+    if (user?.role !== "student") return;
     try {
       const res = await apiRequest<{ items: MenuItemSummary[] }>("/api/v1/favorites");
       setFavoriteIds((res.items || []).map(x => x.id));
     } catch {
-      // Ignore if guest or non-student
+      // Ignore transient load failure
     }
-  }, []);
+  }, [user?.role]);
 
   const loadMenu = useCallback(async () => {
     const params = new URLSearchParams({ limit: "50" });

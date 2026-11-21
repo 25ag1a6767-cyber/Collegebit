@@ -9,8 +9,6 @@ Simulates concurrent student lunch-break rush and staff counter operations:
 
 from __future__ import annotations
 
-import json
-import random
 from locust import HttpUser, between, task, tag
 
 
@@ -27,7 +25,7 @@ class StudentCustomerUser(HttpUser):
     @task(40)
     @tag("browse", "menu")
     def browse_menu_catalog(self):
-        with self.client.get("/api/v1/menu/products?limit=30", headers=self.headers, catch_response=True) as resp:
+        with self.client.get("/api/v1/menu?limit=30", headers=self.headers, catch_response=True) as resp:
             if resp.status_code == 200:
                 resp.success()
             else:
@@ -41,27 +39,27 @@ class StudentCustomerUser(HttpUser):
     @task(20)
     @tag("status", "canteen")
     def check_canteen_status(self):
-        self.client.get("/api/v1/menu/canteen/status", headers=self.headers)
+        self.client.get("/api/v1/counters", headers=self.headers)
 
     @task(10)
     @tag("checkout", "quote")
     def request_checkout_quote(self):
         payload = {
-            "counter_id": 1,
+            "counterId": 1,
             "items": [
-                {"product_id": 1, "quantity": 1},
-                {"product_id": 2, "quantity": 2},
+                {"menuItemId": 1, "quantity": 1},
+                {"menuItemId": 2, "quantity": 2},
             ],
-            "applied_coupon_code": "WELCOME10",
+            "couponCode": "WELCOME10",
         }
         with self.client.post(
-            "/api/v1/checkout/quote",
+            "/api/v1/orders/quote",
             json=payload,
             headers=self.headers,
             catch_response=True,
         ) as resp:
-            # 200 is quote success, 400/404 if mock IDs don't exist yet in target DB
-            if resp.status_code in (200, 400, 404):
+            # 200 is quote success; 400/404/422 if sample IDs are unavailable in target DB
+            if resp.status_code in (200, 400, 404, 422):
                 resp.success()
             else:
                 resp.failure(f"Checkout quote error: {resp.status_code}")
